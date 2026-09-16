@@ -1,0 +1,36 @@
+{
+  "summary": "Ran live mobile regression at 390x844 and API smoke checks. Home controls load and backend questions, resident creation, capsule creation, and resident capsule reads pass. The create-profile modal cannot expose its submit control within the mobile viewport, blocking the requested UI workflow.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Add resident modal",
+        "issue": "At 390x844, after filling resident-name-input, resident-create-button is below the viewport and Playwright reports it outside the viewport. The modal content is not scrollable, so profile creation cannot be completed by a mobile tap.",
+        "testID": "resident-create-button",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": ["/app/test_reports/screens/iteration2-error.png", "/app/frontend/app/index.tsx", "/app/frontend/src/api.ts"],
+  "action_items": [
+    "Make the add-resident modal body/keyboard layout scrollable or otherwise keep resident-create-button within the 390x844 safe viewport.",
+    "Align the frontend environment variable with the required EXPO_BACKEND_URL contract, or explicitly document why EXPO_PUBLIC_BACKEND_URL is used; current source does not read EXPO_BACKEND_URL."
+  ],
+  "critical_code_review_comments": [
+    "The modal uses a plain View rather than a scroll container, and its vertical content exceeds the mobile viewport.",
+    "api.ts reads EXPO_PUBLIC_BACKEND_URL and expo extra backendUrl, not EXPO_BACKEND_URL specified by the deployment contract."
+  ],
+  "updated_files": ["/app/test_reports/iteration_2.json"],
+  "success_rate": {"backend": "100%", "frontend": "25%"},
+  "seed_data_creation": "Created TEST_API_* resident and TEST capsule through public API; created TEST Jeanne locally/server-side before the UI blocker interrupted the flow.",
+  "retest_needed": true,
+  "should_call_test_agent_after_fix": true,
+  "context_for_next_testing_agent": "Home loaded at https://ehpad-recall.preview.emergentagent.com on 390x844. API GET questions, POST residents (201), POST capsules (201), and GET resident capsules passed. UI run stopped at resident-create-button because the control was outside the viewport; do not treat later workshop/archive steps as tested in this iteration.",
+  "rca_of_issue": "Reproduction: open home-add-profile, fill resident-name-input at 390x844, then tap resident-create-button. The bottom-sheet modal contains heading, explanatory text, input, consent row, and button inside a non-scrollable View; the button is rendered below the viewport. KeyboardAvoidingView changes height but does not provide scrolling. Mitigation: wrap modalCard content in ScrollView with keyboardShouldPersistTaps, or reduce/position content so the submit button remains reachable above the safe-area inset."
+}

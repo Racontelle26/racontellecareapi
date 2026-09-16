@@ -94,7 +94,7 @@ const useStyles = makeStyles((colors) => ({
   recordButtonActive: { backgroundColor: colors.brandPrimary },
   timer: { color: colors.onSurface, fontSize: 30, fontWeight: "700", letterSpacing: 1 },
   modalBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(44,42,41,0.24)" },
-  modalCard: { backgroundColor: colors.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, gap: 18, borderTopWidth: 1, borderColor: colors.border },
+  modalCard: { backgroundColor: colors.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, borderTopWidth: 1, borderColor: colors.border, maxHeight: "88%" },
   input: { minHeight: 54, borderRadius: 16, backgroundColor: colors.surfaceTertiary, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 16, color: colors.onSurface, fontSize: 16 },
   switchRow: { minHeight: 52, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 14 },
   archiveFilter: { flexDirection: "row", gap: 8, paddingBottom: 2 },
@@ -308,12 +308,14 @@ export default function Index() {
       {notice && <Pressable accessibilityRole="button" onPress={() => setNotice(null)} style={[styles.notice, { bottom: insets.bottom + 16 }]}><Icon name="information-circle-outline" color={colors.onInfo} size={18} /><Text style={styles.noticeText}>{notice}</Text><Icon name="close" color={colors.onInfo} size={18} /></Pressable>}
       <Modal testID="add-resident-modal" visible={showAdd} transparent animationType="slide" onRequestClose={() => setShowAdd(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalBackdrop}>
-          <View style={[styles.modalCard, { paddingBottom: insets.bottom + 24 }]}>
+          <View style={styles.modalCard}>
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 18, paddingBottom: insets.bottom + 24 }}>
             <View style={styles.sectionHeader}><Text style={styles.heading}>Nouveau profil</Text><Pressable onPress={() => setShowAdd(false)} style={styles.backButton}><Icon name="close" color={colors.onSurface} /></Pressable></View>
             <Text style={styles.body}>Un prénom ou un pseudonyme suffit. Les données restent dans le carnet de l’atelier.</Text>
             <TextInput testID="resident-name-input" value={draftName} onChangeText={setDraftName} autoFocus placeholder="Prénom ou pseudonyme" placeholderTextColor={colors.muted} style={styles.input} maxLength={80} />
             <View style={styles.switchRow}><View style={{ flex: 1, gap: 4 }}><Text style={styles.actionTitle}>Consentement obtenu</Text><Text style={styles.small}>Nécessaire avant tout enregistrement.</Text></View><Switch testID="resident-consent-switch" value={consent} onValueChange={setConsent} trackColor={{ false: colors.borderStrong, true: colors.success }} thumbColor={colors.onBrandPrimary} /></View>
             <Pressable testID="resident-create-button" accessibilityRole="button" onPress={() => void addResident()} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}><Icon name="person-add-outline" color={colors.onBrandPrimary} /><Text style={styles.primaryText}>Créer le profil</Text></Pressable>
+            </ScrollView>
           </View>
         </KeyboardAvoidingView>
       </Modal>

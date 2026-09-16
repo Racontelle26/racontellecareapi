@@ -2,6 +2,8 @@ import Constants from "expo-constants";
 
 import type { Capsule, Question, Resident } from "./types";
 
+// EXPO_PUBLIC_BACKEND_URL is the protected frontend environment contract for this workspace.
+// Do not replace it with EXPO_BACKEND_URL: the preview and native builds inject this public value.
 const baseUrl = String(
   Constants.expoConfig?.extra?.backendUrl ?? process.env.EXPO_PUBLIC_BACKEND_URL ?? "",
 ).replace(/\/$/, "");
