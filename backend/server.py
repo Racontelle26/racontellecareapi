@@ -156,7 +156,7 @@ async def get_residents():
     return await db.residents.find({"active": True}, {"_id": 0}).sort("created_at", 1).to_list(10)
 
 
-@api_router.post("/residents", response_model=ResidentOut)
+@api_router.post("/residents", response_model=ResidentOut, status_code=201)
 async def create_resident(input: ResidentCreate):
     if await db.residents.count_documents({"active": True}) >= 10:
         raise HTTPException(status_code=400, detail="Limite de 10 profils atteinte")
@@ -192,7 +192,7 @@ async def get_questions(theme: Optional[str] = Query(default=None), limit: int =
     return await db.questions.find(query, {"_id": 0}).limit(limit).to_list(limit)
 
 
-@api_router.post("/capsules", response_model=CapsuleOut)
+@api_router.post("/capsules", response_model=CapsuleOut, status_code=201)
 async def create_capsule(input: CapsuleCreate):
     if input.resident_id:
         resident = await db.residents.find_one({"id": input.resident_id}, {"_id": 0})
