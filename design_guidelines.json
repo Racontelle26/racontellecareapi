@@ -1,0 +1,144 @@
+{
+  "app_name": "Racontelle EHPAD",
+  "personality": "8 Hand-Drawn / Journal LIGHT (adapted for professional workshop high-contrast accessibility)",
+  "personality_one_liner": "Un carnet de mémoire chaleureux, simple et respectueux pour les ateliers en EHPAD, conçu pour capturer des souvenirs précieux en toute sérénité.",
+  "color": {
+    "surface": "#FAF6F0",
+    "onSurface": "#2C2A29",
+    "surfaceSecondary": "#F3EDE2",
+    "onSurfaceSecondary": "#4A4643",
+    "surfaceTertiary": "#E6DCD0",
+    "onSurfaceTertiary": "#2C2A29",
+    "surfaceInverse": "#2C2A29",
+    "onSurfaceInverse": "#FAF6F0",
+    "brand": "#8C6D4F",
+    "brandPrimary": "#73573C",
+    "onBrandPrimary": "#FFFFFF",
+    "brandSecondary": "#D4C5B9",
+    "onBrandSecondary": "#2C2A29",
+    "brandTertiary": "#EFE6DB",
+    "onBrandTertiary": "#59432E",
+    "success": "#4A6B5D",
+    "onSuccess": "#FFFFFF",
+    "warning": "#A67C37",
+    "onWarning": "#FFFFFF",
+    "error": "#9E4738",
+    "onError": "#FFFFFF",
+    "info": "#4A5D73",
+    "onInfo": "#FFFFFF",
+    "border": "#E0D5C7",
+    "borderStrong": "#B8A898",
+    "divider": "#E8DFD4",
+    "muted": "#7A736D",
+    "onBrand": "#FFFFFF"
+  },
+  "typography": {
+    "displayFontFamily": "Fraunces",
+    "textFontFamily": "Plus Jakarta Sans",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Generous touch-friendly padding designed for seniors and busy workshop professionals, minimum touch targets 48x48pt.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 8,
+    "md": 16,
+    "lg": 24,
+    "pill": 999
+  },
+  "shadow_tier": "1",
+  "navigation": "stack_only",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": false,
+    "do's": [
+      "Use solid, high-contrast warm paper surfaces for optimal senior readability.",
+      "Ensure all touch targets are ≥48x48pt."
+    ],
+    "dont's": [
+      "Do not use low-contrast or semi-transparent overlays that hinder readability in bright rooms."
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-blur",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Home / Atelier Mode",
+      "purpose": "Dashboard central de l'atelier de mémoire en EHPAD avec sélection rapide du profil résident, indicateur de mode hors-ligne et accès direct aux 10 profils.",
+      "states": {
+        "loading": "Chargement des profils locaux...', animation de carnet chaleureux",
+        "empty": "Aucun profil créé. Appuyez sur 'Ajouter un résident' pour commencer l'atelier.",
+        "error": "Impossible de synchroniser avec le serveur temporaire. Mode local actif."
+      },
+      "layout": "En-tête chaleureux avec titre éditorial et indicateur d'état de connexion ('Mode Hors-Ligne Actif'), grille fluide des 10 profils avec photos réelles ou initiales, bouton principal sticky en bas 'Nouveau Résident' ou 'Démarrer l'atelier'."
+    },
+    {
+      "name": "Profile Setup / Gestion des 10 Profils",
+      "purpose": "Création et gestion ultra-simplifiée des 10 profils de résidents avec prénom, date de naissance/chambre et historique des souvenirs enregistrés.",
+      "states": {
+        "loading": "Chargement du profil...",
+        "empty": "Ce résident n'a pas encore de souvenirs enregistrés.",
+        "error": "Erreur lors de l'enregistrement du profil."
+      },
+      "layout": "Fiche résident épurée avec grand avatar, prénom en grand, liste chronologique des enregistrements vocaux passés (libres et questions) avec durée, date et bouton d'écoute immédiate."
+    },
+    {
+      "name": "Recording & Questions Workshop (L'Atelier)",
+      "purpose": "Interface immersive d'enregistrement vocal (libre + parcours guidé de 3 questions du jour) avec options de réponse, de passage de question et indicateur visuel d'onde.",
+      "states": {
+        "loading": "Préparation de l'atelier vocal...",
+        "empty": "Aucune question disponible pour aujourd'hui.",
+        "error": "Erreur d'accès au microphone. Veuillez vérifier les autorisations."
+      },
+      "layout": "Mode immersif par étapes : 1) Enregistrement libre (grand bouton rouge/bordeaux d'enregistrement, chronomètre clair, waveform animée). 2) Parcours des 3 questions du jour affichées une par une avec boutons larges 'Enregistrer la réponse' et 'Passer la question'."
+    },
+    {
+      "name": "History & Archive (Historique Local)",
+      "purpose": "Consultation sécurisée de tous les souvenirs vocaux enregistrés sur l'appareil avec copie locale et export professionnel pour les équipes EHPAD.",
+      "states": {
+        "loading": "Chargement de la collection des souvenirs...",
+        "empty": "Aucun souvenir enregistré dans l'appareil pour le moment.",
+        "error": "Erreur de lecture du stockage local."
+      },
+      "layout": "Liste claire filtrée par résident ou par date, lecteur audio intégré avec barre de progression tactile, indicateur de stockage local et bouton d'export des données pour l'équipe soignante."
+    }
+  ],
+  "images": {
+    "resident_1": {
+      "url": "https://images.unsplash.com/photo-1647082286159-16a43c39eab1",
+      "alt": "Portrait chaleureux de résidente en EHPAD"
+    },
+    "resident_2": {
+      "url": "https://images.pexels.com/photos/34504128/pexels-photo-34504128.jpeg",
+      "alt": "Portrait chaleureux de résident en EHPAD"
+    },
+    "workshop_banner": {
+      "url": "https://images.unsplash.com/photo-1749391468157-ee3e030f4195",
+      "alt": "Ambiance atelier mémoire EHPAD"
+    }
+  },
+  "instructions_to_main_agent": "1. Build Racontelle EHPAD with Persona 8 (Hand-Drawn / Journal LIGHT) optimized for senior legibility and professional workshop efficiency. 2. Implement all 4 screens (/app/frontend/app/index.tsx, profiles, recording workshop with 3 daily questions and free recording, and local storage history). 3. Ensure offline-first functionality with local storage & temporary server copy indicator. 4. Maintain large touch targets (≥48x48pt), high contrast, warm paper textures (#FAF6F0), and Fraunces + Plus Jakarta Sans typography. 5. ZERO EMOJIS in system UI. Use Phosphor icons. 6. Fully compliant with French healthcare workshop professional standards."
+}
