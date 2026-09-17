@@ -3,7 +3,7 @@ import { storage } from "@/src/utils/storage";
 import type { Capsule, LocalState, Resident } from "./types";
 
 const KEY = "racontelle.local.v1";
-const DEFAULT_STATE: LocalState = { residents: [], capsules: [], usage: { total_sec: 0, by_resident: {} }, exports: {} };
+const DEFAULT_STATE: LocalState = { residents: [], capsules: [], usage: { total_sec: 0, by_resident: {} }, exports: {}, answered: {} };
 
 export async function readLocalState(): Promise<LocalState> {
   const stored = await storage.getItem<LocalState>(KEY, DEFAULT_STATE);
@@ -13,6 +13,7 @@ export async function readLocalState(): Promise<LocalState> {
     ...stored,
     usage: stored?.usage ?? DEFAULT_STATE.usage,
     exports: stored?.exports ?? DEFAULT_STATE.exports,
+    answered: stored?.answered ?? DEFAULT_STATE.answered,
   };
 }
 

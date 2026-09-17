@@ -40,4 +40,7 @@ export type LocalState = {
   usage: UsageState;
   /** Date ISO du dernier export réalisé par profil (retrait sécurisé). */
   exports: Record<string, string>;
+  /** Ids des questions déjà répondues, par profil ("none" pour le mode spontané).
+   * Les questions non traitées sont reproposées lors des ateliers suivants. */
+  answered: Record<string, string[]>;
 };

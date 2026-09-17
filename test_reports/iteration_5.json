@@ -1,0 +1,55 @@
+{
+  "summary": "Iteration 5 validated end-to-end. Backend 13/13 pytest pass (7 new): POST /api/residents/merge reassigns capsules to keep_id + soft-deletes duplicates (verified via GET after merge), 400 on empty/self-only merge_ids, 404 on unknown/inactive keep_id; GET /api/residents/{id}/carnet returns 200 application/pdf with %PDF- header and Content-Disposition racontelle-carnet-<nom>.pdf (with capsules, empty, and 404 unknown). Frontend: workshop mode switch (workshop-mode-question/workshop-mode-free) visible when idle, hidden while recording/done; question mode shows question card + 'Question 1 sur 3' progress; free mode shows 'Souvenir libre' card; profile workshop defaults to free, switching to question + record/save works (advanced to Q2). Stats 'Profils en double' section appears for the 3 Jeannes; merge modal opens, merge-confirm disabled until merge-keep-<id> selected; after merge: notice shown, duplicates vanish from home + stats, and server-side the donor Jeanne's capsule was re-attached to the kept Jeanne. 'Imprimer le carnet (PDF)' opens a new tab issuing GET .../carnet -> 200 application/pdf + 'Carnet PDF prêt' notice. Regressions OK: export ZIP (GET .../export -> 200 application/zip, racontelle-claire.zip) + 2-step removal modal (confirm gated on export-done), stats counters, archive with capsules. ONE CRITICAL crash found and fixed: ArchiveScreen ReferenceError (busyCapsuleId is not defined) whenever archive contained >=1 capsule -> full error-boundary screen. Fixed by adding the 4 missing destructured props; archive now renders rows + play/transcribe/share buttons with zero console errors.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/residents/merge", "issue": "merge_ids containing unknown resident ids silently no-op but are still counted in the returned 'merged' total; consider validating or reporting skipped ids"}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "WorkshopScreen (question mode, from a profile)", "issue": "At 390x844 with resident title + question card, the 'Sauvegarder le souvenir' button (workshop-save) is fully below the fold; tap without scrolling fails. Elderly users may not find it.", "testID": "workshop-save", "priority": "MINOR"},
+      {"component": "Merge modal", "issue": "With 3 duplicate fiches, the 3rd merge-keep-<id> option and merge-confirm sit at/below the fold; Playwright auto-scroll failed inside the bottom-sheet ScrollView (needed JS scrollIntoView). Same discoverability concern as iteration-4 remove modal.", "testID": "merge-confirm", "priority": "MINOR"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Workshop (question mode)", "issues": ["Primary save action below fold at 390px height; consider compacting the question card or a fixed bottom action bar"]},
+      {"screen": "Merge modal", "issues": ["Options + confirm should remain visible without scrolling for 3+ duplicates"]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_resident_merge_carnet.py",
+    "/app/test_reports/pytest/pytest_results_iter5.xml",
+    "/app/test_reports/screens/iter5-workshop-question.png",
+    "/app/test_reports/screens/iter5-merge-modal.png",
+    "/app/test_reports/screens/iter5-home-after-merge.png",
+    "/app/test_reports/screens/iter5-profile-carnet.png",
+    "/app/test_reports/screens/iter5-archive.png",
+    "/app/test_reports/screens/iter5-remove-modal.png"
+  ],
+  "action_items": [
+    "Verify the ArchiveScreen fix (app/index.tsx:736 — added busyCapsuleId, playingCapsuleId, onTranscribe, onShare to the destructured props); the crash reproduced 100% with any capsule in archive and is now resolved.",
+    "UX: keep workshop-save visible without scrolling in question mode at 390x844 (fixed footer or compact question card).",
+    "UX: keep merge-confirm + all merge-keep options visible without scrolling in the merge bottom sheet.",
+    "Optional backend hardening: /api/residents/merge could 404/400 on unknown merge_ids instead of silently counting them."
+  ],
+  "critical_code_review_comments": [
+    "app/index.tsx:736 — ArchiveScreen referenced busyCapsuleId/playingCapsuleId/onTranscribe/onShare without destructuring them -> ReferenceError at render of the first CapsuleRow (crash confirmed in browser: error boundary 'Something went wrong'). FIXED and retested: archive renders capsules, play/transcribe/share present, no console errors.",
+    "index.tsx:191 — iteration-4 refresh() data-loss bug is FIXED (next = { ...local, residents: mergeResidents(...) } preserves usage + exports).",
+    "backend/server.py merge_residents + carnet_pdf — solid: keep must be active (404), self-merge filtered (400), capsules re-attached before soft-delete, PDF has safe filename slug, font fallbacks, graceful empty-carnet.",
+    "confirmMerge (index.tsx:560) — correct local-first flow: local capsules remapped, duplicates filtered, server merge only for synced ids; note the merge modal shows per-fiche souvenir counts from LOCAL state only (server capsules unknown to the device show as 0) — acceptable for offline-first but could surprise caregivers.",
+    "No deprecated Expo packages detected (expo-audio, expo-image, expo-file-system/legacy, expo-sharing, expo-clipboard all current)."
+  ],
+  "updated_files": [
+    "/app/frontend/app/index.tsx",
+    "/app/backend/tests/test_resident_merge_carnet.py",
+    "/app/test_reports/iteration_5.json"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "95%"},
+  "seed_data_creation": "Merged 2 of the 3 sample Jeannes into the kept one (90118d8e) via the UI as instructed; 1 Jeanne + Claire remain active. Deleted 1 leftover TEST_ resident from an older regression test and all 8 test capsules created during my sessions. Server is clean: 2 active residents, no TEST_ data.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Server state: 2 active residents (Jeanne 90118d8e-f486-4641-b269-f4b59cd852b9, Claire 96539515-8cea-41ab-b588-8e5911700a85), no duplicates currently (create same-name pairs to re-test merge). Each browser_automation run is a FRESH profile (localStorage not shared); keep local-state flows in one session. Playwright auto-scroll fails inside bottom-sheet modals and long workshop pages — use JS el.scrollIntoView({block:'center'}) then click; merge-keep/merge-confirm may need el.click() via evaluate. popup.url reports ':' in this harness (artifact) — verify window.open targets via context.on('request') instead. ZIP popup never fires 'load' (attachment download) — don't wait_for_load_state on it. Real web-mic recording works (workshop-record/stop/save).",
+  "rca_of_issue": "Bug: archive screen crashed with full error boundary whenever >=1 capsule existed. Reproduction: record any souvenir, open 'Mes souvenirs' -> 'Something went wrong / busyCapsuleId is not defined'. Root cause: ArchiveScreen (app/index.tsx:736) destructured only { styles, colors, insets, residents, capsules, selectedId, onSelect, onBack, onPlay } but its CapsuleRow JSX used busyCapsuleId, playingCapsuleId, onTranscribe, onShare (all passed by the parent at line 629). With an empty archive the CapsuleRow branch never rendered, which is why iteration 4 missed it. Fix: added the 4 missing props to the destructuring; verified archive renders capsule rows with play/transcribe/share and zero console errors."
+}

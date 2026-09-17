@@ -130,6 +130,11 @@ const useStyles = makeStyles((colors) => ({
   capsuleAction: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 6 },
   capsuleActionText: { color: colors.brandPrimary, fontSize: 13, fontFamily: "Montserrat-Bold" },
   dangerButton: { minHeight: 52, borderRadius: 18, backgroundColor: colors.error, flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "center", paddingHorizontal: 18 },
+  modeSwitch: { flexDirection: "row", gap: 10 },
+  modeOption: { flex: 1, minHeight: 56, borderRadius: 18, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingHorizontal: 10 },
+  modeOptionActive: { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },
+  modeOptionText: { color: colors.onSurfaceSecondary, fontSize: 14, fontFamily: "Montserrat-Bold" },
+  modeOptionTextActive: { color: colors.onBrandPrimary },
 }));
 
 function Icon({ name, color, size = 22 }: { name: keyof typeof Ionicons.glyphMap; color: string; size?: number }) {
@@ -173,7 +178,10 @@ export default function Index() {
   const [busyCapsuleId, setBusyCapsuleId] = useState<string | null>(null);
   const player = useAudioPlayer(recordedUri);
   const durationSeconds = Math.round((recorderState.durationMillis ?? 0) / 1000);
-  const currentQuestion = questions[questionIndex % Math.max(questions.length, 1)] ?? FALLBACK_QUESTIONS[0];
+  // Les 10 questions du jour, figées au démarrage de l'atelier : les questions
+  // sans réponse sont proposées en priorité et reproposées plus tard.
+  const [sessionQuestions, setSessionQuestions] = useState<Question[]>([]);
+  const currentQuestion = sessionQuestions[questionIndex] ?? FALLBACK_QUESTIONS[0];
   const stateRef = useRef(state);
   stateRef.current = state;
   const usageSession = useRef<{ startedAt: number; residentId: string | null }>({ startedAt: Date.now(), residentId: null });
@@ -244,6 +252,13 @@ export default function Index() {
       setNotice("Le consentement est nécessaire avant tout enregistrement.");
       return;
     }
+    // 10 questions du jour : d'abord celles jamais répondues par la personne ;
+    // les questions passées restent non répondues et seront reproposées plus tard.
+    const bank = questions.length ? questions : FALLBACK_QUESTIONS;
+    const answeredIds = new Set(state.answered?.[resident?.id ?? "none"] ?? []);
+    let remaining = bank.filter((question) => !answeredIds.has(question.id));
+    if (!remaining.length) remaining = bank;
+    setSessionQuestions(remaining.slice(0, 10));
     setSelectedResident(resident);
     setWorkshopMode(mode);
     setQuestionIndex(0);
@@ -340,16 +355,26 @@ export default function Index() {
       setNotice("Souvenir conservé sur l’appareil. La copie serveur sera retentée plus tard.");
     }
     resetRecording();
+    if (workshopMode === "question") {
+      // La réponse est mémorisée : la question ne sera pas reposée, les autres
+      // questions non traitées seront reproposées ultérieurement.
+      const key = selectedResident?.id ?? "none";
+      const previous = stateRef.current.answered?.[key] ?? [];
+      await persist({
+        ...stateRef.current,
+        answered: { ...stateRef.current.answered, [key]: [...new Set([...previous, currentQuestion.id])] },
+      });
+    }
     if (workshopMode === "free") {
       setWorkshopMode("question");
       setQuestionIndex(0);
-      setNotice("Souvenir libre sauvegardé. Les 3 questions du jour sont prêtes.");
-    } else if (questionIndex < 2) {
+      setNotice("Souvenir libre sauvegardé. Les questions du jour sont prêtes.");
+    } else if (questionIndex < sessionQuestions.length - 1) {
       setQuestionIndex((value) => value + 1);
       setNotice("Réponse sauvegardée. Passons à la prochaine question.");
     } else {
       setScreen(selectedResident ? "profile" : "home");
-      setNotice("Les 3 questions du jour sont terminées. Merci pour ce moment.");
+      setNotice("Les questions du jour sont terminées. Les questions restantes seront reproposées plus tard.");
     }
   };
 
@@ -506,6 +531,83 @@ export default function Index() {
     setNotice(`${resident.display_name} a été retiré(e) du carnet. L’export reste disponible pour le service.`);
   };
 
+  const [showMerge, setShowMerge] = useState(false);
+  const [mergeGroup, setMergeGroup] = useState<Resident[]>([]);
+  const [mergeKeepId, setMergeKeepId] = useState<string | null>(null);
+  const [printing, setPrinting] = useState(false);
+
+  // Doublons : profils portant le même prénom (insensible à la casse).
+  const duplicateGroups = useMemo(() => {
+    const groups = new Map<string, Resident[]>();
+    state.residents.forEach((resident) => {
+      const key = resident.display_name.trim().toLowerCase();
+      groups.set(key, [...(groups.get(key) ?? []), resident]);
+    });
+    return Array.from(groups.values()).filter((group) => group.length > 1);
+  }, [state.residents]);
+
+  // Impression du carnet : PDF des transcriptions, prêt à offrir à la famille.
+  const printCarnet = async (resident: Resident) => {
+    if (resident.id.startsWith("local-")) {
+      setNotice("Synchronisez le profil avec le serveur avant d’imprimer le carnet.");
+      return;
+    }
+    setPrinting(true);
+    try {
+      const url = api.carnetResidentUrl(resident.id);
+      if (Platform.OS === "web") {
+        (globalThis as any).window?.open?.(url, "_blank");
+      } else {
+        const target = `${FileSystem.cacheDirectory}racontelle-carnet-${resident.id}.pdf`;
+        const downloaded = await FileSystem.downloadAsync(url, target);
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(downloaded.uri, {
+            mimeType: "application/pdf",
+            dialogTitle: `Carnet de ${resident.display_name}`,
+          });
+        }
+      }
+      setNotice("Carnet PDF prêt à offrir à la famille.");
+    } catch {
+      setNotice("Impression impossible pour le moment. Vérifiez la connexion et réessayez.");
+    } finally {
+      setPrinting(false);
+    }
+  };
+
+  // Fusion de doublons : la fiche choisie est conservée, les souvenirs des
+  // autres fiches y sont rattachés.
+  const confirmMerge = async () => {
+    const keep = mergeGroup.find((resident) => resident.id === mergeKeepId);
+    if (!keep) return;
+    const duplicates = mergeGroup.filter((resident) => resident.id !== keep.id);
+    const duplicateIds = duplicates.map((resident) => resident.id);
+    const photo = keep.photo_uri ?? duplicates.find((resident) => resident.photo_uri)?.photo_uri ?? null;
+    await persist({
+      ...stateRef.current,
+      residents: stateRef.current.residents
+        .filter((resident) => !duplicateIds.includes(resident.id))
+        .map((resident) => (resident.id === keep.id ? { ...resident, photo_uri: photo } : resident)),
+      capsules: stateRef.current.capsules.map((capsule) =>
+        capsule.resident_id && duplicateIds.includes(capsule.resident_id)
+          ? { ...capsule, resident_id: keep.id }
+          : capsule,
+      ),
+    });
+    const syncedDuplicateIds = duplicateIds.filter((id) => !id.startsWith("local-"));
+    if (!keep.id.startsWith("local-") && syncedDuplicateIds.length) {
+      try {
+        await api.mergeResidents(keep.id, syncedDuplicateIds);
+      } catch {
+        setNotice("Fusion faite sur l’appareil. La copie serveur sera mise à jour plus tard.");
+      }
+    }
+    setShowMerge(false);
+    setMergeGroup([]);
+    setMergeKeepId(null);
+    setNotice(`Profils fusionnés dans la fiche de ${keep.display_name}.`);
+  };
+
   const addResident = async () => {
     const displayName = draftName.trim();
     if (!displayName) return;
@@ -542,10 +644,10 @@ export default function Index() {
   return (
     <View style={styles.root}>
       {screen === "home" && <HomeScreen styles={styles} colors={colors} insets={insets} state={state} onAdd={() => setShowAdd(true)} onProfile={(resident: Resident) => { setSelectedResident(resident); setScreen("profile"); }} onFree={() => beginWorkshop(null, "free")} onArchive={() => setScreen("archive")} onStats={() => setScreen("stats")} notice={notice} />}
-      {screen === "profile" && selectedResident && <ProfileScreen styles={styles} colors={colors} insets={insets} resident={selectedResident} capsules={state.capsules.filter((item) => item.resident_id === selectedResident.id)} busyCapsuleId={busyCapsuleId} playingCapsuleId={playingCapsuleId} onBack={() => setScreen("home")} onStart={() => beginWorkshop(selectedResident, "free")} onArchive={() => { setArchiveResidentId(selectedResident.id); setScreen("archive"); }} onPhoto={() => void pickPhoto("profile")} onTranscribe={transcribeCapsule} onShare={shareCapsule} onPlay={togglePlay} onRemoveRequest={() => setShowRemove(true)} />}
-      {screen === "workshop" && <WorkshopScreen styles={styles} colors={colors} insets={insets} resident={selectedResident} mode={workshopMode} questionIndex={questionIndex} question={currentQuestion} recorderStatus={recorderStatus} durationSeconds={durationSeconds} onBack={() => setScreen(selectedResident ? "profile" : "home")} onRecord={handleRecordPress} onStop={stopRecording} onReset={resetRecording} onPlay={() => player.play()} onSave={saveRecording} onSkip={() => { if (questionIndex < 2) setQuestionIndex((value) => value + 1); else { setScreen(selectedResident ? "profile" : "home"); setNotice("Atelier terminé, sans réponse enregistrée pour cette question."); } }} />}
+      {screen === "profile" && selectedResident && <ProfileScreen styles={styles} colors={colors} insets={insets} resident={selectedResident} capsules={state.capsules.filter((item) => item.resident_id === selectedResident.id)} busyCapsuleId={busyCapsuleId} playingCapsuleId={playingCapsuleId} printing={printing} onBack={() => setScreen("home")} onStart={() => beginWorkshop(selectedResident, "free")} onArchive={() => { setArchiveResidentId(selectedResident.id); setScreen("archive"); }} onPhoto={() => void pickPhoto("profile")} onTranscribe={transcribeCapsule} onShare={shareCapsule} onPlay={togglePlay} onPrintCarnet={() => void printCarnet(selectedResident)} onRemoveRequest={() => setShowRemove(true)} />}
+      {screen === "workshop" && <WorkshopScreen styles={styles} colors={colors} insets={insets} resident={selectedResident} mode={workshopMode} questionIndex={questionIndex} questionTotal={Math.max(sessionQuestions.length, 1)} question={currentQuestion} recorderStatus={recorderStatus} durationSeconds={durationSeconds} onBack={() => setScreen(selectedResident ? "profile" : "home")} onRecord={handleRecordPress} onStop={stopRecording} onReset={resetRecording} onPlay={() => player.play()} onSave={saveRecording} onModeChange={(nextMode: WorkshopMode) => { setWorkshopMode(nextMode); resetRecording(); }} onSkip={() => { if (questionIndex < sessionQuestions.length - 1) setQuestionIndex((value) => value + 1); else { setScreen(selectedResident ? "profile" : "home"); setNotice("Atelier terminé. Les questions passées seront reproposées ultérieurement."); } }} />}
       {screen === "archive" && <ArchiveScreen styles={styles} colors={colors} insets={insets} residents={state.residents} capsules={visibleCapsules} selectedId={archiveResidentId} busyCapsuleId={busyCapsuleId} playingCapsuleId={playingCapsuleId} onSelect={setArchiveResidentId} onBack={() => setScreen("home")} onPlay={togglePlay} onTranscribe={transcribeCapsule} onShare={shareCapsule} />}
-      {screen === "stats" && <StatsScreen styles={styles} colors={colors} insets={insets} state={state} onBack={() => setScreen("home")} />}
+      {screen === "stats" && <StatsScreen styles={styles} colors={colors} insets={insets} state={state} duplicateGroups={duplicateGroups} onMergeGroup={(group: Resident[]) => { setMergeGroup(group); setMergeKeepId(null); setShowMerge(true); }} onBack={() => setScreen("home")} />}
       {notice && <Pressable accessibilityRole="button" onPress={() => setNotice(null)} style={[styles.notice, { bottom: insets.bottom + 16 }]}><Icon name="information-circle-outline" color={colors.onInfo} size={18} /><Text style={styles.noticeText}>{notice}</Text><Icon name="close" color={colors.onInfo} size={18} /></Pressable>}
       <Modal testID="add-resident-modal" visible={showAdd} transparent animationType="slide" onRequestClose={() => setShowAdd(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalBackdrop}>
@@ -582,6 +684,27 @@ export default function Index() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+      <Modal testID="merge-modal" visible={showMerge && mergeGroup.length > 0} transparent animationType="slide" onRequestClose={() => setShowMerge(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 14, paddingBottom: insets.bottom + 20 }}>
+              <View style={styles.sectionHeader}><Text style={styles.heading}>Fusionner les « {mergeGroup[0]?.display_name} »</Text><Pressable testID="merge-cancel" onPress={() => setShowMerge(false)} style={styles.backButton}><Icon name="close" color={colors.onSurface} /></Pressable></View>
+              <Text style={styles.body}>Choisissez la fiche à conserver. Les souvenirs des autres fiches y seront rattachés, rien ne sera perdu.</Text>
+              {mergeGroup.map((resident) => {
+                const selected = mergeKeepId === resident.id;
+                const count = state.capsules.filter((capsule) => capsule.resident_id === resident.id).length;
+                return <Pressable testID={`merge-keep-${resident.id}`} key={resident.id} accessibilityRole="button" onPress={() => setMergeKeepId(resident.id)} style={[styles.statRow, selected && { borderColor: colors.brandPrimary, borderWidth: 2 }]}>
+                  <View style={styles.avatar}>{resident.photo_uri ? <Image source={{ uri: resident.photo_uri }} style={{ width: 44, height: 44, borderRadius: 22 }} contentFit="cover" /> : <Text style={styles.avatarText}>{initials(resident.display_name)}</Text>}</View>
+                  <View style={{ flex: 1, gap: 2 }}><Text style={styles.profileName}>{resident.display_name}</Text><Text style={styles.small}>Créée le {formatDate(resident.created_at)} · {count} souvenir{count > 1 ? "s" : ""}</Text></View>
+                  <Icon name={selected ? "radio-button-on" : "radio-button-off"} color={selected ? colors.brandPrimary : colors.muted} size={22} />
+                </Pressable>;
+              })}
+              <Pressable testID="merge-confirm" accessibilityRole="button" disabled={!mergeKeepId} onPress={() => void confirmMerge()} style={({ pressed }) => [styles.primaryButton, !mergeKeepId && { opacity: 0.45 }, pressed && styles.pressed]}><Icon name="git-merge-outline" color={colors.onBrandPrimary} /><Text style={styles.primaryText}>Conserver cette fiche</Text></Pressable>
+              <Text style={styles.small}>Les fiches non conservées seront retirées de l’accueil.</Text>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -599,7 +722,7 @@ function HomeScreen({ styles, colors, insets, state, onAdd, onProfile, onFree, o
   </ScrollView>;
 }
 
-function ProfileScreen({ styles, colors, insets, resident, capsules, busyCapsuleId, playingCapsuleId, onBack, onStart, onArchive, onPhoto, onTranscribe, onShare, onPlay, onRemoveRequest }: any) {
+function ProfileScreen({ styles, colors, insets, resident, capsules, busyCapsuleId, playingCapsuleId, printing, onBack, onStart, onArchive, onPhoto, onTranscribe, onShare, onPlay, onPrintCarnet, onRemoveRequest }: any) {
   return <ScrollView contentContainerStyle={[styles.screen, { paddingTop: insets.top + 18, paddingBottom: insets.bottom + 32 }]}>
     <View style={styles.header}><Pressable testID="profile-back" accessibilityRole="button" onPress={onBack} style={styles.backButton}><Icon name="arrow-back" color={colors.onSurface} /></Pressable><Text style={styles.eyebrow}>Fiche personne</Text><View style={{ width: 48 }} /></View>
     <View style={styles.profileHeader}><Pressable testID="profile-photo-button" accessibilityRole="button" onPress={onPhoto} style={({ pressed }) => pressed && styles.pressed}><View style={styles.largeAvatar}>{resident.photo_uri ? <Image source={{ uri: resident.photo_uri }} style={{ width: 80, height: 80, borderRadius: 40 }} contentFit="cover" /> : <Text style={styles.largeAvatarText}>{initials(resident.display_name)}</Text>}</View></Pressable><Text style={styles.title}>{resident.display_name}</Text><Text style={styles.small}>Consentement obtenu · profil local</Text><Pressable testID="profile-change-photo" accessibilityRole="button" onPress={onPhoto} style={styles.textButton}><Text style={styles.textButtonLabel}>{resident.photo_uri ? "Changer la photo" : "Ajouter une photo"}</Text></Pressable></View>
@@ -607,16 +730,21 @@ function ProfileScreen({ styles, colors, insets, resident, capsules, busyCapsule
     <View style={styles.sectionHeader}><Text style={styles.heading}>Souvenirs enregistrés</Text><Text style={styles.small}>{capsules.length}</Text></View>
     {capsules.length ? capsules.slice(0, 5).map((capsule: Capsule) => <CapsuleRow key={capsule.id} styles={styles} colors={colors} capsule={capsule} busy={busyCapsuleId === capsule.id} playing={playingCapsuleId === capsule.id} onPlay={capsule.audio_uri ? () => onPlay(capsule) : undefined} onTranscribe={() => onTranscribe(capsule)} onShare={() => onShare(capsule)} />) : <View style={styles.empty}><Icon name="heart-outline" color={colors.brand} size={28} /><Text style={styles.body}>Aucun souvenir pour le moment.</Text><Text style={styles.small}>Le premier récit apparaîtra ici.</Text></View>}
     {capsules.length > 5 && <Pressable testID="profile-open-archive" onPress={onArchive} style={styles.secondaryButton}><Text style={styles.secondaryText}>Voir toute l’archive</Text></Pressable>}
+    <Pressable testID="profile-print-carnet" accessibilityRole="button" disabled={printing} onPress={onPrintCarnet} style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>{printing ? <ActivityIndicator color={colors.brandPrimary} /> : <Icon name="book-outline" color={colors.brandPrimary} />}<Text style={styles.secondaryText}>Imprimer le carnet (PDF)</Text></Pressable>
     <View style={{ height: 1, backgroundColor: colors.divider }} />
     <Pressable testID="profile-remove" accessibilityRole="button" onPress={onRemoveRequest} style={({ pressed }) => [styles.textButton, { alignSelf: "center" }, pressed && styles.pressed]}><Text style={[styles.textButtonLabel, { color: colors.error }]}>Retirer le profil (départ de l’établissement)</Text></Pressable>
   </ScrollView>;
 }
 
-function WorkshopScreen({ styles, colors, insets, resident, mode, questionIndex, question, recorderStatus, durationSeconds, onBack, onRecord, onStop, onReset, onPlay, onSave, onSkip }: any) {
+function WorkshopScreen({ styles, colors, insets, resident, mode, questionIndex, questionTotal = 10, question, recorderStatus, durationSeconds, onBack, onRecord, onStop, onReset, onPlay, onSave, onSkip, onModeChange }: any) {
   const isQuestion = mode === "question";
   return <ScrollView contentContainerStyle={[styles.screen, { paddingTop: insets.top + 18, paddingBottom: insets.bottom + 32 }]}>
     <View style={styles.header}><Pressable testID="workshop-back" accessibilityRole="button" onPress={onBack} style={styles.backButton}><Icon name="arrow-back" color={colors.onSurface} /></Pressable><Text style={styles.eyebrow}>L’atelier vocal</Text><View style={{ width: 48 }} /></View>
-    <View style={styles.workshopTop}><Text style={styles.title}>{resident ? resident.display_name : "Souvenir spontané"}</Text><Text style={styles.body}>{isQuestion ? "Une question à la fois, au rythme de la personne." : "Laissez la parole venir librement."}</Text>{isQuestion && <><View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${((questionIndex + 1) / 3) * 100}%` }]} /></View><Text style={styles.small}>Question {questionIndex + 1} sur 3 · {question.theme}</Text></>}</View>
+    {recorderStatus === "idle" && <View style={styles.modeSwitch}>
+      <Pressable testID="workshop-mode-question" accessibilityRole="button" onPress={() => onModeChange("question")} style={({ pressed }) => [styles.modeOption, isQuestion && styles.modeOptionActive, pressed && styles.pressed]}><Icon name="chatbubble-ellipses-outline" color={isQuestion ? colors.onBrandPrimary : colors.onSurfaceSecondary} size={20} /><Text style={[styles.modeOptionText, isQuestion && styles.modeOptionTextActive]}>Question guidée</Text></Pressable>
+      <Pressable testID="workshop-mode-free" accessibilityRole="button" onPress={() => onModeChange("free")} style={({ pressed }) => [styles.modeOption, !isQuestion && styles.modeOptionActive, pressed && styles.pressed]}><Icon name="mic-outline" color={!isQuestion ? colors.onBrandPrimary : colors.onSurfaceSecondary} size={20} /><Text style={[styles.modeOptionText, !isQuestion && styles.modeOptionTextActive]}>Enregistrement libre</Text></Pressable>
+    </View>}
+    <View style={styles.workshopTop}><Text style={styles.title}>{resident ? resident.display_name : "Souvenir spontané"}</Text><Text style={styles.body}>{isQuestion ? "Une question à la fois, au rythme de la personne." : "Laissez la parole venir librement."}</Text>{isQuestion && <><View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${((questionIndex + 1) / Math.max(questionTotal, 1)) * 100}%` }]} /></View><Text style={styles.small}>Question {questionIndex + 1} sur {questionTotal} · {question.theme}</Text></>}</View>
     {isQuestion && <View style={styles.questionCard}><Text style={styles.eyebrow}>Question du jour</Text><Text style={styles.questionText}>{question.text}</Text></View>}
     {!isQuestion && <View style={styles.hero}><Text style={styles.heroTitle}>Souvenir libre</Text><Text style={styles.body}>Appuyez sur le bouton quand la personne est prête, puis laissez-la raconter.</Text></View>}
     <View style={styles.recorderPanel}><Text style={styles.timer}>{formatDuration(durationSeconds)}</Text><Waveform active={recorderStatus === "recording"} /><Pressable testID="workshop-record" accessibilityRole="button" accessibilityLabel={recorderStatus === "recording" ? "Mettre en pause" : "Enregistrer"} onPress={onRecord} style={({ pressed }) => [styles.recordButton, recorderStatus === "recording" && styles.recordButtonActive, pressed && styles.pressed]}>{recorderStatus === "recording" ? <Icon name="pause" color={colors.onError} size={34} /> : <Icon name="mic" color={colors.onError} size={38} />}</Pressable><Text style={styles.small}>{recorderStatus === "recording" ? "Enregistrement en cours" : recorderStatus === "paused" ? "En pause" : recorderStatus === "done" ? "Prêt à réécouter" : "Appuyez pour commencer"}</Text></View>
@@ -625,7 +753,7 @@ function WorkshopScreen({ styles, colors, insets, resident, mode, questionIndex,
   </ScrollView>;
 }
 
-function ArchiveScreen({ styles, colors, insets, residents, capsules, selectedId, onSelect, onBack, onPlay }: any) {
+function ArchiveScreen({ styles, colors, insets, residents, capsules, selectedId, busyCapsuleId, playingCapsuleId, onSelect, onBack, onPlay, onTranscribe, onShare }: any) {
   return <ScrollView contentContainerStyle={[styles.screen, { paddingTop: insets.top + 18, paddingBottom: insets.bottom + 32 }]}>
     <View style={styles.header}><Pressable testID="archive-back" accessibilityRole="button" onPress={onBack} style={styles.backButton}><Icon name="arrow-back" color={colors.onSurface} /></Pressable><Text style={styles.eyebrow}>Archive locale</Text><View style={{ width: 48 }} /></View>
     <View><Text style={styles.title}>Mes souvenirs</Text><Text style={styles.body}>Les capsules restent disponibles sur cet appareil, même sans réseau.</Text></View>
@@ -642,7 +770,7 @@ function formatHours(totalSeconds: number) {
   return `${Math.max(totalSeconds, 0)} s`;
 }
 
-function StatsScreen({ styles, colors, insets, state, onBack }: any) {
+function StatsScreen({ styles, colors, insets, state, duplicateGroups = [], onMergeGroup, onBack }: any) {
   const usage = state.usage ?? { total_sec: 0, by_resident: {} };
   const recordedTotal = state.capsules.reduce((sum: number, capsule: Capsule) => sum + (capsule.duration_sec || 0), 0);
   const rows = state.residents
@@ -658,6 +786,10 @@ function StatsScreen({ styles, colors, insets, state, onBack }: any) {
     <View testID="stats-global" style={styles.statHero}><Text style={styles.statHeroLabel}>Temps global d’utilisation</Text><Text style={styles.statHeroValue}>{formatHours(usage.total_sec)}</Text><Text style={[styles.small, { color: colors.onBrandPrimary, opacity: 0.85 }]}>{state.capsules.length} souvenir{state.capsules.length > 1 ? "s" : ""} · {formatHours(recordedTotal)} d’audio conservé</Text></View>
     <View style={styles.sectionHeader}><Text style={styles.heading}>Par personne</Text><Text style={styles.small}>{state.residents.length}/10</Text></View>
     {rows.length ? rows.map(({ resident, usageSec, capsules }: any) => <View testID={`stats-row-${resident.id}`} key={resident.id} style={styles.statRow}><View style={styles.avatar}>{resident.photo_uri ? <Image source={{ uri: resident.photo_uri }} style={{ width: 44, height: 44, borderRadius: 22 }} contentFit="cover" /> : <Text style={styles.avatarText}>{initials(resident.display_name)}</Text>}</View><View style={{ flex: 1, gap: 2 }}><Text style={styles.profileName}>{resident.display_name}</Text><Text style={styles.small}>{capsules.length} souvenir{capsules.length > 1 ? "s" : ""} · {formatHours(capsules.reduce((sum: number, capsule: Capsule) => sum + (capsule.duration_sec || 0), 0))} d’audio</Text></View><Text style={styles.statValue}>{formatHours(usageSec)}</Text></View>) : <View style={styles.empty}><Icon name="stats-chart-outline" color={colors.brand} size={30} /><Text style={styles.body}>Créez un profil pour suivre le temps d’atelier par personne.</Text></View>}
+    {duplicateGroups.length ? <>
+      <View style={styles.sectionHeader}><Text style={styles.heading}>Profils en double</Text><Text style={styles.small}>{duplicateGroups.length}</Text></View>
+      {duplicateGroups.map((group: Resident[]) => <Pressable testID={`merge-group-${group[0].display_name.trim().toLowerCase()}`} key={group[0].display_name.trim().toLowerCase()} accessibilityRole="button" onPress={() => onMergeGroup(group)} style={({ pressed }) => [styles.statRow, pressed && styles.pressed]}><View style={styles.avatar}><Icon name="copy-outline" color={colors.onBrandSecondary} size={20} /></View><View style={{ flex: 1, gap: 2 }}><Text style={styles.profileName}>{group[0].display_name}</Text><Text style={styles.small}>{group.length} fiches portent ce prénom</Text></View><Text style={styles.capsuleActionText}>Fusionner</Text></Pressable>)}
+    </> : null}
     <Text style={styles.small}>Les durées restent conservées sur cet appareil, même hors connexion.</Text>
   </ScrollView>;
 }

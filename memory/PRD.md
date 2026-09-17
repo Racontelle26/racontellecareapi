@@ -38,6 +38,11 @@ Clarifications utilisateur : offline-first avec stockage local (smartphones/tabl
 - **Export équipe soignante** : `GET /api/residents/{id}/export` génère un ZIP (audios + `souvenirs.txt` avec transcriptions) ; bouton « 1 · Extraire les souvenirs » (partage natif via expo-sharing, nouvel onglet sur web).
 - **Retrait de profil sécurisé** : suppression douce (`DELETE /api/residents/{id}`, active=false, capsules conservées serveur) possible uniquement après export (trace `exports` dans l'état local) ; les fichiers audio locaux du résident sont effacés au retrait.
 - Correctif : la synchronisation serveur (`refresh`) n'efface plus les compteurs de temps ni la trace des exports.
+- **Impression du carnet** : `GET /api/residents/{id}/carnet` génère un PDF élégant (reportlab + polices Racontelle) des transcriptions du résident, prêt à offrir à la famille ; bouton « Imprimer le carnet (PDF) » sur la fiche.
+- **Fusion des doublons** : `POST /api/residents/merge` rattache les souvenirs des fiches en double à la fiche conservée (suppression douce) ; section « Profils en double » dans l'espace professionnel avec modale de choix de la fiche à garder.
+- **Choix du mode d'atelier** : sélecteur explicite « Question guidée » / « Enregistrement libre » en haut de l'atelier (masqué pendant l'enregistrement).
+- **10 questions par jour** (au lieu de 3) : les questions déjà répondues par la personne sont mémorisées (`answered` dans l'état local) ; les questions passées ou non traitées sont reproposées lors des ateliers suivants. L'usager répond au nombre de questions qu'il souhaite.
+- Tests itération 5 : 13/13 pytest backend + parcours frontend validés (fusion, carnet PDF, sélecteur de mode) ; correctif du crash archive (props non déstructurées) appliqué par le testing agent.
 - Flux complet : Accueil → création de profil (max 10, modal scrollable, bouton accessible clavier) → atelier libre ou 3 questions/jour → enregistrement audio → archive datée par profil.
 - Persistance locale JSON (profils + capsules), synchronisation serveur best-effort.
 - `testID` sur les éléments interactifs ; réponses HTTP `201` conformes.

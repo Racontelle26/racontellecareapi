@@ -58,6 +58,12 @@ export const api = {
   shareCapsule: (id: string) =>
     request<{ token: string; path: string }>(`/capsules/${id}/share`, { method: "POST" }),
   exportResidentUrl: (id: string) => `${baseUrl}/api/residents/${id}/export`,
+  carnetResidentUrl: (id: string) => `${baseUrl}/api/residents/${id}/carnet`,
+  mergeResidents: (keep_id: string, merge_ids: string[]) =>
+    request<{ merged: number }>("/residents/merge", {
+      method: "POST",
+      body: JSON.stringify({ keep_id, merge_ids }),
+    }),
   deleteResident: (id: string) =>
     request<{ deleted: boolean }>(`/residents/${id}`, { method: "DELETE" }),
 };
