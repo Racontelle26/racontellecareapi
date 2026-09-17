@@ -186,6 +186,27 @@ export default function Index() {
   stateRef.current = state;
   const usageSession = useRef<{ startedAt: number; residentId: string | null }>({ startedAt: Date.now(), residentId: null });
 
+  // Transcription automatique : tout souvenir synchronisé avec un audio mais
+  // sans transcription est (re)transcrit en arrière-plan — y compris ceux dont
+  // la transcription a échoué hors connexion. Retenté à chaque ouverture.
+  const autoTranscribe = useCallback(async (capsules: Capsule[]) => {
+    const pending = capsules
+      .filter((capsule) => capsule.synced && capsule.audio_uri && !capsule.transcription && !capsule.id.startsWith("local-"))
+      .slice(0, 5);
+    for (const capsule of pending) {
+      try {
+        const { transcription } = await api.transcribeCapsule(capsule.id, capsule.audio_uri!);
+        const current = stateRef.current;
+        await persist({
+          ...current,
+          capsules: current.capsules.map((item) => (item.id === capsule.id ? { ...item, transcription } : item)),
+        });
+      } catch {
+        // Réseau ou service indisponible : sera retenté au prochain lancement.
+      }
+    }
+  }, []);
+
   const refresh = useCallback(async () => {
     const local = await readLocalState();
     setState(local);
@@ -195,12 +216,13 @@ export default function Index() {
       setState(next);
       await writeLocalState(next);
       if (remoteQuestions.length) setQuestions(remoteQuestions);
+      void autoTranscribe(next.capsules);
     } catch {
       setNotice("Mode local actif : les données restent sur cet appareil.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [autoTranscribe]);
 
   useEffect(() => { void refresh(); }, [refresh]);
 
@@ -350,7 +372,19 @@ export default function Index() {
       const synced: Capsule = { ...remote, audio_uri: keptUri, synced: true };
       await persist({ ...optimistic, capsules: [synced, ...state.capsules] });
       // Copie de sauvegarde côté serveur (stockage objet), silencieuse hors-ligne.
-      if (keptUri) void api.uploadCapsuleAudio(remote.id, keptUri).catch(() => {});
+      if (keptUri) {
+        void api.uploadCapsuleAudio(remote.id, keptUri).catch(() => {});
+        // Transcription automatique du souvenir, visible dans l'espace de la personne.
+        void api.transcribeCapsule(remote.id, keptUri)
+          .then(async ({ transcription }) => {
+            const current = stateRef.current;
+            await persist({
+              ...current,
+              capsules: current.capsules.map((item) => (item.id === remote.id ? { ...item, transcription } : item)),
+            });
+          })
+          .catch(() => {});
+      }
     } catch {
       setNotice("Souvenir conservé sur l’appareil. La copie serveur sera retentée plus tard.");
     }
@@ -728,7 +762,7 @@ function ProfileScreen({ styles, colors, insets, resident, capsules, busyCapsule
     <View style={styles.profileHeader}><Pressable testID="profile-photo-button" accessibilityRole="button" onPress={onPhoto} style={({ pressed }) => pressed && styles.pressed}><View style={styles.largeAvatar}>{resident.photo_uri ? <Image source={{ uri: resident.photo_uri }} style={{ width: 80, height: 80, borderRadius: 40 }} contentFit="cover" /> : <Text style={styles.largeAvatarText}>{initials(resident.display_name)}</Text>}</View></Pressable><Text style={styles.title}>{resident.display_name}</Text><Text style={styles.small}>Consentement obtenu · profil local</Text><Pressable testID="profile-change-photo" accessibilityRole="button" onPress={onPhoto} style={styles.textButton}><Text style={styles.textButtonLabel}>{resident.photo_uri ? "Changer la photo" : "Ajouter une photo"}</Text></Pressable></View>
     <Pressable testID="profile-start-workshop" accessibilityRole="button" onPress={onStart} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}><Icon name="mic" color={colors.onBrandPrimary} /><Text style={styles.primaryText}>Démarrer l’atelier</Text></Pressable>
     <View style={styles.sectionHeader}><Text style={styles.heading}>Souvenirs enregistrés</Text><Text style={styles.small}>{capsules.length}</Text></View>
-    {capsules.length ? capsules.slice(0, 5).map((capsule: Capsule) => <CapsuleRow key={capsule.id} styles={styles} colors={colors} capsule={capsule} busy={busyCapsuleId === capsule.id} playing={playingCapsuleId === capsule.id} onPlay={capsule.audio_uri ? () => onPlay(capsule) : undefined} onTranscribe={() => onTranscribe(capsule)} onShare={() => onShare(capsule)} />) : <View style={styles.empty}><Icon name="heart-outline" color={colors.brand} size={28} /><Text style={styles.body}>Aucun souvenir pour le moment.</Text><Text style={styles.small}>Le premier récit apparaîtra ici.</Text></View>}
+    {capsules.length ? capsules.slice(0, 5).map((capsule: Capsule) => <CapsuleRow key={capsule.id} styles={styles} colors={colors} capsule={capsule} resident={resident} busy={busyCapsuleId === capsule.id} playing={playingCapsuleId === capsule.id} onPlay={capsule.audio_uri ? () => onPlay(capsule) : undefined} onTranscribe={() => onTranscribe(capsule)} onShare={() => onShare(capsule)} />) : <View style={styles.empty}><Icon name="heart-outline" color={colors.brand} size={28} /><Text style={styles.body}>Aucun souvenir pour le moment.</Text><Text style={styles.small}>Le premier récit apparaîtra ici.</Text></View>}
     {capsules.length > 5 && <Pressable testID="profile-open-archive" onPress={onArchive} style={styles.secondaryButton}><Text style={styles.secondaryText}>Voir toute l’archive</Text></Pressable>}
     <Pressable testID="profile-print-carnet" accessibilityRole="button" disabled={printing} onPress={onPrintCarnet} style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>{printing ? <ActivityIndicator color={colors.brandPrimary} /> : <Icon name="book-outline" color={colors.brandPrimary} />}<Text style={styles.secondaryText}>Imprimer le carnet (PDF)</Text></Pressable>
     <View style={{ height: 1, backgroundColor: colors.divider }} />
@@ -795,5 +829,5 @@ function StatsScreen({ styles, colors, insets, state, duplicateGroups = [], onMe
 }
 
 function CapsuleRow({ styles, colors, capsule, resident, busy, playing, onPlay, onTranscribe, onShare }: { styles: any; colors: any; capsule: Capsule; resident?: Resident; busy?: boolean; playing?: boolean; onPlay?: () => void; onTranscribe?: () => void; onShare?: () => void }) {
-  return <View style={styles.capsule}><View style={styles.capsuleTop}><View style={{ flex: 1, gap: 5 }}><Text style={styles.capsuleTitle}>{capsule.title ?? "Souvenir vocal"}</Text><Text style={styles.capsuleDate}>{formatDate(capsule.recorded_at)} · {formatDuration(capsule.duration_sec)}</Text></View>{onPlay && <Pressable testID={`capsule-play-${capsule.id}`} accessibilityRole="button" accessibilityLabel={playing ? "Pause" : "Écouter"} onPress={onPlay} style={styles.backButton}><Icon name={playing ? "pause" : "play"} color={colors.brandPrimary} size={20} /></Pressable>}</View>{capsule.transcription ? <Text testID={`capsule-transcription-${capsule.id}`} style={styles.transcription}>« {capsule.transcription} »</Text> : null}<View style={styles.capsuleMeta}><View style={styles.tag}><Text style={styles.tagText}>{capsule.mode === "question" ? capsule.theme : resident?.display_name ?? "À classer"}</Text></View><Text style={styles.small}>{capsule.synced ? "Copie serveur" : "Conservé sur l’appareil"}</Text></View>{busy ? <ActivityIndicator testID={`capsule-busy-${capsule.id}`} size="small" color={colors.brandPrimary} /> : <View style={styles.capsuleActions}>{onTranscribe && <Pressable testID={`capsule-transcribe-${capsule.id}`} accessibilityRole="button" onPress={onTranscribe} style={({ pressed }) => [styles.capsuleAction, pressed && styles.pressed]}><Icon name="text-outline" color={colors.brandPrimary} size={16} /><Text style={styles.capsuleActionText}>{capsule.transcription ? "Retranscrire" : "Transcrire"}</Text></Pressable>}{onShare && <Pressable testID={`capsule-share-${capsule.id}`} accessibilityRole="button" onPress={onShare} style={({ pressed }) => [styles.capsuleAction, pressed && styles.pressed]}><Icon name="share-social-outline" color={colors.brandPrimary} size={16} /><Text style={styles.capsuleActionText}>Partager à la famille</Text></Pressable>}</View>}</View>;
+  return <View style={styles.capsule}><View style={styles.capsuleTop}><View style={{ flex: 1, gap: 5 }}><Text style={styles.capsuleTitle}>{capsule.title ?? "Souvenir vocal"}</Text><Text style={styles.capsuleDate}>{formatDate(capsule.recorded_at)} · {formatDuration(capsule.duration_sec)}</Text></View>{onPlay && <Pressable testID={`capsule-play-${capsule.id}`} accessibilityRole="button" accessibilityLabel={playing ? "Pause" : "Écouter"} onPress={onPlay} style={styles.backButton}><Icon name={playing ? "pause" : "play"} color={colors.brandPrimary} size={20} /></Pressable>}</View>{capsule.transcription ? <Text testID={`capsule-transcription-${capsule.id}`} style={styles.transcription}>« {capsule.transcription} »</Text> : capsule.synced && capsule.audio_uri ? <Text testID={`capsule-transcription-pending-${capsule.id}`} style={styles.small}>Transcription automatique en cours…</Text> : null}<View style={styles.capsuleMeta}><View style={styles.tag}><Text style={styles.tagText}>{capsule.mode === "question" ? capsule.theme : resident?.display_name ?? "À classer"}</Text></View><Text style={styles.small}>{capsule.synced ? "Copie serveur" : "Conservé sur l’appareil"}</Text></View>{busy ? <ActivityIndicator testID={`capsule-busy-${capsule.id}`} size="small" color={colors.brandPrimary} /> : <View style={styles.capsuleActions}>{onTranscribe && <Pressable testID={`capsule-transcribe-${capsule.id}`} accessibilityRole="button" onPress={onTranscribe} style={({ pressed }) => [styles.capsuleAction, pressed && styles.pressed]}><Icon name="text-outline" color={colors.brandPrimary} size={16} /><Text style={styles.capsuleActionText}>{capsule.transcription ? "Retranscrire" : "Transcrire"}</Text></Pressable>}{onShare && <Pressable testID={`capsule-share-${capsule.id}`} accessibilityRole="button" onPress={onShare} style={({ pressed }) => [styles.capsuleAction, pressed && styles.pressed]}><Icon name="share-social-outline" color={colors.brandPrimary} size={16} /><Text style={styles.capsuleActionText}>Partager à la famille</Text></Pressable>}</View>}</View>;
 }
