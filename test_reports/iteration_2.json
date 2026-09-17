@@ -1,0 +1,31 @@
+{
+  "summary": "Frontend regression re-test for the phone/navigation bug fix (removed duplicate app/index.tsx, moved auth gating into RootNavigator + tabs guard). All 7 requested scenarios pass end-to-end on the mobile web preview: (1) app boots on Welcome with no route conflict and no GO_BACK loop, (2) register -> circle setup -> tabs works and home-circle-name shows the created circle, (3) all four tabs render (Accueil, Raconter, Album, Profil) with expected content (daily question cards, theme chips + surprise-question-btn, empty album with filters, profile with logout), (4) deep routes work with clean back navigation: home-manage-members -> members-back returns to Accueil; a question card / surprise-question-btn opens /record and record-close returns to Raconter; profile-feedback opens and feedback-close returns to Profil, (5) profile-logout returns to Welcome, (6) J'ai deja un compte -> login-submit with the freshly created account lands back in tabs. Exactly one '/' route exists (app/index.tsx is gone; only app/(tabs)/index.tsx remains). No red screen, no navigation loop, no 'resolve to the same path' warning observed.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "shadow* style props", "issue": "Console warning: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' Non-blocking. Consider migrating StyleSheet shadow* to boxShadow where used."},
+      {"component": "pointerEvents prop", "issue": "Console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents'. Non-blocking, likely coming from a dependency."},
+      {"component": "Animated useNativeDriver", "issue": "Console warning about useNativeDriver falling back to JS on web preview. Expected on web; verify native build still uses native driver."}
+    ]
+  },
+  "test_report_links": ["/app/test_reports/iteration_2.json"],
+  "action_items": [
+    "Optional: migrate remaining shadow* style props to boxShadow (RN 0.76+) to silence deprecation warning."
+  ],
+  "critical_code_review_comments": [
+    "RootNavigator guard in app/_layout.tsx correctly gates by (segments[0] === '(auth)' | 'circle') and only redirects when needed - this prevents the redirect loop observed before.",
+    "app/(tabs)/_layout.tsx now shows an ActivityIndicator when !user || !hasCircle so tab screens never mount before the redirect resolves.",
+    "app/index.tsx is deleted; only app/(tabs)/index.tsx resolves to '/'. No duplicate route.",
+    "auth-context state (user, member=hasCircle) transitions cleanly on signIn/signUp/signOut, driving the guard properly."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not-retested (23/23 in iteration_1)", "frontend": "100% (7/7 scenarios)"},
+  "seed_data_creation": "Created a fresh self-registered account per run, e.g. phonefix+tygtaq@racontelle.fr / Souvenir123, and a circle 'La famille <rand>'. No seeded data touched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend iteration_1 = 23/23; do not re-run unless code changed. For frontend, use mobile viewport 390x844 and rely on testIDs: welcome-create-btn, welcome-login-btn, register-{name,email,password,submit}, setup-mode-create, setup-circle-name, setup-submit, home-circle-name, home-manage-members, members-back, surprise-question-btn, question-<id>, record-close, profile-logout, profile-feedback, feedback-close. Record modal opens correctly - if it fails once, add a short wait after switching to Raconter (FlatList load).",
+  "rca_of_issue": "Original bug: two routes resolved to '/', causing an infinite router.replace loop and 'GO_BACK was not handled by any navigator' on native. Fix verified: removing app/index.tsx eliminates the duplicate route; RootNavigator's useEffect redirects only when the current segment doesn't match the required area, so it converges in one hop. Tabs guard prevents child tab screens from mounting during transition (which was also contributing to the crash on real devices). All navigation cycles (auth -> setup -> tabs -> logout -> auth) now round-trip cleanly on the web preview."
+}

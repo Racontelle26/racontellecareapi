@@ -1,12 +1,22 @@
 import React from "react";
-import { Platform } from "react-native";
+import { Platform, View, ActivityIndicator } from "react-native";
 import { Tabs } from "expo-router";
 import { House, MicrophoneStage, BookOpen, User } from "phosphor-react-native";
 import { usesNativeTabs } from "@/src/navigation";
+import { useAuth } from "@/src/auth/auth-context";
 import { fonts, useTheme } from "@/src/theme";
 
 export default function TabsLayout() {
   const { colors } = useTheme();
+  const { user, hasCircle } = useAuth();
+
+  if (!user || !hasCircle) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" }}>
+        <ActivityIndicator color={colors.brandPrimary} size="large" />
+      </View>
+    );
+  }
 
   if (usesNativeTabs) {
     const { NativeTabs } = require("expo-router/unstable-native-tabs");
