@@ -4,10 +4,12 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { LinearGradient } from "expo-linear-gradient";
+import { Image } from "expo-image";
+import * as ImagePicker from "expo-image-picker";
 import { useAudioPlayer, useAudioPlayerStatus, setAudioModeAsync } from "expo-audio";
-import { CaretLeft, Play, Pause, Trash } from "phosphor-react-native";
+import { CaretLeft, Play, Pause, Trash, ImageSquare } from "phosphor-react-native";
 import { Body, Label, Title, Avatar } from "@/src/components/ui";
-import { api, audioUrl } from "@/src/api/client";
+import { api, audioUrl, photoUrl, API_BASE, getToken } from "@/src/api/client";
 import { useToast } from "@/src/components/toast";
 import { makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
@@ -23,6 +25,7 @@ type Capsule = {
   recorded_at: string;
   transcript?: string | null;
   transcript_status?: string;
+  photo_url?: string | null;
 };
 
 function fmt(sec: number) {
@@ -40,12 +43,55 @@ export default function CapsuleDetail() {
 
   const capsuleQ = useQuery({ queryKey: ["capsule", id], queryFn: () => api.get<Capsule>(`/capsules/${id}`) });
   const [url, setUrl] = useState<string | null>(null);
+  const [photoSrc, setPhotoSrc] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   useEffect(() => {
     (async () => {
       await setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
       setUrl(await audioUrl(String(id)));
     })();
   }, [id]);
+  useEffect(() => {
+    (async () => {
+      if (capsuleQ.data?.photo_url) setPhotoSrc(await photoUrl(String(id)));
+      else setPhotoSrc(null);
+    })();
+  }, [capsuleQ.data?.photo_url, id]);
+
+  const changePhoto = async () => {
+    let perm = await ImagePicker.getMediaLibraryPermissionsAsync();
+    if (perm.status !== "granted" && perm.canAskAgain) perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (perm.status !== "granted") {
+      toast.show("Accès aux photos refusé", "error");
+      return;
+    }
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.7 });
+    if (res.canceled || !res.assets?.[0]) return;
+    setUploadingPhoto(true);
+    try {
+      const asset = res.assets[0];
+      const mime = asset.mimeType || "image/jpeg";
+      const ext = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : "jpg";
+      const form = new FormData();
+      const { Platform } = require("react-native");
+      if (Platform.OS === "web") {
+        const blob = await (await fetch(asset.uri)).blob();
+        form.append("photo", blob, `photo.${ext}`);
+      } else {
+        form.append("photo", { uri: asset.uri, name: `photo.${ext}`, type: mime } as any);
+      }
+      const token = await getToken();
+      const r = await fetch(`${API_BASE}/capsules/${id}/photo`, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: form });
+      if (!r.ok) throw new Error();
+      await capsuleQ.refetch();
+      qc.invalidateQueries({ queryKey: ["capsules"] });
+      toast.show("Photo ajoutée", "success");
+    } catch {
+      toast.show("Échec de l’envoi de la photo", "error");
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
 
   const player = useAudioPlayer(url || undefined);
   const status = useAudioPlayerStatus(player);
@@ -77,7 +123,11 @@ export default function CapsuleDetail() {
   return (
     <View style={styles.container}>
       <View style={styles.hero}>
-        <LinearGradient colors={[colors.brand, colors.brandPrimary]} style={styles.heroBg} />
+        {photoSrc ? (
+          <Image source={{ uri: photoSrc }} style={styles.heroBg} contentFit="cover" transition={200} />
+        ) : (
+          <LinearGradient colors={[colors.brand, colors.brandPrimary]} style={styles.heroBg} />
+        )}
         <LinearGradient colors={["transparent", colors.surfaceInverse]} style={styles.scrim} />
         <View style={[styles.heroContent, { paddingTop: insets.top + spacing.md }]}>
           <Pressable onPress={() => router.back()} hitSlop={12} testID="capsule-back">
@@ -106,6 +156,15 @@ export default function CapsuleDetail() {
                 </Label>
               </View>
             </View>
+
+            <Pressable style={styles.photoAction} testID="capsule-change-photo" onPress={changePhoto} disabled={uploadingPhoto}>
+              {uploadingPhoto ? (
+                <ActivityIndicator color={colors.brandPrimary} size="small" />
+              ) : (
+                <ImageSquare color={colors.brandPrimary} size={20} />
+              )}
+              <Label style={styles.photoActionText}>{c.photo_url ? "Changer la photo" : "Ajouter une photo"}</Label>
+            </Pressable>
 
             <View style={styles.playerCard}>
               <Pressable style={styles.playBtn} testID="capsule-play" onPress={toggle} disabled={!url}>
@@ -176,6 +235,8 @@ const useStyles = makeStyles((colors) => ({
   narratorRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   narratorName: { fontSize: 17 },
   date: { color: colors.muted },
+  photoAction: { flexDirection: "row", alignItems: "center", gap: spacing.sm, alignSelf: "flex-start" },
+  photoActionText: { color: colors.brandPrimary },
   playerCard: {
     flexDirection: "row",
     alignItems: "center",

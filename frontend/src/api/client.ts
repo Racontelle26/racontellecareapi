@@ -59,4 +59,9 @@ export async function audioUrl(capsuleId: string): Promise<string> {
   return `${BASE}/capsules/${capsuleId}/audio?token=${token}`;
 }
 
+export async function photoUrl(capsuleId: string): Promise<string> {
+  const token = await getToken();
+  return `${BASE}/capsules/${capsuleId}/photo?token=${token}`;
+}
+
 export { BASE as API_BASE };

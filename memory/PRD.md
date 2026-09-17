@@ -49,6 +49,12 @@ Trois cahiers des charges fournis (Beta test, MVP technique chiffrable, V7 ritue
 - Recherche dans l'album par personne + thème + mots-clés (question, titre, thème, narrateur, transcription).
 - Tests itération 3 : 12/12 backend OK, flux frontend vérifiés (isolation par cercle confirmée sur les chapitres).
 
+## Ajouts (2026-06, itération 4)
+- Photo par souvenir : ajout optionnel d'une photo pendant l'enregistrement et sur un souvenir existant (galerie ou appareil photo, permissions gérées). Affichage en vignette dans l'album et en image d'en-tête du détail. Stockage privé (Object Storage), flux sécurisé par token.
+- Livre PDF : assemblage des chapitres (couverture Racontelle + chapitres + album photo illustré) en un PDF partageable/téléchargeable (expo-print + expo-sharing).
+- Bouton « Sur le vif » : bouton flottant sur l'accueil pour lancer instantanément un enregistrement libre (sans question).
+- Tests itération 4 : 14/14 backend OK (endpoints photo + isolation), présences frontend vérifiées.
+
 ## Backlog (prioritized)
 - P1 : Génération IA du "livre romancé" (chapitre à partir des souvenirs) — demandé pour plus tard.
 - P1 : Transcription audio (préparer le livre) + recherche dans l'album.

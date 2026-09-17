@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { View, Pressable, FlatList, ScrollView, ActivityIndicator, TextInput } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
+import { Image } from "expo-image";
 import { Play, BookOpen, MagnifyingGlass } from "phosphor-react-native";
 import { Body, Label, Title, Avatar } from "@/src/components/ui";
-import { api } from "@/src/api/client";
+import { api, getToken } from "@/src/api/client";
 import { usesNativeTabs } from "@/src/navigation";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
@@ -19,6 +20,7 @@ type Capsule = {
   theme?: string;
   duration_sec: number;
   recorded_at: string;
+  photo_url?: string | null;
 };
 
 function fmtDate(iso: string) {
@@ -39,6 +41,10 @@ export default function Album() {
   const bottomChrome = usesNativeTabs ? insets.bottom : 0;
   const [narrator, setNarrator] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [token, setTok] = useState<string | null>(null);
+  useEffect(() => {
+    getToken().then(setTok);
+  }, []);
 
   const circleQ = useQuery({ queryKey: ["circle"], queryFn: () => api.get<Summary>("/circle") });
   const capsulesQ = useQuery({
@@ -118,7 +124,16 @@ export default function Album() {
           showsVerticalScrollIndicator={false}
           renderItem={({ item }) => (
             <Pressable style={styles.card} testID={`capsule-${item.id}`} onPress={() => router.push(`/capsule/${item.id}`)}>
-              <Avatar name={item.narrator_name || "?"} color={item.narrator_color} size={46} />
+              {item.photo_url && token ? (
+                <Image
+                  source={{ uri: `${process.env.EXPO_PUBLIC_BACKEND_URL}${item.photo_url}?token=${token}` }}
+                  style={styles.thumb}
+                  contentFit="cover"
+                  transition={200}
+                />
+              ) : (
+                <Avatar name={item.narrator_name || "?"} color={item.narrator_color} size={46} />
+              )}
               <View style={styles.cardBody}>
                 <Body style={styles.cardQuestion} numberOfLines={2}>{item.question_text}</Body>
                 <Label style={styles.cardMeta}>
@@ -185,6 +200,7 @@ const useStyles = makeStyles((colors) => ({
     padding: spacing.lg,
   },
   cardBody: { flex: 1, gap: 4 },
+  thumb: { width: 46, height: 46, borderRadius: radius.sm },
   cardQuestion: { fontSize: 15, lineHeight: 21 },
   cardMeta: { color: colors.muted, fontSize: 12 },
   playBtn: {

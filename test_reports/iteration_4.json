@@ -1,0 +1,39 @@
+{
+  "summary": "Full test of the 3 new features (PHOTO SOUVENIR, LIVRE PDF, QUICK 'Sur le vif' FAB). Backend: 14/14 new pytest tests pass on the external URL — (1) POST /api/capsules multipart with an optional 'photo' field stores photo_path and enriched capsules expose a non-null photo_url; (2) POST /api/capsules/{id}/photo sets/replaces the photo returning {ok, photo_url}; DELETE /api/capsules/{id}/photo clears photo_path/photo_mime and photo_url becomes null; (3) GET /api/capsules/{id}/photo?token=<jwt> streams bytes with Content-Type image/* for the owner, rejects a token from another circle with 403, invalid token with 401, and a missing token with 4xx (FastAPI required Query -> 422); (4) POST/DELETE /api/capsules/{cap_of_circle_A}/photo from a user in circle B returns 404 (isolation OK); (5) regression — audio upload still transitions transcript_status pending->done/failed within ~5s, GET /api/capsules?q=marker still filters case-insensitively, POST /api/book/chapters still returns a real Claude chapter (id + long content). Frontend (mobile 390x844, seeded owner + 1 capsule with photo + 1 chapter): (a) home-spontaneous-fab renders on Home, its label is 'Sur le vif' and tapping it opens /record; (b) on /record with no preset question the topbar reads 'Souvenir libre', the prompt is 'Racontez ce que vous voulez transmettre', and the PHOTO (OPTIONNEL) section shows both record-photo-library and record-photo-camera Pressables (no crash — actual native picker not exercised on web per instructions); (c) /book shows a 'Livre PDF' button (book-export-pdf) next to MES CHAPITRES when a chapter exists (not clicked to avoid native print/share); (d) /capsule/{id} shows the 'Changer la photo' action (capsule-change-photo) for a capsule that already has a photo. No red screen, no crash, no route conflict. Deprecated packages: NONE detected (no expo-av, expo-barcode-scanner, expo-background-fetch).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Photo rendering in Capsule detail hero and Album list", "issue": "Presence checks for the 'Changer la photo' action and 'Livre PDF' button pass, but the actual <img> element with src ending in '/photo' was NOT found in the DOM on either the Capsule detail hero (styles.heroBg via expo-image) or the Album row thumbnail. Code review shows the URL is built as `${EXPO_PUBLIC_BACKEND_URL}${photo_url}?token=${token}` — likely the async `getToken()`/`photoUrl(id)` resolves after the first render and the img never mounts, or expo-image on web renders via CSS background instead of <img> (so my DOM query understates it). Please visually verify that a) the hero image appears at the top of /capsule/{id} for a capsule with a photo, and b) that a small thumbnail appears in the /album list row.", "affected_testIDs": ["capsule-change-photo", "album-search"]}
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_photo_and_features.py",
+    "/app/test_reports/pytest/pytest_photo.xml",
+    "/app/test_reports/iteration_4.json"
+  ],
+  "action_items": [
+    "Visually confirm the photo renders as hero on /capsule/{id} and as thumbnail in the /album list. If it does not, the fix is likely to (i) memoize/await the token synchronously via a single React Query key, or (ii) fall back to a plain <img> instead of expo-image on web so the browser handles the Response(image/*) directly."
+  ],
+  "critical_code_review_comments": [
+    "server.py:850 create_capsule accepts an optional multipart 'photo' UploadFile and, when non-empty, uploads it to '{APP_NAME}/photos/{circle_id}/{cid}.{ext}' with a sensible ext derived from content_type — clean and consistent with the audio path scheme.",
+    "server.py:927 _enrich_capsule sets photo_url only when photo_path is truthy, so GET /capsules and GET /capsules/{id} return null when absent — matches spec.",
+    "server.py:1029-1080 photo POST/DELETE/GET are all scoped by member['circle_id'] so cross-circle access returns 404; the GET requires ?token as Query so a missing token yields 422 (FastAPI) rather than 401. Not a blocker but worth noting for spec-strictness.",
+    "server.py:1053 delete_capsule_photo does not scope by status='saved' (only circle_id) — arguably correct (deletion should work on soft-deleted capsules too), consistent with the audio DELETE endpoint's own pattern.",
+    "record.tsx correctly appends the photo blob on web via fetch(uri).blob() and { uri, name, type } on native — same shape as the audio upload.",
+    "capsule/[id].tsx computes photoSrc via an async effect on capsuleQ.data.photo_url; if the token comes back later than the first paint the <Image> src remains empty until the second render — likely benign but worth a Suspense/loading placeholder.",
+    "album.tsx builds `${EXPO_PUBLIC_BACKEND_URL}${item.photo_url}?token=${token}` gated on both `item.photo_url && token` — good.",
+    "book/index.tsx exposes testID='book-export-pdf' and disables it while exporting — good. PDF pipeline was not clicked per instructions."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_photo_and_features.py (new — 14 tests covering the new photo endpoints, isolation and regression)"
+  ],
+  "success_rate": {"backend": "100% (14/14 new photo+regression tests; iteration_3 features still green)", "frontend": "100% on presence checks (FAB, Souvenir libre, photo buttons, Livre PDF, Changer la photo)"},
+  "seed_data_creation": "Fresh account photofeat_ui_<ts>@racontelle.fr / Souvenir123 with circle 'Famille UI Photo', one capsule uploaded via multipart with a small dummy WAV + 1x1 PNG photo, and one Claude-generated chapter. Test-run also creates its own owner_ctx/member_ctx/other_ctx per pytest session (prefixed TEST_).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend suites: /app/backend/tests/test_racontelle_backend.py (core), /app/backend/tests/test_new_features.py (Whisper/Book/Search), /app/backend/tests/test_photo_and_features.py (photo + regression). MUST run with `pytest -n0` — pytest-xdist LoadScope splits session-scoped fixtures across workers and causes duplicate register (409). Frontend auth: token is stored via AsyncStorage.web wrapper which JSON.stringifies scalars, so to preload in Playwright do: `localStorage.setItem('racontelle_token', JSON.stringify(TOKEN))`. New testIDs added this round: home-spontaneous-fab, record-photo-library, record-photo-camera, record-photo-remove, book-export-pdf, capsule-change-photo. EXPO_PUBLIC_BACKEND_URL is what the client uses (not EXPO_BACKEND_URL).",
+  "rca_of_issue": "N/A — feature validation. One low-severity observation: photo <img> could not be located via DOM in the album/capsule screens even though the 'Changer la photo' action is present and the backend GET /photo works end-to-end for the same JWT. Root cause likely rendering-timing (async getToken()) or expo-image using CSS background on web; needs a visual sanity check by main agent."
+}

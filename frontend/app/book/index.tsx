@@ -1,16 +1,34 @@
 import { useState } from "react";
-import { View, Pressable, ScrollView, ActivityIndicator } from "react-native";
+import { View, Pressable, ScrollView, ActivityIndicator, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CaretLeft, BookOpenText, Sparkle, CaretRight } from "phosphor-react-native";
+import * as Print from "expo-print";
+import * as Sharing from "expo-sharing";
+import { CaretLeft, BookOpenText, Sparkle, CaretRight, FilePdf } from "phosphor-react-native";
 import { Body, Card, Label, Title } from "@/src/components/ui";
-import { api } from "@/src/api/client";
+import { api, getToken } from "@/src/api/client";
 import { useToast } from "@/src/components/toast";
 import { makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 type BookStatus = { memory_count: number; transcribed: number; pending: number; chapter_count: number; can_generate: boolean };
-type Chapter = { id: string; title: string; memory_count: number; created_at: string };
+type Chapter = { id: string; title: string; content?: string; memory_count: number; created_at: string };
+type Summary = { circle: { name: string } };
+type Capsule = { id: string; photo_url?: string | null; narrator_name?: string; question_text?: string };
+
+function esc(s: string) {
+  return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+async function toDataUrl(url: string): Promise<string> {
+  const res = await fetch(url);
+  const blob = await res.blob();
+  return await new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onloadend = () => resolve(r.result as string);
+    r.onerror = reject;
+    r.readAsDataURL(blob);
+  });
+}
 
 export default function BookHome() {
   const router = useRouter();
@@ -20,9 +38,11 @@ export default function BookHome() {
   const toast = useToast();
   const qc = useQueryClient();
   const [generating, setGenerating] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const statusQ = useQuery({ queryKey: ["book-status"], queryFn: () => api.get<BookStatus>("/book/status") });
   const chaptersQ = useQuery({ queryKey: ["chapters"], queryFn: () => api.get<Chapter[]>("/book/chapters") });
+  const circleQ = useQuery({ queryKey: ["circle"], queryFn: () => api.get<Summary>("/circle") });
 
   const generate = async () => {
     setGenerating(true);
@@ -36,6 +56,78 @@ export default function BookHome() {
       toast.show(e?.message || "Génération impossible", "error");
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const exportPdf = async () => {
+    const chapters = chaptersQ.data || [];
+    if (chapters.length === 0) {
+      toast.show("Créez au moins un chapitre", "error");
+      return;
+    }
+    setExporting(true);
+    try {
+      const familyName = circleQ.data?.circle?.name || "Notre famille";
+      let gallery = "";
+      try {
+        const caps = await api.get<Capsule[]>("/capsules");
+        const withPhotos = caps.filter((c) => c.photo_url).slice(0, 30);
+        const token = await getToken();
+        const items: string[] = [];
+        for (const c of withPhotos) {
+          try {
+            const dataUrl = await toDataUrl(`${process.env.EXPO_PUBLIC_BACKEND_URL}${c.photo_url}?token=${token}`);
+            items.push(`<figure class="ph"><img src="${dataUrl}"/><figcaption>${esc(c.narrator_name || "")} — ${esc(c.question_text || "")}</figcaption></figure>`);
+          } catch {
+            /* skip photo */
+          }
+        }
+        if (items.length) gallery = `<section class="gallery"><h2>Album de famille</h2>${items.join("")}</section>`;
+      } catch {
+        /* gallery optional */
+      }
+      const chaptersHtml = chapters
+        .map((ch) => {
+          const paras = (ch.content || "")
+            .split(/\n{2,}/)
+            .map((p) => `<p>${esc(p.replace(/\n/g, " ").trim())}</p>`)
+            .join("");
+          return `<section class="chapter"><h2>${esc(ch.title)}</h2>${paras}</section>`;
+        })
+        .join("");
+      const date = new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><style>
+        @page { margin: 48px; }
+        body { font-family: Georgia, 'Times New Roman', serif; color: #3A332C; }
+        .cover { text-align:center; padding: 150px 0; page-break-after: always; }
+        .cover .brand { color:#B57477; font-size:20px; letter-spacing:3px; }
+        .cover h1 { font-size:44px; margin: 24px 0 8px; color:#3A332C; }
+        .cover .date { color:#8A8177; font-size:14px; }
+        .chapter { page-break-after: always; }
+        h2 { color:#B57477; font-size:26px; border-bottom:1px solid #EBE6DC; padding-bottom:8px; }
+        p { font-size:15px; line-height:1.7; text-align:justify; }
+        .gallery .ph { display:inline-block; width:46%; margin:2%; vertical-align:top; text-align:center; page-break-inside:avoid; }
+        .gallery img { width:100%; border-radius:8px; }
+        .gallery figcaption { font-size:11px; color:#8A8177; margin-top:4px; }
+      </style></head><body>
+        <div class="cover"><div class="brand">RACONTELLE FAMILY</div><h1>${esc(familyName)}</h1><div class="date">Livre de souvenirs · ${date}</div></div>
+        ${chaptersHtml}
+        ${gallery}
+      </body></html>`;
+      if (Platform.OS === "web") {
+        await Print.printAsync({ html });
+      } else {
+        const { uri } = await Print.printToFileAsync({ html });
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(uri, { mimeType: "application/pdf", UTI: "com.adobe.pdf", dialogTitle: "Votre livre de famille" });
+        } else {
+          toast.show("PDF créé", "success");
+        }
+      }
+    } catch {
+      toast.show("Création du PDF impossible", "error");
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -96,7 +188,19 @@ export default function BookHome() {
           ) : null}
         </Card>
 
-        <Label style={styles.section}>MES CHAPITRES</Label>
+        <View style={styles.sectionRow}>
+          <Label style={styles.section}>MES CHAPITRES</Label>
+          {(chaptersQ.data?.length ?? 0) > 0 ? (
+            <Pressable style={styles.pdfBtn} testID="book-export-pdf" onPress={exportPdf} disabled={exporting}>
+              {exporting ? (
+                <ActivityIndicator color={colors.brandPrimary} size="small" />
+              ) : (
+                <FilePdf color={colors.brandPrimary} size={18} weight="fill" />
+              )}
+              <Label style={styles.pdfText}>Livre PDF</Label>
+            </Pressable>
+          ) : null}
+        </View>
         {chaptersQ.isLoading ? (
           <ActivityIndicator color={colors.brandSecondary} style={{ marginTop: spacing.md }} />
         ) : (chaptersQ.data?.length ?? 0) === 0 ? (
@@ -147,6 +251,18 @@ const useStyles = makeStyles((colors) => ({
   genText: { color: colors.onBrandPrimary, fontSize: 15 },
   hint: { textAlign: "center", fontSize: 12, marginTop: spacing.xs },
   section: { color: colors.brandSecondary, marginTop: spacing.lg, marginBottom: spacing.xs },
+  sectionRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  pdfBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    backgroundColor: colors.brandTertiary,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    borderRadius: radius.pill,
+    marginTop: spacing.lg,
+  },
+  pdfText: { color: colors.brandPrimary },
   empty: { marginTop: spacing.sm },
   chapterCard: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   chapterInfo: { flex: 1, gap: 4 },

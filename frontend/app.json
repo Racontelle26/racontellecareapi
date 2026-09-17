@@ -11,7 +11,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.emergent.familystories.ubz2aq",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Enregistrer vos souvenirs de famille à voix haute"
+        "NSMicrophoneUsageDescription": "Enregistrer vos souvenirs de famille à voix haute",
+        "NSPhotoLibraryUsageDescription": "Illustrer vos souvenirs avec vos photos",
+        "NSCameraUsageDescription": "Prendre une photo pour illustrer un souvenir"
       }
     },
     "android": {
@@ -20,7 +22,10 @@
         "backgroundColor": "#FDFBF7"
       },
       "package": "com.emergent.familystories.ubz2aq",
-      "permissions": ["RECORD_AUDIO"]
+      "permissions": [
+        "RECORD_AUDIO",
+        "CAMERA"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -45,8 +50,18 @@
       "expo-status-bar",
       [
         "expo-audio",
-        { "microphonePermission": "Enregistrer vos souvenirs de famille à voix haute" }
-      ]
+        {
+          "microphonePermission": "Enregistrer vos souvenirs de famille à voix haute"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Illustrer vos souvenirs avec vos photos",
+          "cameraPermission": "Prendre une photo pour illustrer un souvenir"
+        }
+      ],
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true

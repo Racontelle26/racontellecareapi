@@ -4,6 +4,8 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
+import * as ImagePicker from "expo-image-picker";
+import { Image } from "expo-image";
 import {
   useAudioRecorder,
   useAudioRecorderState,
@@ -13,7 +15,7 @@ import {
   AudioModule,
   setAudioModeAsync,
 } from "expo-audio";
-import { X, Microphone, Stop, Play, Pause, ArrowClockwise, Check } from "phosphor-react-native";
+import { X, Microphone, Stop, Play, Pause, ArrowClockwise, Check, ImageSquare, Camera } from "phosphor-react-native";
 import { Body, Button, Label, Title, Avatar } from "@/src/components/ui";
 import { api, API_BASE, getToken } from "@/src/api/client";
 import { useAuth } from "@/src/auth/auth-context";
@@ -46,6 +48,31 @@ export default function RecordScreen() {
 
   const [permission, setPermission] = useState<"unknown" | "granted" | "denied" | "blocked">("unknown");
   const [uploading, setUploading] = useState(false);
+  const [photo, setPhoto] = useState<{ uri: string; mime: string } | null>(null);
+
+  const pickFromLibrary = async () => {
+    let perm = await ImagePicker.getMediaLibraryPermissionsAsync();
+    if (perm.status !== "granted" && perm.canAskAgain) perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (perm.status !== "granted") {
+      if (!perm.canAskAgain) toast.show("Autorisez l’accès aux photos dans les réglages", "error");
+      else toast.show("Accès aux photos refusé", "error");
+      return;
+    }
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.7 });
+    if (!res.canceled && res.assets?.[0]) setPhoto({ uri: res.assets[0].uri, mime: res.assets[0].mimeType || "image/jpeg" });
+  };
+
+  const takePhoto = async () => {
+    let perm = await ImagePicker.getCameraPermissionsAsync();
+    if (perm.status !== "granted" && perm.canAskAgain) perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (perm.status !== "granted") {
+      if (!perm.canAskAgain) toast.show("Autorisez l’appareil photo dans les réglages", "error");
+      else toast.show("Accès à l’appareil photo refusé", "error");
+      return;
+    }
+    const res = await ImagePicker.launchCameraAsync({ quality: 0.7 });
+    if (!res.canceled && res.assets?.[0]) setPhoto({ uri: res.assets[0].uri, mime: res.assets[0].mimeType || "image/jpeg" });
+  };
 
   const membersQ = useQuery({ queryKey: ["members"], queryFn: () => api.get<Member[]>("/circle/members") });
   const activeMembers = membersQ.data?.filter((m) => m.status === "active") ?? [];
@@ -135,6 +162,16 @@ export default function RecordScreen() {
       } else {
         form.append("file", { uri: recordedUri, name, type: "audio/m4a" } as any);
       }
+      if (photo) {
+        const pext = photo.mime.includes("png") ? "png" : photo.mime.includes("webp") ? "webp" : "jpg";
+        const pname = `photo-${Date.now()}.${pext}`;
+        if (Platform.OS === "web") {
+          const pblob = await (await fetch(photo.uri)).blob();
+          form.append("photo", pblob, pname);
+        } else {
+          form.append("photo", { uri: photo.uri, name: pname, type: photo.mime } as any);
+        }
+      }
       const token = await getToken();
       const res = await fetch(`${API_BASE}/capsules`, {
         method: "POST",
@@ -198,6 +235,28 @@ export default function RecordScreen() {
           })}
         </ScrollView>
 
+        {/* Photo */}
+        <Label style={styles.sectionLabel}>PHOTO (OPTIONNEL)</Label>
+        {photo ? (
+          <View style={styles.photoWrap}>
+            <Image source={{ uri: photo.uri }} style={styles.photoPreview} contentFit="cover" />
+            <Pressable style={styles.photoRemove} testID="record-photo-remove" onPress={() => setPhoto(null)}>
+              <X color={colors.onBrandPrimary} size={16} weight="bold" />
+            </Pressable>
+          </View>
+        ) : (
+          <View style={styles.photoButtons}>
+            <Pressable style={styles.photoBtn} testID="record-photo-library" onPress={pickFromLibrary}>
+              <ImageSquare color={colors.brandPrimary} size={22} />
+              <Label style={styles.photoBtnText}>Galerie</Label>
+            </Pressable>
+            <Pressable style={styles.photoBtn} testID="record-photo-camera" onPress={takePhoto}>
+              <Camera color={colors.brandPrimary} size={22} />
+              <Label style={styles.photoBtnText}>Appareil photo</Label>
+            </Pressable>
+          </View>
+        )}
+
         {/* Recorder */}
         <View style={styles.recorder}>
           <Title style={styles.timer} testID="record-timer">{fmt(elapsed)}</Title>
@@ -258,6 +317,33 @@ const useStyles = makeStyles((colors) => ({
   narratorItem: { alignItems: "center", gap: spacing.xs, width: 66, padding: spacing.sm, borderRadius: radius.md, borderWidth: 1, borderColor: "transparent" },
   narratorActive: { borderColor: colors.brand, backgroundColor: colors.surfaceSecondary },
   narratorName: { fontSize: 11, textAlign: "center", color: colors.onSurface },
+  photoButtons: { flexDirection: "row", gap: spacing.md },
+  photoBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    paddingVertical: 14,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surfaceSecondary,
+  },
+  photoBtnText: { color: colors.brandPrimary },
+  photoWrap: { alignSelf: "flex-start" },
+  photoPreview: { width: 120, height: 120, borderRadius: radius.md },
+  photoRemove: {
+    position: "absolute",
+    top: -8,
+    right: -8,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.brandPrimary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   recorder: { alignItems: "center", gap: spacing.lg, marginTop: spacing.lg },
   timer: { fontSize: 52, fontVariant: ["tabular-nums"] },
   recBtn: {

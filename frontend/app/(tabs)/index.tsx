@@ -2,7 +2,7 @@ import { ScrollView, View, Pressable, RefreshControl, ActivityIndicator, Image }
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, SkipForward, Plus, BookOpenText } from "phosphor-react-native";
+import { ArrowRight, SkipForward, Plus, BookOpenText, Microphone } from "phosphor-react-native";
 import { Body, Card, Display, Label, Title, Avatar } from "@/src/components/ui";
 import { GrowingTree } from "@/src/components/growing-tree";
 import { api } from "@/src/api/client";
@@ -49,7 +49,7 @@ export default function Home() {
   return (
     <View style={styles.container}>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingTop: insets.top + spacing.lg, paddingBottom: bottomChrome + spacing.xxl }]}
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + spacing.lg, paddingBottom: bottomChrome + 96 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.brandPrimary} />}
       >
@@ -172,12 +172,39 @@ export default function Home() {
           </Pressable>
         </ScrollView>
       </ScrollView>
+
+      {/* Enregistrement spontané, accès rapide */}
+      <Pressable
+        style={[styles.fab, { bottom: bottomChrome + spacing.lg }]}
+        testID="home-spontaneous-fab"
+        onPress={() => router.push("/record")}
+      >
+        <Microphone color={colors.onBrandPrimary} size={22} weight="fill" />
+        <Label style={styles.fabText}>Sur le vif</Label>
+      </Pressable>
     </View>
   );
 }
 
 const useStyles = makeStyles((colors) => ({
   container: { flex: 1, backgroundColor: colors.surface },
+  fab: {
+    position: "absolute",
+    right: spacing.xl,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    backgroundColor: colors.brandPrimary,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: 15,
+    borderRadius: radius.pill,
+    shadowColor: "#3A332C",
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
+  },
+  fabText: { color: colors.onBrandPrimary, fontSize: 15 },
   content: { paddingHorizontal: spacing.xl, gap: spacing.lg },
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   hello: { color: colors.muted, marginBottom: 2 },
