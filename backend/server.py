@@ -5,6 +5,7 @@ import logging
 import secrets
 import hashlib
 import ipaddress
+import tempfile
 from html import escape
 from html.parser import HTMLParser
 from urllib.parse import urlparse
@@ -16,7 +17,7 @@ import jwt
 import httpx
 from bson import ObjectId
 from dotenv import load_dotenv
-from fastapi import FastAPI, APIRouter, Depends, HTTPException, UploadFile, File, Form, Query
+from fastapi import FastAPI, APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, BackgroundTasks
 from fastapi.responses import Response
 from fastapi.concurrency import run_in_threadpool
 from starlette.middleware.cors import CORSMiddleware
@@ -24,6 +25,9 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr, Field
 import requests
+
+from emergentintegrations.llm.chat import LlmChat, UserMessage
+from emergentintegrations.llm.openai.speech_to_text import OpenAISpeechToText
 
 from questions_data import parse_questions, THEMES_ORDER
 
@@ -115,6 +119,124 @@ def get_object(path: str):
     resp = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=60)
     resp.raise_for_status()
     return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
+
+
+# ---------------------------------------------------------------------------
+# AI helpers — Whisper transcription + Claude "roman" chapter
+# ---------------------------------------------------------------------------
+BOOK_MODEL_PROVIDER = "anthropic"
+BOOK_MODEL_NAME = "claude-sonnet-5"
+
+
+async def transcribe_capsule(capsule_id: str, storage_path: str, ext: str):
+    """Background task: download the audio, transcribe with Whisper, store the transcript."""
+    tmp = None
+    try:
+        content, _ = await run_in_threadpool(get_object, storage_path)
+        with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as f:
+            f.write(content)
+            tmp = f.name
+        stt = OpenAISpeechToText(api_key=EMERGENT_KEY)
+        with open(tmp, "rb") as fh:
+            resp = await stt.transcribe(file=fh, model="whisper-1", response_format="text", language="fr")
+        text = resp if isinstance(resp, str) else (getattr(resp, "text", None) or str(resp))
+        text = (text or "").strip()
+        await db.capsules.update_one(
+            {"id": capsule_id},
+            {"$set": {"transcript": text, "transcript_status": "done" if text else "failed"}},
+        )
+        logger.info("Transcribed capsule %s (%d chars)", capsule_id, len(text))
+    except Exception as e:  # noqa
+        logger.error("Transcription failed for %s: %s", capsule_id, e)
+        await db.capsules.update_one({"id": capsule_id}, {"$set": {"transcript_status": "failed"}})
+    finally:
+        if tmp:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+
+
+async def generate_chapter(circle_id: str) -> dict:
+    """Weave the circle's memories into one warm, literary French chapter using Claude."""
+    circle = await db.circles.find_one({"id": circle_id})
+    members = await db.members.find({"circle_id": circle_id, "status": {"$ne": "revoked"}}).to_list(200)
+    member_by_id = {m["id"]: m for m in members}
+    capsules = await db.capsules.find({"circle_id": circle_id, "status": "saved"}).sort("recorded_at", 1).to_list(500)
+    if not capsules:
+        raise HTTPException(400, "Ajoutez au moins un souvenir avant de créer un chapitre")
+
+    # Characters
+    cast_lines = []
+    for m in members:
+        if m["status"] == "active" or m["status"] == "pending":
+            rel = f" ({m['relationship_label']})" if m.get("relationship_label") else ""
+            cast_lines.append(f"- {m['display_name']}{rel}")
+    cast = "\n".join(cast_lines) or "- La famille"
+
+    # Memories material
+    mem_lines = []
+    used_ids = []
+    for c in capsules:
+        narrator = member_by_id.get(c["narrator_member_id"], {})
+        q = await db.questions.find_one({"id": c.get("question_id")}) if c.get("question_id") else None
+        question = q["text"] if q else (c.get("title") or "Souvenir libre")
+        transcript = (c.get("transcript") or "").strip()
+        body = transcript if transcript else "(souvenir vocal sans transcription — inspire-toi de la question)"
+        mem_lines.append(
+            f"• Narrateur : {narrator.get('display_name', 'Un proche')}\n"
+            f"  Thème : {c.get('theme') or '—'}\n"
+            f"  Question : {question}\n"
+            f"  Souvenir : {body}"
+        )
+        used_ids.append(c["id"])
+
+    material = "\n\n".join(mem_lines)
+    system = (
+        "Tu es un écrivain français au style chaleureux, littéraire et délicat. "
+        "Tu écris un chapitre de roman familial à partir de souvenirs RÉELS racontés à voix haute "
+        "par les membres d'une même famille. Les membres de la famille sont les personnages principaux. "
+        "Règles : reste fidèle aux faits et aux émotions des souvenirs, n'invente pas d'événements majeurs, "
+        "mais donne-leur du souffle romanesque, des transitions élégantes et une belle langue. "
+        "Écris en français, à la troisième personne, en tissant plusieurs souvenirs en un récit cohérent. "
+        "Commence par un titre de chapitre sur la première ligne, précédé de '# '. "
+        "Longueur : 500 à 900 mots. N'ajoute aucun commentaire hors du chapitre."
+    )
+    prompt = (
+        f"Famille : {circle['name']}\n\n"
+        f"Personnages (à faire vivre par leur prénom) :\n{cast}\n\n"
+        f"Souvenirs collectés :\n{material}\n\n"
+        f"Écris maintenant le chapitre romancé qui relie ces souvenirs, avec chaque proche en personnage."
+    )
+    chat = LlmChat(
+        api_key=EMERGENT_KEY,
+        session_id=f"book-{circle_id}-{secrets.token_hex(4)}",
+        system_message=system,
+    ).with_model(BOOK_MODEL_PROVIDER, BOOK_MODEL_NAME)
+    content = await chat.send_message(UserMessage(text=prompt))
+    content = (content or "").strip()
+
+    title = "Chapitre de famille"
+    body_text = content
+    if content.startswith("#"):
+        first_nl = content.find("\n")
+        title = content[1:first_nl].strip().lstrip("#").strip() if first_nl != -1 else content[1:].strip()
+        body_text = content[first_nl + 1:].strip() if first_nl != -1 else ""
+
+    chapter = {
+        "id": oid(),
+        "circle_id": circle_id,
+        "title": title or "Chapitre de famille",
+        "content": body_text or content,
+        "used_capsule_ids": used_ids,
+        "memory_count": len(used_ids),
+        "model": f"{BOOK_MODEL_PROVIDER}/{BOOK_MODEL_NAME}",
+        "status": "ready",
+        "created_at": now().isoformat(),
+    }
+    await db.book_chapters.insert_one(chapter)
+    await db.events.insert_one({"id": oid(), "event_type": "chapter_generated", "circle_id": circle_id, "occurred_at": now().isoformat()})
+    return chapter
 
 
 # ---------------------------------------------------------------------------
@@ -716,6 +838,7 @@ async def set_daily_state(body: DailyStateIn, user=Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 @api.post("/capsules")
 async def create_capsule(
+    background_tasks: BackgroundTasks,
     narrator_member_id: str = Form(...),
     duration_sec: int = Form(...),
     question_id: Optional[str] = Form(None),
@@ -758,9 +881,10 @@ async def create_capsule(
         "recorded_by_user_id": user["id"], "question_id": question_id, "daily_question_id": daily_question_id,
         "theme": theme, "title": title, "storage_path": path, "mime_type": ctype,
         "duration_sec": duration_sec, "recorded_at": now().isoformat(), "created_at": now().isoformat(),
-        "status": "saved",
+        "status": "saved", "transcript": None, "transcript_status": "pending",
     }
     await db.capsules.insert_one(capsule)
+    background_tasks.add_task(transcribe_capsule, cid, path, ext)
     if daily_question_id:
         await db.daily_states.update_one(
             {"daily_question_id": daily_question_id, "member_id": member["id"]},
@@ -786,17 +910,27 @@ async def _enrich_capsule(c: dict) -> dict:
 
 
 @api.get("/capsules")
-async def list_capsules(narrator: Optional[str] = None, theme: Optional[str] = None, user=Depends(get_current_user)):
+async def list_capsules(narrator: Optional[str] = None, theme: Optional[str] = None, q: Optional[str] = None, user=Depends(get_current_user)):
     member = await get_member(user)
     if not member:
         raise HTTPException(404, "Aucun cercle")
-    q = {"circle_id": member["circle_id"], "status": "saved"}
+    query = {"circle_id": member["circle_id"], "status": "saved"}
     if narrator:
-        q["narrator_member_id"] = narrator
+        query["narrator_member_id"] = narrator
     if theme:
-        q["theme"] = theme
-    docs = await db.capsules.find(q).sort("recorded_at", -1).to_list(1000)
-    return [await _enrich_capsule(d) for d in docs]
+        query["theme"] = theme
+    docs = await db.capsules.find(query).sort("recorded_at", -1).to_list(1000)
+    enriched = [await _enrich_capsule(d) for d in docs]
+    term = (q or "").strip().lower()
+    if term:
+        def matches(c: dict) -> bool:
+            haystack = " ".join(
+                str(c.get(k) or "")
+                for k in ("question_text", "title", "theme", "narrator_name", "transcript")
+            ).lower()
+            return term in haystack
+        enriched = [c for c in enriched if matches(c)]
+    return enriched
 
 
 @api.get("/capsules/{capsule_id}")
@@ -844,6 +978,83 @@ async def delete_capsule(capsule_id: str, user=Depends(get_current_user)):
         raise HTTPException(403, "Vous ne pouvez supprimer que vos souvenirs")
     await db.capsules.update_one({"id": capsule_id}, {"$set": {"status": "deleted", "deleted_at": now().isoformat()}})
     await db.events.insert_one({"id": oid(), "event_type": "capsule_deleted", "capsule_id": capsule_id, "user_id": user["id"], "occurred_at": now().isoformat()})
+    return {"ok": True}
+
+
+@api.post("/capsules/{capsule_id}/transcribe")
+async def retranscribe_capsule(capsule_id: str, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
+    member = await get_member(user)
+    if not member:
+        raise HTTPException(404, "Aucun cercle")
+    c = await db.capsules.find_one({"id": capsule_id, "circle_id": member["circle_id"], "status": "saved"})
+    if not c:
+        raise HTTPException(404, "Souvenir introuvable")
+    ext = Path(c["storage_path"]).suffix.lstrip(".") or "m4a"
+    await db.capsules.update_one({"id": capsule_id}, {"$set": {"transcript_status": "pending"}})
+    background_tasks.add_task(transcribe_capsule, capsule_id, c["storage_path"], ext)
+    return {"ok": True, "transcript_status": "pending"}
+
+
+# ---------------------------------------------------------------------------
+# Livre romancé (AI chapters)
+# ---------------------------------------------------------------------------
+@api.get("/book/status")
+async def book_status(user=Depends(get_current_user)):
+    member = await get_member(user)
+    if not member:
+        raise HTTPException(404, "Aucun cercle")
+    cid = member["circle_id"]
+    total = await db.capsules.count_documents({"circle_id": cid, "status": "saved"})
+    transcribed = await db.capsules.count_documents({"circle_id": cid, "status": "saved", "transcript_status": "done"})
+    pending = await db.capsules.count_documents({"circle_id": cid, "status": "saved", "transcript_status": "pending"})
+    chapters = await db.book_chapters.count_documents({"circle_id": cid, "status": "ready"})
+    return {"memory_count": total, "transcribed": transcribed, "pending": pending, "chapter_count": chapters, "can_generate": total > 0}
+
+
+@api.post("/book/chapters")
+async def create_chapter(user=Depends(get_current_user)):
+    member = await get_member(user)
+    if not member:
+        raise HTTPException(404, "Aucun cercle")
+    try:
+        chapter = await generate_chapter(member["circle_id"])
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa
+        logger.error("Chapter generation failed: %s", e)
+        raise HTTPException(502, "L’écriture du chapitre a échoué, réessayez dans un instant")
+    return clean(chapter)
+
+
+@api.get("/book/chapters")
+async def list_chapters(user=Depends(get_current_user)):
+    member = await get_member(user)
+    if not member:
+        raise HTTPException(404, "Aucun cercle")
+    docs = await db.book_chapters.find({"circle_id": member["circle_id"], "status": "ready"}).sort("created_at", -1).to_list(200)
+    return [clean(d) for d in docs]
+
+
+@api.get("/book/chapters/{chapter_id}")
+async def get_chapter(chapter_id: str, user=Depends(get_current_user)):
+    member = await get_member(user)
+    if not member:
+        raise HTTPException(404, "Aucun cercle")
+    c = await db.book_chapters.find_one({"id": chapter_id, "circle_id": member["circle_id"], "status": "ready"})
+    if not c:
+        raise HTTPException(404, "Chapitre introuvable")
+    return clean(c)
+
+
+@api.delete("/book/chapters/{chapter_id}")
+async def delete_chapter(chapter_id: str, user=Depends(get_current_user)):
+    member = await get_member(user)
+    if not member:
+        raise HTTPException(404, "Aucun cercle")
+    c = await db.book_chapters.find_one({"id": chapter_id, "circle_id": member["circle_id"]})
+    if not c:
+        raise HTTPException(404, "Chapitre introuvable")
+    await db.book_chapters.update_one({"id": chapter_id}, {"$set": {"status": "deleted", "deleted_at": now().isoformat()}})
     return {"ok": True}
 
 

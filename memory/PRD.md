@@ -43,6 +43,12 @@ Trois cahiers des charges fournis (Beta test, MVP technique chiffrable, V7 ritue
 - Emails invitation + réinitialisation (gate de sécurité du playbook).
 - Tests : 23/23 backend pytest OK, flux frontend vérifiés.
 
+## Ajouts (2026-06, itération 3)
+- Transcription automatique des souvenirs vocaux (OpenAI Whisper via clé universelle) en tâche de fond ; statut visible dans le détail (en cours / fait / relancer).
+- Livre romancé : génération d'un chapitre chaleureux et littéraire tissant les souvenirs, chaque proche en personnage (Claude Sonnet 5). Écrans /book (liste + génération + statut) et /book/[id] (lecture), CTA sur l'accueil.
+- Recherche dans l'album par personne + thème + mots-clés (question, titre, thème, narrateur, transcription).
+- Tests itération 3 : 12/12 backend OK, flux frontend vérifiés (isolation par cercle confirmée sur les chapitres).
+
 ## Backlog (prioritized)
 - P1 : Génération IA du "livre romancé" (chapitre à partir des souvenirs) — demandé pour plus tard.
 - P1 : Transcription audio (préparer le livre) + recherche dans l'album.

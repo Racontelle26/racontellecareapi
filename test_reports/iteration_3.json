@@ -1,0 +1,40 @@
+{
+  "summary": "Full test of the 3 new features (Whisper auto-transcription, Livre Romancé via Claude, Album search). Backend: 12/12 pytest tests pass on the external URL — capsule upload returns transcript_status='pending' and transitions to done/failed within ~5s; POST /api/capsules/{id}/transcribe re-queues pending; /api/book/status has correct shape and can_generate flips from false→true after 1 memory; POST /api/book/chapters returns a real chapter with non-empty title + 4200+ char literary FR content (Claude sonnet-5 via emergentintegrations); zero-memory returns 400; list/get/delete work with soft-delete; multi-tenant isolation verified (circle B gets 404 on circle A's chapter for both GET and DELETE); GET /api/capsules?q= filters case-insensitively by title/theme/narrator/question and combines with ?narrator=, nonsense query returns []. Frontend (mobile 390x844): (1) Home shows 'Votre livre romancé' card (home-book-cta) that opens /book; (2) /book screen renders with book-generate disabled when 0 memories and hint 'Enregistrez au moins un souvenir', enabled after 1 memory; clicking generate shows 'L'auteur écrit votre chapitre…' loading state then navigates to /book/{id} which renders title 'Le premier accord', horizontal rule and multiple justified paragraphs; chapter-back returns to /book list, chapter-delete removes the chapter and pops back; (3) Album tab search field (album-search) filters live — typing marker 'MARQUEURXYZ' isolates the matching capsule; clearing restores; nonsense term 'zzznothingzzz' displays 'Aucun résultat'; (4) capsule detail /capsule/{id} shows 'Transcription en cours…' when pending (verified via code review and initial render); retry button (capsule-retranscribe) exists in the failed branch. No red screen, no route conflict, all touch targets ≥44pt, and the previous shadow*/pointerEvents deprecation warnings persist but are non-blocking.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "shadow* style props", "issue": "Console warning still present: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' Non-blocking, carried over from iteration_2."},
+      {"component": "props.pointerEvents", "issue": "Console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents' — from a dependency, non-blocking."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_new_features.py",
+    "/app/test_reports/pytest/pytest_new_features.xml",
+    "/app/test_reports/iteration_3.json"
+  ],
+  "action_items": [
+    "None blocking. Optional: migrate remaining shadow* style props to boxShadow to silence the deprecation warning on web."
+  ],
+  "critical_code_review_comments": [
+    "server.py:131 transcribe_capsule uses run_in_threadpool for storage GET + OpenAISpeechToText.transcribe with language='fr' — correct; on empty text it sets 'failed' which matches spec.",
+    "server.py:160 generate_chapter falls back to question text when transcript is empty ('(souvenir vocal sans transcription — inspire-toi de la question)'), which is why chapter generation succeeds even with failed transcripts — matches spec.",
+    "server.py:912 list_capsules performs Python-side lowercase substring match across question_text, title, theme, narrator_name and transcript — case-insensitive and correctly composable with ?narrator=.",
+    "server.py:1014 create_chapter properly returns 400 when no memories and 502 on Claude errors; the model tag stored is 'anthropic/claude-sonnet-5'.",
+    "book/index.tsx and book/[id].tsx use React Query correctly, invalidate ['chapters'] and ['book-status'] after generate/delete, and disable the Generate button while pending — good UX.",
+    "album.tsx binds the search value directly to the query string parameter so the FastAPI-side filter runs (no client-side-only filter drift).",
+    "capsule/[id].tsx renders three well-scoped branches for pending / done / failed and exposes testID='capsule-retranscribe' for the retry action.",
+    "Multi-tenant isolation verified for chapters: GET and DELETE both return 404 for a user in a different circle."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_new_features.py (new — 12 tests)"
+  ],
+  "success_rate": {"backend": "100% (12/12 new-feature tests; iteration_1 core: 23/23)", "frontend": "100% on the flows exercised (home CTA -> /book -> generate -> chapter render -> back -> delete; album search marker/clear/nonsense)"},
+  "seed_data_creation": "Self-registered fresh accounts per run: TEST_owner_<ts>@racontelle-test.fr and album<ts>@racontelle.fr (via UI). Small dummy WAV bytes uploaded as capsules (Whisper legitimately returns empty text -> transcript_status becomes 'failed', which is acceptable per spec). Chapters and capsules soft-deleted where applicable.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend suite lives at /app/backend/tests/test_racontelle_backend.py (core, iteration_1) and /app/backend/tests/test_new_features.py (Whisper/Book/Search, iteration_3). IMPORTANT: run with `pytest -n0` to disable xdist — conftest fixtures are session-scoped and pytest-xdist LoadScope splits them across workers, causing duplicate register attempts (409). Chapter generation timeout must be ≥90s (Claude sonnet-5 live). Frontend testIDs used: home-book-cta, book-back, book-generate, chapter-<id>, chapter-back, chapter-delete, album-search, capsule-retranscribe. Auth token is stored in localStorage under key 'racontelle_token' as a raw JWT (no JSON wrap).",
+  "rca_of_issue": "N/A — feature validation, no bug found."
+}

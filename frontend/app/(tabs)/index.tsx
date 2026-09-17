@@ -2,7 +2,7 @@ import { ScrollView, View, Pressable, RefreshControl, ActivityIndicator, Image }
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, SkipForward, Plus } from "phosphor-react-native";
+import { ArrowRight, SkipForward, Plus, BookOpenText } from "phosphor-react-native";
 import { Body, Card, Display, Label, Title, Avatar } from "@/src/components/ui";
 import { GrowingTree } from "@/src/components/growing-tree";
 import { api } from "@/src/api/client";
@@ -81,6 +81,18 @@ export default function Home() {
             </View>
           </View>
         )}
+
+        {/* Book CTA */}
+        <Pressable style={styles.bookCta} testID="home-book-cta" onPress={() => router.push("/book")}>
+          <View style={styles.bookIcon}>
+            <BookOpenText color={colors.brandPrimary} size={26} weight="duotone" />
+          </View>
+          <View style={styles.bookText}>
+            <Body style={styles.bookTitle}>Votre livre romancé</Body>
+            <Label style={styles.bookSub}>Transformez vos souvenirs en un beau chapitre</Label>
+          </View>
+          <ArrowRight color={colors.brandPrimary} size={20} weight="bold" />
+        </Pressable>
 
         {/* Daily questions */}
         <View style={styles.sectionHead}>
@@ -192,6 +204,18 @@ const useStyles = makeStyles((colors) => ({
     overflow: "hidden",
   },
   progressFill: { height: 8, backgroundColor: colors.brandSecondary, borderRadius: radius.pill },
+  bookCta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    backgroundColor: colors.brandTertiary,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+  },
+  bookIcon: { width: 46, height: 46, borderRadius: 23, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
+  bookText: { flex: 1, gap: 2 },
+  bookTitle: { fontSize: 16, color: colors.onBrandTertiary },
+  bookSub: { color: colors.onBrandTertiary, opacity: 0.8, fontSize: 12 },
   sectionHead: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", marginTop: spacing.sm },
   sectionTitle: { fontSize: 22 },
   sectionMeta: { color: colors.brandPrimary },

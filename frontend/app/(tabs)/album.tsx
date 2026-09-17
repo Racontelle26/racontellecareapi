@@ -1,13 +1,13 @@
 import { useState } from "react";
-import { View, Pressable, FlatList, ScrollView, ActivityIndicator } from "react-native";
+import { View, Pressable, FlatList, ScrollView, ActivityIndicator, TextInput } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
-import { Play, BookOpen } from "phosphor-react-native";
+import { Play, BookOpen, MagnifyingGlass } from "phosphor-react-native";
 import { Body, Label, Title, Avatar } from "@/src/components/ui";
 import { api } from "@/src/api/client";
 import { usesNativeTabs } from "@/src/navigation";
-import { makeStyles, radius, spacing, useTheme } from "@/src/theme";
+import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 type Member = { id: string; display_name: string; initials_color?: string };
 type Summary = { members: Member[] };
@@ -38,11 +38,18 @@ export default function Album() {
   const { colors } = useTheme();
   const bottomChrome = usesNativeTabs ? insets.bottom : 0;
   const [narrator, setNarrator] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
   const circleQ = useQuery({ queryKey: ["circle"], queryFn: () => api.get<Summary>("/circle") });
   const capsulesQ = useQuery({
-    queryKey: ["capsules", narrator],
-    queryFn: () => api.get<Capsule[]>(`/capsules${narrator ? `?narrator=${narrator}` : ""}`),
+    queryKey: ["capsules", narrator, search],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (narrator) params.set("narrator", narrator);
+      if (search.trim()) params.set("q", search.trim());
+      const qs = params.toString();
+      return api.get<Capsule[]>(`/capsules${qs ? `?${qs}` : ""}`);
+    },
   });
 
   const members = circleQ.data?.members?.filter((m) => m) ?? [];
@@ -51,6 +58,18 @@ export default function Album() {
     <View style={styles.container}>
       <View style={[styles.headerWrap, { paddingTop: insets.top + spacing.lg }]}>
         <Title style={styles.title}>Album des souvenirs</Title>
+        <View style={styles.searchBar}>
+          <MagnifyingGlass color={colors.muted} size={18} />
+          <TextInput
+            testID="album-search"
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Rechercher : mot, personne, thème…"
+            placeholderTextColor={colors.muted}
+            style={styles.searchInput}
+            returnKeyType="search"
+          />
+        </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipsScroll} contentContainerStyle={styles.chipsRow}>
           <Pressable
             testID="album-filter-all"
@@ -84,9 +103,11 @@ export default function Album() {
           <View style={styles.emptyIcon}>
             <BookOpen color={colors.brand} size={48} weight="thin" />
           </View>
-          <Title style={styles.emptyTitle}>Vos souvenirs s’écriront ici</Title>
+          <Title style={styles.emptyTitle}>{search.trim() || narrator ? "Aucun résultat" : "Vos souvenirs s’écriront ici"}</Title>
           <Body muted style={styles.emptyText}>
-            Enregistrez votre première voix depuis l’onglet « Raconter ».
+            {search.trim() || narrator
+              ? "Essayez un autre mot-clé ou une autre personne."
+              : "Enregistrez votre première voix depuis l’onglet « Raconter »."}
           </Body>
         </View>
       ) : (
@@ -124,6 +145,18 @@ const useStyles = makeStyles((colors) => ({
     paddingBottom: spacing.sm,
   },
   title: { fontSize: 26, marginBottom: spacing.md },
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceSecondary,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.md,
+  },
+  searchInput: { flex: 1, paddingVertical: 12, fontFamily: fonts.body, fontSize: 15, color: colors.onSurface },
   chipsScroll: { marginHorizontal: -spacing.xl },
   chipsRow: { gap: spacing.sm, paddingHorizontal: spacing.xl, height: 44, alignItems: "center" },
   chip: {

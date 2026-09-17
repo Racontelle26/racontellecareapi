@@ -21,6 +21,8 @@ type Capsule = {
   theme?: string;
   duration_sec: number;
   recorded_at: string;
+  transcript?: string | null;
+  transcript_status?: string;
 };
 
 function fmt(sec: number) {
@@ -120,6 +122,34 @@ export default function CapsuleDetail() {
               </View>
             </View>
 
+            {c.transcript_status === "done" && c.transcript ? (
+              <View style={styles.transcript}>
+                <Label style={styles.transcriptLabel}>TRANSCRIPTION</Label>
+                <Body style={styles.transcriptText}>{c.transcript}</Body>
+              </View>
+            ) : c.transcript_status === "pending" ? (
+              <View style={styles.transcriptPending}>
+                <ActivityIndicator color={colors.brandSecondary} size="small" />
+                <Label style={styles.transcriptHint}>Transcription en cours…</Label>
+              </View>
+            ) : c.transcript_status === "failed" ? (
+              <Pressable
+                style={styles.retry}
+                testID="capsule-retranscribe"
+                onPress={async () => {
+                  try {
+                    await api.post(`/capsules/${id}/transcribe`);
+                    toast.show("Transcription relancée", "info");
+                    setTimeout(() => capsuleQ.refetch(), 4000);
+                  } catch {
+                    toast.show("Erreur", "error");
+                  }
+                }}
+              >
+                <Label style={styles.retryText}>Relancer la transcription</Label>
+              </Pressable>
+            ) : null}
+
             {canDelete ? (
               <Pressable style={styles.delete} testID="capsule-delete" onPress={remove}>
                 <Trash color={colors.error} size={20} />
@@ -162,6 +192,13 @@ const useStyles = makeStyles((colors) => ({
   trackFill: { height: 6, backgroundColor: colors.brandSecondary, borderRadius: radius.pill },
   times: { flexDirection: "row", justifyContent: "space-between" },
   timeText: { color: colors.muted, fontSize: 11 },
+  transcript: { backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.sm },
+  transcriptLabel: { color: colors.brandSecondary, letterSpacing: 0.5 },
+  transcriptText: { fontSize: 16, lineHeight: 25 },
+  transcriptPending: { flexDirection: "row", alignItems: "center", gap: spacing.sm, justifyContent: "center", paddingVertical: spacing.md },
+  transcriptHint: { color: colors.muted },
+  retry: { alignItems: "center", paddingVertical: spacing.md },
+  retryText: { color: colors.brandPrimary },
   delete: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, padding: spacing.md },
   deleteText: { color: colors.error },
 }));
