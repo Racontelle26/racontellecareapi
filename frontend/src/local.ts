@@ -3,12 +3,17 @@ import { storage } from "@/src/utils/storage";
 import type { Capsule, LocalState, Resident } from "./types";
 
 const KEY = "racontelle.local.v1";
-const DEFAULT_STATE: LocalState = { residents: [], capsules: [], usage: { total_sec: 0, by_resident: {} } };
+const DEFAULT_STATE: LocalState = { residents: [], capsules: [], usage: { total_sec: 0, by_resident: {} }, exports: {} };
 
 export async function readLocalState(): Promise<LocalState> {
   const stored = await storage.getItem<LocalState>(KEY, DEFAULT_STATE);
   // Les états enregistrés avant l'espace professionnel n'ont pas de compteur.
-  return { ...DEFAULT_STATE, ...stored, usage: stored?.usage ?? DEFAULT_STATE.usage };
+  return {
+    ...DEFAULT_STATE,
+    ...stored,
+    usage: stored?.usage ?? DEFAULT_STATE.usage,
+    exports: stored?.exports ?? DEFAULT_STATE.exports,
+  };
 }
 
 export async function writeLocalState(state: LocalState): Promise<boolean> {

@@ -57,4 +57,7 @@ export const api = {
     uploadAudio<{ transcription: string }>(`/capsules/${id}/transcribe`, uri),
   shareCapsule: (id: string) =>
     request<{ token: string; path: string }>(`/capsules/${id}/share`, { method: "POST" }),
+  exportResidentUrl: (id: string) => `${baseUrl}/api/residents/${id}/export`,
+  deleteResident: (id: string) =>
+    request<{ deleted: boolean }>(`/residents/${id}`, { method: "DELETE" }),
 };

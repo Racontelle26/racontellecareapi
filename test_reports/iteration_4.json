@@ -1,0 +1,61 @@
+{
+  "summary": "Iteration 4 features verified end-to-end. Backend 5/5 pytest pass: GET /api/residents/{id}/export returns a valid application/zip with souvenirs.txt (resident name, capsule titles, transcription lines, 'Fichier : audio/..' references) + audio/*.m4a files (RIFF bytes round-trip), empty-resident export still has souvenirs.txt, 404 for unknown resident; DELETE /api/residents/{id} soft-deletes (disappears from GET /residents, capsules stay in DB, export of removed resident still returns 200), 404 for unknown. Frontend (single-session, real recording via fake mic): capsule-play-<id> button renders on profile, play toggles to 'Pause' aria-label while playing and pauses on second tap; profile-remove opens remove-profile-modal; confirm-remove-button aria-disabled=true and no export-done BEFORE export; export-button opens the ZIP popup (window.open, web), then 'Export réalisé le 17 septembre 2026' (export-done) appears and confirm becomes enabled; confirm removes resident from home grid + archive with notice 'TEST_Retrait a été retiré(e) du carnet...' and returns home; backend confirmed soft-deleted. Regressions OK: stats screen, archive, add-resident modal (created TEST_Retrait via UI), workshop waveform + record/stop/save all work. ONE NEW HIGH bug found: refresh() wipes usage + exports from storage. Iteration-3 usage-attribution bug is FIXED in code (commitUsage now credits the outgoing segment).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Remove profile modal",
+        "issue": "At 390x844 the modal's two action buttons (export-button, confirm-remove-button) are below the fold; Playwright auto-scroll-into-view failed inside the bottom-sheet ScrollView (needed JS scrollIntoView). Elderly users may not discover the buttons.",
+        "testID": "export-button",
+        "priority": "MINOR"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "App refresh / reload wipes usage stats and export tracking",
+        "issue": "index.tsx:186-188 — refresh() builds next = { residents, capsules } WITHOUT usage and exports, then writeLocalState(next) persists it. Every successful server sync resets usage counters to 0 and erases the exports map (the removal gate). Consequence: stats screen loses all accumulated time after reload; a user who exported then reloaded must re-export before removal (fail-safe direction but loses the audit trail).",
+        "affected_testIDs": ["stats-global", "stats-row-<id>", "export-done", "confirm-remove-button"]
+      }
+    ],
+    "design_issues": [
+      {
+        "screen": "Remove profile modal",
+        "issues": ["Primary actions hidden below fold on 390x844; consider a compact layout or fixed footer so '1 · Extraire' and '2 · Retirer' are visible without scrolling"]
+      }
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_resident_export_delete.py",
+    "/app/test_reports/pytest/pytest_results_iter4.xml",
+    "/app/test_reports/screens/iter4-profile-player.png",
+    "/app/test_reports/screens/iter4-remove-modal-before.png",
+    "/app/test_reports/screens/iter4-remove-modal-after.png",
+    "/app/test_reports/screens/iter4-after-remove.png"
+  ],
+  "action_items": [
+    "Fix refresh() in app/index.tsx (line ~186): preserve usage and exports when writing merged state, e.g. const next = { ...local, residents: mergeResidents(local.residents, remoteResidents) } — current code silently drops usage stats and the exports removal-gate on every successful sync.",
+    "UX: make export-button / confirm-remove-button visible without scrolling in the remove-profile bottom sheet at 390px height (fixed footer or reduced copy).",
+    "Carried from iteration 3 (already noted): api.ts reads EXPO_PUBLIC_BACKEND_URL, not EXPO_BACKEND_URL — works here, but align/document the contract."
+  ],
+  "critical_code_review_comments": [
+    "index.tsx:186-188 — refresh() data loss: next omits usage + exports; writeLocalState(next) then erases them from storage (see integration_issues). This also silently resets the removal-gate audit trail.",
+    "index.tsx:205-225 — commitUsage now credits elapsed to previousResidentId (outgoing segment): iteration-3 inverted-attribution bug is FIXED in code (not UI-retested this run).",
+    "backend/server.py export_resident — solid: graceful fallback when audio not in object storage ('non synchronisé'/'conservé sur l'appareil'), safe filename slug, correct Content-Disposition, works for soft-deleted residents by design.",
+    "togglePlay reuse of the workshop player via setRecordedUri + wantPlay ref is functional but fragile (single shared player source state doubles as playback identity); acceptable for MVP.",
+    "No deprecated Expo packages detected (expo-audio, expo-image, expo-file-system/legacy, expo-sharing all current)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_resident_export_delete.py",
+    "/app/test_reports/iteration_4.json"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "95%"},
+  "seed_data_creation": "Created TEST_Retrait resident via UI, recorded 2 real web-mic capsules, exported it, then soft-removed it (resident stays inactive by design); deleted its 2 test capsules from DB afterwards. Pytest module created+cleaned its own TEST_Export_* resident (soft-deleted) and capsule (deleted). 4 active residents remain (3x Jeanne, Claire).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Web preview supports REAL audio recording (Chromium fake mic): workshop-record → wait → workshop-stop → workshop-save works, producing a synced capsule with audio_uri — use this to test playback instead of seeding localStorage. IMPORTANT: each browser_automation invocation is a FRESH browser profile — localStorage (capsules, exports) does NOT persist between runs; keep multi-step local-state flows in ONE session. context.add_init_script does NOT work in this harness. urllib gets 403 from the preview URL — use curl/requests instead. Open bug to retest: reload the app after accumulating stats/export, verify usage + exports survive refresh(). Verify play states via aria-label on capsule-play-<id> ('Pause' while playing).",
+  "rca_of_issue": "Bug: usage stats and export tracking reset on every app refresh. Reproduction: record a capsule / export a resident (export-done appears), reload the web preview, reopen stats or the remove modal — stats show 0 s and 'Export réalisé le' is gone (removal blocked again). Root cause: refresh() in app/index.tsx constructs next = { residents: mergeResidents(...), capsules: local.capsules } and persists it via writeLocalState(next); the object lacks usage and exports keys, so readLocalState falls back to DEFAULT_STATE for both on the next read. Mitigation: spread the local state first ({ ...local, residents: mergeResidents(...) }) or explicitly carry usage/exports into next."
+}

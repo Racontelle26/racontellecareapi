@@ -452,6 +452,64 @@ async def share_audio(token: str):
     return Response(content=data, media_type=content_type)
 
 
+import io
+import re
+import zipfile
+
+
+@api_router.get("/residents/{resident_id}/export")
+async def export_resident(resident_id: str):
+    """Export équipe soignante : un ZIP regroupant les audios conservés et les
+    transcriptions du résident, pour les transmissions du service."""
+    resident = await db.residents.find_one({"id": resident_id}, {"_id": 0})
+    if not resident:
+        raise HTTPException(status_code=404, detail="Profil introuvable")
+    capsules = await db.capsules.find({"resident_id": resident_id}, {"_id": 0}).sort("recorded_at", 1).to_list(1000)
+    buffer = io.BytesIO()
+    lines = [
+        f"Souvenirs de {resident['display_name']}",
+        f"Export réalisé le {datetime.now(timezone.utc).strftime('%d/%m/%Y')}",
+        "",
+    ]
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for index, capsule in enumerate(capsules, start=1):
+            date_label = str(capsule.get("recorded_at", ""))[:10]
+            title = capsule.get("title") or "Souvenir vocal"
+            lines.append(f"{index}. {date_label} — {title} ({capsule.get('duration_sec', 0)} s)")
+            if capsule.get("transcription"):
+                lines.append(f"   Transcription : {capsule['transcription']}")
+            if capsule.get("storage_path"):
+                filename = f"audio/{index:02d}-{date_label}.m4a"
+                try:
+                    data, _ = await run_in_threadpool(get_object, capsule["storage_path"])
+                    archive.writestr(filename, data)
+                    lines.append(f"   Fichier : {filename}")
+                except Exception:
+                    lines.append("   Fichier : non synchronisé sur le serveur")
+            else:
+                lines.append("   Fichier : conservé sur l'appareil uniquement")
+            lines.append("")
+        archive.writestr("souvenirs.txt", "\n".join(lines))
+    safe_name = re.sub(r"[^a-z0-9]+", "-", resident["display_name"].lower()).strip("-") or "resident"
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="racontelle-{safe_name}.zip"'},
+    )
+
+
+@api_router.delete("/residents/{resident_id}")
+async def delete_resident(resident_id: str):
+    """Retrait du profil (départ de l'établissement). Suppression douce : les
+    capsules restent conservées côté serveur, le profil est désactivé."""
+    result = await db.residents.update_one(
+        {"id": resident_id}, {"$set": {"active": False, "removed_at": now_iso()}}
+    )
+    if not result.matched_count:
+        raise HTTPException(status_code=404, detail="Profil introuvable")
+    return {"deleted": True}
+
+
 app.include_router(api_router)
 app.add_middleware(
     CORSMiddleware,

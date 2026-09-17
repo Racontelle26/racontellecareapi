@@ -38,4 +38,6 @@ export type LocalState = {
   residents: Resident[];
   capsules: Capsule[];
   usage: UsageState;
+  /** Date ISO du dernier export réalisé par profil (retrait sécurisé). */
+  exports: Record<string, string>;
 };

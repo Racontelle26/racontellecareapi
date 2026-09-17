@@ -4,6 +4,7 @@ import {
   RecordingPresets,
   setAudioModeAsync,
   useAudioPlayer,
+  useAudioPlayerStatus,
   useAudioRecorder,
   useAudioRecorderState,
 } from "expo-audio";
@@ -11,6 +12,7 @@ import * as Clipboard from "expo-clipboard";
 import * as FileSystem from "expo-file-system/legacy";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
+import * as Sharing from "expo-sharing";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -127,6 +129,7 @@ const useStyles = makeStyles((colors) => ({
   capsuleActions: { flexDirection: "row", gap: 18 },
   capsuleAction: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 6 },
   capsuleActionText: { color: colors.brandPrimary, fontSize: 13, fontFamily: "Montserrat-Bold" },
+  dangerButton: { minHeight: 52, borderRadius: 18, backgroundColor: colors.error, flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "center", paddingHorizontal: 18 },
 }));
 
 function Icon({ name, color, size = 22 }: { name: keyof typeof Ionicons.glyphMap; color: string; size?: number }) {
@@ -180,7 +183,7 @@ export default function Index() {
     setState(local);
     try {
       const [remoteResidents, remoteQuestions] = await Promise.all([api.residents(), api.questions()]);
-      const next = { residents: mergeResidents(local.residents, remoteResidents), capsules: local.capsules };
+      const next = { ...local, residents: mergeResidents(local.residents, remoteResidents) };
       setState(next);
       await writeLocalState(next);
       if (remoteQuestions.length) setQuestions(remoteQuestions);
@@ -414,6 +417,95 @@ export default function Index() {
     }
   };
 
+  const [showRemove, setShowRemove] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const playerStatus = useAudioPlayerStatus(player);
+  const wantPlay = useRef(false);
+  // Petit lecteur audio dans les fiches : lecture/pause par souvenir.
+  const playingCapsuleId = playerStatus.playing
+    ? state.capsules.find((item) => item.audio_uri && item.audio_uri === recordedUri)?.id ?? null
+    : null;
+
+  useEffect(() => {
+    if (wantPlay.current && recordedUri) {
+      wantPlay.current = false;
+      player.play();
+    }
+  }, [recordedUri, player]);
+
+  const togglePlay = (capsule: Capsule) => {
+    if (!capsule.audio_uri) return;
+    if (playerStatus.playing && recordedUri === capsule.audio_uri) {
+      player.pause();
+      return;
+    }
+    wantPlay.current = true;
+    setRecordedUri(capsule.audio_uri);
+  };
+
+  // Export équipe soignante : un fichier ZIP (audios + transcriptions).
+  const exportResident = async (resident: Resident) => {
+    if (resident.id.startsWith("local-")) {
+      setNotice("Synchronisez le profil avec le serveur avant l’export.");
+      return;
+    }
+    setExporting(true);
+    try {
+      const url = api.exportResidentUrl(resident.id);
+      if (Platform.OS === "web") {
+        (globalThis as any).window?.open?.(url, "_blank");
+      } else {
+        const target = `${FileSystem.cacheDirectory}racontelle-${resident.id}.zip`;
+        const downloaded = await FileSystem.downloadAsync(url, target);
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(downloaded.uri, {
+            mimeType: "application/zip",
+            dialogTitle: `Souvenirs de ${resident.display_name}`,
+          });
+        }
+      }
+      await persist({
+        ...stateRef.current,
+        exports: { ...stateRef.current.exports, [resident.id]: new Date().toISOString() },
+      });
+      setNotice("Export prêt : souvenirs et transcriptions regroupés en un fichier.");
+    } catch {
+      setNotice("Export impossible pour le moment. Vérifiez la connexion et réessayez.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // Retrait d'un profil : uniquement après extraction des souvenirs.
+  const removeResident = async (resident: Resident) => {
+    if (!stateRef.current.exports?.[resident.id]) {
+      setNotice("Extrayez d’abord les souvenirs avant de retirer le profil.");
+      return;
+    }
+    const residentCapsules = stateRef.current.capsules.filter((item) => item.resident_id === resident.id);
+    for (const capsule of residentCapsules) {
+      if (capsule.audio_uri && Platform.OS !== "web" && capsule.audio_uri.startsWith("file")) {
+        await FileSystem.deleteAsync(capsule.audio_uri, { idempotent: true }).catch(() => {});
+      }
+    }
+    await persist({
+      ...stateRef.current,
+      residents: stateRef.current.residents.filter((item) => item.id !== resident.id),
+      capsules: stateRef.current.capsules.filter((item) => item.resident_id !== resident.id),
+    });
+    if (!resident.id.startsWith("local-")) {
+      try {
+        await api.deleteResident(resident.id);
+      } catch {
+        setNotice("Profil retiré localement. La copie serveur sera retirée plus tard.");
+      }
+    }
+    setShowRemove(false);
+    setSelectedResident(null);
+    setScreen("home");
+    setNotice(`${resident.display_name} a été retiré(e) du carnet. L’export reste disponible pour le service.`);
+  };
+
   const addResident = async () => {
     const displayName = draftName.trim();
     if (!displayName) return;
@@ -450,9 +542,9 @@ export default function Index() {
   return (
     <View style={styles.root}>
       {screen === "home" && <HomeScreen styles={styles} colors={colors} insets={insets} state={state} onAdd={() => setShowAdd(true)} onProfile={(resident: Resident) => { setSelectedResident(resident); setScreen("profile"); }} onFree={() => beginWorkshop(null, "free")} onArchive={() => setScreen("archive")} onStats={() => setScreen("stats")} notice={notice} />}
-      {screen === "profile" && selectedResident && <ProfileScreen styles={styles} colors={colors} insets={insets} resident={selectedResident} capsules={state.capsules.filter((item) => item.resident_id === selectedResident.id)} busyCapsuleId={busyCapsuleId} onBack={() => setScreen("home")} onStart={() => beginWorkshop(selectedResident, "free")} onArchive={() => { setArchiveResidentId(selectedResident.id); setScreen("archive"); }} onPhoto={() => void pickPhoto("profile")} onTranscribe={transcribeCapsule} onShare={shareCapsule} />}
+      {screen === "profile" && selectedResident && <ProfileScreen styles={styles} colors={colors} insets={insets} resident={selectedResident} capsules={state.capsules.filter((item) => item.resident_id === selectedResident.id)} busyCapsuleId={busyCapsuleId} playingCapsuleId={playingCapsuleId} onBack={() => setScreen("home")} onStart={() => beginWorkshop(selectedResident, "free")} onArchive={() => { setArchiveResidentId(selectedResident.id); setScreen("archive"); }} onPhoto={() => void pickPhoto("profile")} onTranscribe={transcribeCapsule} onShare={shareCapsule} onPlay={togglePlay} onRemoveRequest={() => setShowRemove(true)} />}
       {screen === "workshop" && <WorkshopScreen styles={styles} colors={colors} insets={insets} resident={selectedResident} mode={workshopMode} questionIndex={questionIndex} question={currentQuestion} recorderStatus={recorderStatus} durationSeconds={durationSeconds} onBack={() => setScreen(selectedResident ? "profile" : "home")} onRecord={handleRecordPress} onStop={stopRecording} onReset={resetRecording} onPlay={() => player.play()} onSave={saveRecording} onSkip={() => { if (questionIndex < 2) setQuestionIndex((value) => value + 1); else { setScreen(selectedResident ? "profile" : "home"); setNotice("Atelier terminé, sans réponse enregistrée pour cette question."); } }} />}
-      {screen === "archive" && <ArchiveScreen styles={styles} colors={colors} insets={insets} residents={state.residents} capsules={visibleCapsules} selectedId={archiveResidentId} busyCapsuleId={busyCapsuleId} onSelect={setArchiveResidentId} onBack={() => setScreen("home")} onPlay={(uri: string) => { setRecordedUri(uri); player.play(); }} onTranscribe={transcribeCapsule} onShare={shareCapsule} />}
+      {screen === "archive" && <ArchiveScreen styles={styles} colors={colors} insets={insets} residents={state.residents} capsules={visibleCapsules} selectedId={archiveResidentId} busyCapsuleId={busyCapsuleId} playingCapsuleId={playingCapsuleId} onSelect={setArchiveResidentId} onBack={() => setScreen("home")} onPlay={togglePlay} onTranscribe={transcribeCapsule} onShare={shareCapsule} />}
       {screen === "stats" && <StatsScreen styles={styles} colors={colors} insets={insets} state={state} onBack={() => setScreen("home")} />}
       {notice && <Pressable accessibilityRole="button" onPress={() => setNotice(null)} style={[styles.notice, { bottom: insets.bottom + 16 }]}><Icon name="information-circle-outline" color={colors.onInfo} size={18} /><Text style={styles.noticeText}>{notice}</Text><Icon name="close" color={colors.onInfo} size={18} /></Pressable>}
       <Modal testID="add-resident-modal" visible={showAdd} transparent animationType="slide" onRequestClose={() => setShowAdd(false)}>
@@ -476,6 +568,20 @@ export default function Index() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+      <Modal testID="remove-profile-modal" visible={showRemove && !!selectedResident} transparent animationType="slide" onRequestClose={() => setShowRemove(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingBottom: insets.bottom + 20 }}>
+              <View style={styles.sectionHeader}><Text style={styles.heading}>Retirer {selectedResident?.display_name}</Text><Pressable testID="remove-cancel" onPress={() => setShowRemove(false)} style={styles.backButton}><Icon name="close" color={colors.onSurface} /></Pressable></View>
+              <Text style={styles.body}>Départ de l’établissement : extrayez d’abord l’ensemble des souvenirs. Le fichier regroupe les enregistrements audio et leurs transcriptions pour les transmissions du service.</Text>
+              <Pressable testID="export-button" accessibilityRole="button" disabled={exporting} onPress={() => selectedResident && void exportResident(selectedResident)} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}>{exporting ? <ActivityIndicator color={colors.onBrandPrimary} /> : <Icon name="download-outline" color={colors.onBrandPrimary} />}<Text style={styles.primaryText}>1 · Extraire les souvenirs</Text></Pressable>
+              {selectedResident && state.exports?.[selectedResident.id] ? <Text testID="export-done" style={styles.consent}>Export réalisé le {formatDate(state.exports[selectedResident.id])}</Text> : <Text style={styles.small}>Le retrait sera possible une fois l’extraction réalisée.</Text>}
+              <Pressable testID="confirm-remove-button" accessibilityRole="button" disabled={!selectedResident || !state.exports?.[selectedResident.id]} onPress={() => selectedResident && void removeResident(selectedResident)} style={({ pressed }) => [styles.dangerButton, (!selectedResident || !state.exports?.[selectedResident.id]) && { opacity: 0.45 }, pressed && styles.pressed]}><Icon name="person-remove-outline" color={colors.onError} /><Text style={styles.primaryText}>2 · Retirer le profil</Text></Pressable>
+              <Text style={styles.small}>Les audios et transcriptions conservés sur le serveur ne sont pas effacés.</Text>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -493,14 +599,16 @@ function HomeScreen({ styles, colors, insets, state, onAdd, onProfile, onFree, o
   </ScrollView>;
 }
 
-function ProfileScreen({ styles, colors, insets, resident, capsules, busyCapsuleId, onBack, onStart, onArchive, onPhoto, onTranscribe, onShare }: any) {
+function ProfileScreen({ styles, colors, insets, resident, capsules, busyCapsuleId, playingCapsuleId, onBack, onStart, onArchive, onPhoto, onTranscribe, onShare, onPlay, onRemoveRequest }: any) {
   return <ScrollView contentContainerStyle={[styles.screen, { paddingTop: insets.top + 18, paddingBottom: insets.bottom + 32 }]}>
     <View style={styles.header}><Pressable testID="profile-back" accessibilityRole="button" onPress={onBack} style={styles.backButton}><Icon name="arrow-back" color={colors.onSurface} /></Pressable><Text style={styles.eyebrow}>Fiche personne</Text><View style={{ width: 48 }} /></View>
     <View style={styles.profileHeader}><Pressable testID="profile-photo-button" accessibilityRole="button" onPress={onPhoto} style={({ pressed }) => pressed && styles.pressed}><View style={styles.largeAvatar}>{resident.photo_uri ? <Image source={{ uri: resident.photo_uri }} style={{ width: 80, height: 80, borderRadius: 40 }} contentFit="cover" /> : <Text style={styles.largeAvatarText}>{initials(resident.display_name)}</Text>}</View></Pressable><Text style={styles.title}>{resident.display_name}</Text><Text style={styles.small}>Consentement obtenu · profil local</Text><Pressable testID="profile-change-photo" accessibilityRole="button" onPress={onPhoto} style={styles.textButton}><Text style={styles.textButtonLabel}>{resident.photo_uri ? "Changer la photo" : "Ajouter une photo"}</Text></Pressable></View>
     <Pressable testID="profile-start-workshop" accessibilityRole="button" onPress={onStart} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}><Icon name="mic" color={colors.onBrandPrimary} /><Text style={styles.primaryText}>Démarrer l’atelier</Text></Pressable>
     <View style={styles.sectionHeader}><Text style={styles.heading}>Souvenirs enregistrés</Text><Text style={styles.small}>{capsules.length}</Text></View>
-    {capsules.length ? capsules.slice(0, 5).map((capsule: Capsule) => <CapsuleRow key={capsule.id} styles={styles} colors={colors} capsule={capsule} busy={busyCapsuleId === capsule.id} onTranscribe={() => onTranscribe(capsule)} onShare={() => onShare(capsule)} />) : <View style={styles.empty}><Icon name="heart-outline" color={colors.brand} size={28} /><Text style={styles.body}>Aucun souvenir pour le moment.</Text><Text style={styles.small}>Le premier récit apparaîtra ici.</Text></View>}
+    {capsules.length ? capsules.slice(0, 5).map((capsule: Capsule) => <CapsuleRow key={capsule.id} styles={styles} colors={colors} capsule={capsule} busy={busyCapsuleId === capsule.id} playing={playingCapsuleId === capsule.id} onPlay={capsule.audio_uri ? () => onPlay(capsule) : undefined} onTranscribe={() => onTranscribe(capsule)} onShare={() => onShare(capsule)} />) : <View style={styles.empty}><Icon name="heart-outline" color={colors.brand} size={28} /><Text style={styles.body}>Aucun souvenir pour le moment.</Text><Text style={styles.small}>Le premier récit apparaîtra ici.</Text></View>}
     {capsules.length > 5 && <Pressable testID="profile-open-archive" onPress={onArchive} style={styles.secondaryButton}><Text style={styles.secondaryText}>Voir toute l’archive</Text></Pressable>}
+    <View style={{ height: 1, backgroundColor: colors.divider }} />
+    <Pressable testID="profile-remove" accessibilityRole="button" onPress={onRemoveRequest} style={({ pressed }) => [styles.textButton, { alignSelf: "center" }, pressed && styles.pressed]}><Text style={[styles.textButtonLabel, { color: colors.error }]}>Retirer le profil (départ de l’établissement)</Text></Pressable>
   </ScrollView>;
 }
 
@@ -522,7 +630,7 @@ function ArchiveScreen({ styles, colors, insets, residents, capsules, selectedId
     <View style={styles.header}><Pressable testID="archive-back" accessibilityRole="button" onPress={onBack} style={styles.backButton}><Icon name="arrow-back" color={colors.onSurface} /></Pressable><Text style={styles.eyebrow}>Archive locale</Text><View style={{ width: 48 }} /></View>
     <View><Text style={styles.title}>Mes souvenirs</Text><Text style={styles.body}>Les capsules restent disponibles sur cet appareil, même sans réseau.</Text></View>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.archiveFilter}><Pressable testID="archive-filter-all" onPress={() => onSelect(null)} style={[styles.filter, selectedId === null && styles.filterActive]}><Text style={[styles.filterText, selectedId === null && styles.filterTextActive]}>Tous</Text></Pressable>{residents.map((resident: Resident) => <Pressable testID={`archive-filter-${resident.id}`} key={resident.id} onPress={() => onSelect(resident.id)} style={[styles.filter, selectedId === resident.id && styles.filterActive]}><Text style={[styles.filterText, selectedId === resident.id && styles.filterTextActive]}>{resident.display_name}</Text></Pressable>)}</ScrollView>
-    {capsules.length ? capsules.map((capsule: Capsule) => <CapsuleRow key={capsule.id} styles={styles} colors={colors} capsule={capsule} resident={residents.find((item: Resident) => item.id === capsule.resident_id)} busy={busyCapsuleId === capsule.id} onPlay={capsule.audio_uri ? () => onPlay(capsule.audio_uri) : undefined} onTranscribe={() => onTranscribe(capsule)} onShare={() => onShare(capsule)} />) : <View style={styles.empty}><Icon name="albums-outline" color={colors.brand} size={30} /><Text style={styles.heading}>Votre archive est vide</Text><Text style={[styles.body, { textAlign: "center" }]}>Les souvenirs sauvegardés pendant l’atelier apparaîtront ici.</Text></View>}
+    {capsules.length ? capsules.map((capsule: Capsule) => <CapsuleRow key={capsule.id} styles={styles} colors={colors} capsule={capsule} resident={residents.find((item: Resident) => item.id === capsule.resident_id)} busy={busyCapsuleId === capsule.id} playing={playingCapsuleId === capsule.id} onPlay={capsule.audio_uri ? () => onPlay(capsule) : undefined} onTranscribe={() => onTranscribe(capsule)} onShare={() => onShare(capsule)} />) : <View style={styles.empty}><Icon name="albums-outline" color={colors.brand} size={30} /><Text style={styles.heading}>Votre archive est vide</Text><Text style={[styles.body, { textAlign: "center" }]}>Les souvenirs sauvegardés pendant l’atelier apparaîtront ici.</Text></View>}
   </ScrollView>;
 }
 
@@ -554,6 +662,6 @@ function StatsScreen({ styles, colors, insets, state, onBack }: any) {
   </ScrollView>;
 }
 
-function CapsuleRow({ styles, colors, capsule, resident, busy, onPlay, onTranscribe, onShare }: { styles: any; colors: any; capsule: Capsule; resident?: Resident; busy?: boolean; onPlay?: () => void; onTranscribe?: () => void; onShare?: () => void }) {
-  return <View style={styles.capsule}><View style={styles.capsuleTop}><View style={{ flex: 1, gap: 5 }}><Text style={styles.capsuleTitle}>{capsule.title ?? "Souvenir vocal"}</Text><Text style={styles.capsuleDate}>{formatDate(capsule.recorded_at)} · {formatDuration(capsule.duration_sec)}</Text></View>{onPlay && <Pressable accessibilityRole="button" onPress={onPlay} style={styles.backButton}><Icon name="play" color={colors.brandPrimary} size={20} /></Pressable>}</View>{capsule.transcription ? <Text testID={`capsule-transcription-${capsule.id}`} style={styles.transcription}>« {capsule.transcription} »</Text> : null}<View style={styles.capsuleMeta}><View style={styles.tag}><Text style={styles.tagText}>{capsule.mode === "question" ? capsule.theme : resident?.display_name ?? "À classer"}</Text></View><Text style={styles.small}>{capsule.synced ? "Copie serveur" : "Conservé sur l’appareil"}</Text></View>{busy ? <ActivityIndicator testID={`capsule-busy-${capsule.id}`} size="small" color={colors.brandPrimary} /> : <View style={styles.capsuleActions}>{onTranscribe && <Pressable testID={`capsule-transcribe-${capsule.id}`} accessibilityRole="button" onPress={onTranscribe} style={({ pressed }) => [styles.capsuleAction, pressed && styles.pressed]}><Icon name="text-outline" color={colors.brandPrimary} size={16} /><Text style={styles.capsuleActionText}>{capsule.transcription ? "Retranscrire" : "Transcrire"}</Text></Pressable>}{onShare && <Pressable testID={`capsule-share-${capsule.id}`} accessibilityRole="button" onPress={onShare} style={({ pressed }) => [styles.capsuleAction, pressed && styles.pressed]}><Icon name="share-social-outline" color={colors.brandPrimary} size={16} /><Text style={styles.capsuleActionText}>Partager à la famille</Text></Pressable>}</View>}</View>;
+function CapsuleRow({ styles, colors, capsule, resident, busy, playing, onPlay, onTranscribe, onShare }: { styles: any; colors: any; capsule: Capsule; resident?: Resident; busy?: boolean; playing?: boolean; onPlay?: () => void; onTranscribe?: () => void; onShare?: () => void }) {
+  return <View style={styles.capsule}><View style={styles.capsuleTop}><View style={{ flex: 1, gap: 5 }}><Text style={styles.capsuleTitle}>{capsule.title ?? "Souvenir vocal"}</Text><Text style={styles.capsuleDate}>{formatDate(capsule.recorded_at)} · {formatDuration(capsule.duration_sec)}</Text></View>{onPlay && <Pressable testID={`capsule-play-${capsule.id}`} accessibilityRole="button" accessibilityLabel={playing ? "Pause" : "Écouter"} onPress={onPlay} style={styles.backButton}><Icon name={playing ? "pause" : "play"} color={colors.brandPrimary} size={20} /></Pressable>}</View>{capsule.transcription ? <Text testID={`capsule-transcription-${capsule.id}`} style={styles.transcription}>« {capsule.transcription} »</Text> : null}<View style={styles.capsuleMeta}><View style={styles.tag}><Text style={styles.tagText}>{capsule.mode === "question" ? capsule.theme : resident?.display_name ?? "À classer"}</Text></View><Text style={styles.small}>{capsule.synced ? "Copie serveur" : "Conservé sur l’appareil"}</Text></View>{busy ? <ActivityIndicator testID={`capsule-busy-${capsule.id}`} size="small" color={colors.brandPrimary} /> : <View style={styles.capsuleActions}>{onTranscribe && <Pressable testID={`capsule-transcribe-${capsule.id}`} accessibilityRole="button" onPress={onTranscribe} style={({ pressed }) => [styles.capsuleAction, pressed && styles.pressed]}><Icon name="text-outline" color={colors.brandPrimary} size={16} /><Text style={styles.capsuleActionText}>{capsule.transcription ? "Retranscrire" : "Transcrire"}</Text></Pressable>}{onShare && <Pressable testID={`capsule-share-${capsule.id}`} accessibilityRole="button" onPress={onShare} style={({ pressed }) => [styles.capsuleAction, pressed && styles.pressed]}><Icon name="share-social-outline" color={colors.brandPrimary} size={16} /><Text style={styles.capsuleActionText}>Partager à la famille</Text></Pressable>}</View>}</View>;
 }
