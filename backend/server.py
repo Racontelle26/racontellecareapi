@@ -3,12 +3,16 @@ import logging
 import os
 from pathlib import Path
 from typing import List, Optional
+import tempfile
 import uuid
 
+import requests
 from dotenv import load_dotenv
-from fastapi import APIRouter, FastAPI, HTTPException, Query
+from fastapi import APIRouter, FastAPI, File, HTTPException, Query, UploadFile
+from fastapi.responses import HTMLResponse, Response
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 from starlette.middleware.cors import CORSMiddleware
 
 ROOT_DIR = Path(__file__).parent
@@ -18,6 +22,49 @@ client = AsyncIOMotorClient(os.environ["MONGO_URL"])
 db = client[os.environ["DB_NAME"]]
 app = FastAPI(title="Racontelle Care API")
 api_router = APIRouter(prefix="/api")
+
+# ---------------------------------------------------------------------------
+# Emergent Object Storage : conservation précieuse des fichiers audio.
+# L'app ne contacte jamais le stockage directement ; tout passe par ici.
+# ---------------------------------------------------------------------------
+STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
+STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
+EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
+APP_NAME = "racontelle-care"
+storage_key: Optional[str] = None
+MAX_AUDIO_BYTES = 25 * 1024 * 1024
+
+
+def init_storage() -> str:
+    """Initialise une fois la clé de stockage, réutilisable ensuite."""
+    global storage_key
+    if storage_key:
+        return storage_key
+    resp = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_KEY}, timeout=30)
+    resp.raise_for_status()
+    storage_key = resp.json()["storage_key"]
+    return storage_key
+
+
+def put_object(path: str, data: bytes, content_type: str) -> dict:
+    resp = requests.put(
+        f"{STORAGE_URL}/objects/{path}",
+        headers={"X-Storage-Key": init_storage(), "Content-Type": content_type},
+        data=data,
+        timeout=120,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def get_object(path: str):
+    resp = requests.get(
+        f"{STORAGE_URL}/objects/{path}",
+        headers={"X-Storage-Key": init_storage()},
+        timeout=60,
+    )
+    resp.raise_for_status()
+    return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
 
 
 def now_iso() -> str:
@@ -83,6 +130,7 @@ class CapsuleOut(BaseModel):
     recorded_at: str
     status: str
     synced: bool = True
+    transcription: Optional[str] = None
 
 
 QUESTIONS = [
@@ -131,6 +179,10 @@ async def ensure_questions() -> None:
 @app.on_event("startup")
 async def startup_seed() -> None:
     await ensure_questions()
+    try:
+        await run_in_threadpool(init_storage)
+    except Exception as exc:
+        logger.warning("stockage objet indisponible au démarrage : %s", exc)
 
 
 @api_router.get("/")
@@ -249,6 +301,155 @@ async def assign_capsule(capsule_id: str, resident_id: str):
     if not doc:
         raise HTTPException(status_code=404, detail="Souvenir introuvable")
     return doc
+
+
+async def read_audio_upload(file: UploadFile) -> bytes:
+    data = await file.read(MAX_AUDIO_BYTES + 1)
+    if len(data) > MAX_AUDIO_BYTES:
+        raise HTTPException(status_code=413, detail="Fichier audio trop volumineux")
+    if not data:
+        raise HTTPException(status_code=400, detail="Fichier audio vide")
+    return data
+
+
+@api_router.post("/capsules/{capsule_id}/audio")
+async def upload_capsule_audio(capsule_id: str, file: UploadFile = File(...)):
+    """Conserve précieusement l'audio d'une capsule dans le stockage objet."""
+    doc = await db.capsules.find_one({"id": capsule_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Souvenir introuvable")
+    data = await read_audio_upload(file)
+    content_type = (file.content_type or "audio/m4a").lower()
+    path = f"{APP_NAME}/audio/{capsule_id}.m4a"
+    try:
+        await run_in_threadpool(put_object, path, data, content_type)
+    except Exception as exc:
+        logger.warning("audio upload failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Stockage audio momentanément indisponible")
+    await db.capsules.update_one(
+        {"id": capsule_id},
+        {"$set": {"storage_path": path, "audio_content_type": content_type}},
+    )
+    return {"uploaded": True, "path": path}
+
+
+@api_router.post("/capsules/{capsule_id}/transcribe")
+async def transcribe_capsule(capsule_id: str, file: UploadFile = File(...)):
+    doc = await db.capsules.find_one({"id": capsule_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Souvenir introuvable")
+    if doc.get("transcription"):
+        return {"transcription": doc["transcription"]}
+    data = await read_audio_upload(file)
+    from emergentintegrations.llm.openai.speech_to_text import OpenAISpeechToText
+
+    suffix = ".webm" if "webm" in (file.content_type or "") else ".m4a"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp.write(data)
+        tmp_path = tmp.name
+    try:
+        stt = OpenAISpeechToText(api_key=EMERGENT_KEY)
+        # litellm attend un objet fichier (pas un chemin) pour l'upload.
+        with open(tmp_path, "rb") as audio_file:
+            result = await stt.transcribe(
+                file=audio_file,
+                model="whisper-1",
+                response_format="json",
+                language="fr",
+                prompt="Souvenir raconté en français par une personne âgée pendant un atelier mémoire en EHPAD.",
+            )
+        text = (getattr(result, "text", None) or str(result)).strip()
+    except Exception as exc:
+        logger.warning("transcription failed: %s", exc)
+        raise HTTPException(status_code=502, detail="Transcription momentanément indisponible")
+    finally:
+        os.unlink(tmp_path)
+    await db.capsules.update_one(
+        {"id": capsule_id},
+        {"$set": {"transcription": text, "transcribed_at": now_iso()}},
+    )
+    return {"transcription": text}
+
+
+@api_router.post("/capsules/{capsule_id}/share")
+async def share_capsule(capsule_id: str):
+    doc = await db.capsules.find_one({"id": capsule_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Souvenir introuvable")
+    if not doc.get("storage_path"):
+        raise HTTPException(status_code=400, detail="Audio pas encore conservé sur le serveur")
+    token = uuid.uuid4().hex
+    await db.share_tokens.insert_one({"token": token, "capsule_id": capsule_id, "created_at": now_iso()})
+    return {"token": token, "path": f"/api/share/{token}"}
+
+
+import html as _html
+
+SHARE_PAGE = """<!doctype html>
+<html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Un souvenir partagé — Racontelle</title>
+<style>
+  body {{ margin:0; font-family: Georgia, 'Times New Roman', serif; background:#FFFFFF; color:#2F3E52; }}
+  main {{ max-width: 560px; margin: 0 auto; padding: 48px 24px 64px; }}
+  .brand {{ font-style: italic; color:#A65F5B; font-size: 30px; margin-bottom: 4px; }}
+  .tagline {{ color:#7C8698; font-size: 13px; letter-spacing: 2px; text-transform: uppercase; }}
+  h1 {{ font-size: 26px; font-weight: 600; margin: 24px 0 4px; }}
+  .meta {{ color:#7C8698; font-size: 14px; margin-bottom: 24px; }}
+  .card {{ background:#F7F3EE; border:1px solid #E9E1D7; border-radius:20px; padding:24px; }}
+  audio {{ width:100%; }}
+  blockquote {{ font-size:19px; line-height:1.55; margin:24px 0 0; padding-left:16px; border-left:3px solid #E7A7A5; }}
+  .footer {{ margin-top:32px; font-size:13px; color:#7C8698; }}
+</style></head>
+<body><main>
+  <div class="brand">Racontelle</div>
+  <div class="tagline">Écouter · Préserver · Transmettre</div>
+  <h1>{title}</h1>
+  <div class="meta">{subtitle}</div>
+  <div class="card">
+    <audio controls src="/api/share/{token}/audio">Votre navigateur ne lit pas cet audio.</audio>
+    {transcription_block}
+  </div>
+  <p class="footer">Ce lien privé a été créé pendant un atelier mémoire. Merci de préserver sa confidentialité.</p>
+</main></body></html>"""
+
+
+@api_router.get("/share/{token}", response_class=HTMLResponse)
+async def share_page(token: str):
+    share = await db.share_tokens.find_one({"token": token}, {"_id": 0})
+    if not share:
+        raise HTTPException(status_code=404, detail="Lien invalide ou expiré")
+    doc = await db.capsules.find_one({"id": share["capsule_id"]}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Souvenir introuvable")
+    resident = None
+    if doc.get("resident_id"):
+        resident = await db.residents.find_one({"id": doc["resident_id"]}, {"_id": 0})
+    title = _html.escape(doc.get("title") or "Souvenir vocal")
+    who = f"raconté par {resident['display_name']}" if resident else "souvenir de l'atelier mémoire"
+    date_label = datetime.fromisoformat(doc["recorded_at"].replace("Z", "+00:00")).strftime("%d/%m/%Y")
+    transcription_block = f"<blockquote>{_html.escape(doc['transcription'])}</blockquote>" if doc.get("transcription") else ""
+    return SHARE_PAGE.format(
+        title=title,
+        subtitle=f"{_html.escape(who)} · {date_label}",
+        token=token,
+        transcription_block=transcription_block,
+    )
+
+
+@api_router.get("/share/{token}/audio")
+async def share_audio(token: str):
+    share = await db.share_tokens.find_one({"token": token}, {"_id": 0})
+    if not share:
+        raise HTTPException(status_code=404, detail="Lien invalide ou expiré")
+    doc = await db.capsules.find_one({"id": share["capsule_id"]}, {"_id": 0})
+    if not doc or not doc.get("storage_path"):
+        raise HTTPException(status_code=404, detail="Audio introuvable")
+    try:
+        data, content_type = await run_in_threadpool(get_object, doc["storage_path"])
+    except Exception:
+        raise HTTPException(status_code=404, detail="Audio introuvable")
+    return Response(content=data, media_type=content_type)
 
 
 app.include_router(api_router)

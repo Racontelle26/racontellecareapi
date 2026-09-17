@@ -23,10 +23,17 @@ Clarifications utilisateur : offline-first avec stockage local (smartphones/tabl
 - **Tests** : `/app/backend/tests/test_racontelle_api.py` (pytest) — vert.
 
 ## Implémenté (sept. 2026)
+- **Espace professionnel** : temps d'utilisation global de l'application et par personne (suivi local des segments fiche/atelier, attribution corrigée au profil sortant), nombre de souvenirs et durée d'audio par résident.
+- **Conservation précieuse de l'audio** : chaque enregistrement quitte le cache système pour le stockage document permanent de l'appareil (`expo-file-system`), puis copie de sauvegarde dans Emergent Object Storage via `POST /api/capsules/{id}/audio`.
+- **Transcription vocale** : Whisper (clé Emergent) via `POST /api/capsules/{id}/transcribe`, affichée dans la carte du souvenir.
+- **Partage famille** : lien privé `GET /api/share/{token}` (page HTML aux couleurs Racontelle + lecteur audio + transcription), lien copié dans le presse-papiers.
+- **Photo de profil** : sélection depuis la galerie (expo-image-picker, permissions contextuelles avec bouton « Ouvrir les réglages »), stockée localement, affichée dans les avatars.
+- **Onde sonore animée** pendant l'enregistrement (react-native-reanimated).
 - Charte graphique Racontelle appliquée : palette blanc doux #FFFFFF, rose thé #E7A7A5, sauge douce #B9C5B3, brun mémoire #A67C63, bleu encre doux #2F3E52 (`src/theme.ts` + `design_guidelines.json`).
 - Typographies officielles chargées via `expo-font` : Allura (titres/accroches), Cormorant Garamond (textes), Montserrat (menus/boutons) — assets dans `frontend/assets/fonts/`.
 - Logo officiel « Racontelle Care » affiché dans l'en-tête d'accueil (`assets/images/racontelle-logo.webp`) ; splash blanc ; app renommée « Racontelle ».
 - Banque de questions extraite des documents fournis (thèmes Enfance, etc., avec marqueur « sensible »).
+- Tests : 9/9 pytest backend (`test_audio_share_api.py`) + parcours frontend validés par le testing agent (itération 3).
 - Flux complet : Accueil → création de profil (max 10, modal scrollable, bouton accessible clavier) → atelier libre ou 3 questions/jour → enregistrement audio → archive datée par profil.
 - Persistance locale JSON (profils + capsules), synchronisation serveur best-effort.
 - `testID` sur les éléments interactifs ; réponses HTTP `201` conformes.

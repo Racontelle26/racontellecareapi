@@ -3,12 +3,12 @@ import { storage } from "@/src/utils/storage";
 import type { Capsule, LocalState, Resident } from "./types";
 
 const KEY = "racontelle.local.v1";
+const DEFAULT_STATE: LocalState = { residents: [], capsules: [], usage: { total_sec: 0, by_resident: {} } };
 
 export async function readLocalState(): Promise<LocalState> {
-  return (await storage.getItem<LocalState>(KEY, { residents: [], capsules: [] })) ?? {
-    residents: [],
-    capsules: [],
-  };
+  const stored = await storage.getItem<LocalState>(KEY, DEFAULT_STATE);
+  // Les états enregistrés avant l'espace professionnel n'ont pas de compteur.
+  return { ...DEFAULT_STATE, ...stored, usage: stored?.usage ?? DEFAULT_STATE.usage };
 }
 
 export async function writeLocalState(state: LocalState): Promise<boolean> {
@@ -17,7 +17,11 @@ export async function writeLocalState(state: LocalState): Promise<boolean> {
 
 export function mergeResidents(local: Resident[], remote: Resident[]): Resident[] {
   const byId = new Map(local.map((resident) => [resident.id, resident]));
-  remote.forEach((resident) => byId.set(resident.id, resident));
+  remote.forEach((resident) => {
+    // La photo du profil vit sur l'appareil (offline-first) : la copie
+    // serveur ne doit jamais l'effacer.
+    byId.set(resident.id, { ...resident, photo_uri: byId.get(resident.id)?.photo_uri ?? null });
+  });
   return Array.from(byId.values()).slice(0, 10);
 }
 

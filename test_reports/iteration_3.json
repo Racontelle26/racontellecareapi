@@ -1,0 +1,53 @@
+{
+  "summary": "Backend: 9/9 pytest pass — audio upload to object storage ({uploaded:true}), Whisper transcription via Emergent key (returns text + persists in GET /residents/{rid}/capsules), share flow (token/path, HTML page 200 with <audio>, audio bytes 200 RIFF round-trip, invalid token 404, share without audio 400, unknown capsule 404). Frontend: home (logo, mode spontané, stats card), add-resident modal with photo picker (resident-photo-button present, creation works), profile-change-photo present, workshop waveform visible, stats screen (stats-global hero + per-person rows, stats-back works), archive filter chips — all working. ONE HIGH bug: per-person usage time is mis-attributed (inverted attribution in commitUsage).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Add resident modal",
+        "issue": "resident-create-button is outside the viewport at 390x844 WHILE the keyboard is open (input has autoFocus). Playwright scroll-into-view could not reach it; after dismissing the keyboard (Escape) the button is tappable. Much improved vs iteration 2 (ScrollView added) but on a real device the user must dismiss the keyboard or scroll to submit.",
+        "testID": "resident-create-button",
+        "priority": "MINOR"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "Usage time tracking per person (stats screen)",
+        "issue": "Inverted attribution in commitUsage (index.tsx:205-225): elapsed time of the PREVIOUS segment is credited to the INCOMING residentId. Opening a profile credits home-screen time to that resident; leaving the profile/workshop credits the 6+s actually spent there to nobody (total only). Observed: after >6s in TEST_Marcel's workshop, stats-row showed only '3 s' (the pre-profile segment) while global total correctly grew. Acceptance criterion 'per-person time > 0 s' passes but for the wrong reason. Fix: attribute elapsed to usageSession.current.residentId (the outgoing segment) BEFORE overwriting it with the new residentId.",
+        "affected_testIDs": ["stats-global", "stats-row-<id>", "home-stats"]
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_audio_share_api.py",
+    "/app/test_reports/pytest/pytest_results.xml",
+    "/app/test_reports/screens/iter3-stats.png",
+    "/app/test_reports/screens/iter3-share.png"
+  ],
+  "action_items": [
+    "Fix usage attribution in app/index.tsx commitUsage: credit elapsed seconds to the outgoing resident (usageSession.current.residentId) before replacing it with the new one. Currently per-person times are wrong (time spent in a resident's workshop is never credited to that resident).",
+    "Optional UX: keep resident-create-button reachable while keyboard is open (e.g. dismiss keyboard on submit-area tap, or move consent/create into a fixed footer of the modal).",
+    "Note (carried from iteration 2): api.ts reads EXPO_PUBLIC_BACKEND_URL / expo extra backendUrl, not EXPO_BACKEND_URL. It works in this workspace because .env defines EXPO_PUBLIC_BACKEND_URL — document or align the contract."
+  ],
+  "critical_code_review_comments": [
+    "index.tsx:205-225 — commitUsage(newResidentId) adds the elapsed previous-segment time to by_resident[newResidentId]; attribution is inverted (see integration_issues).",
+    "index.tsx:208 — segments shorter than 3s are silently discarded; short profile visits never accumulate. Acceptable debounce but worth documenting.",
+    "backend/server.py — solid: upload size cap 25MB (413), empty file 400, transcription cached (second call returns stored text without re-reading the file), share tokens validated 404, HTML escaped. No _id leakage.",
+    "No deprecated Expo packages: expo-audio, expo-image, expo-image-picker, expo-file-system/legacy are all current."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_audio_share_api.py",
+    "/app/test_reports/iteration_3.json"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "90%"},
+  "seed_data_creation": "Created TEST_* residents + capsules with generated WAV for audio/transcribe/share tests; DEACTIVATED all TEST_* residents afterwards (4 active residents remain: 3x Jeanne, Claire — leftovers from iterations 1-2). The 10-profile cap had been reached by test data; now cleared.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All backend endpoints verified working incl. Whisper transcription (previous 502 in logs was transient litellm error; retest passed). Share page renders with working audio player (see iter3-share.png). Audio recording cannot be tested on web preview (browser mic) — record button UI verified only; audio endpoints tested via curl/pytest with generated WAV. Main open bug: per-person usage mis-attribution in commitUsage (index.tsx:205-225). To retest after fix: open a resident workshop >5s, leave, check stats-row shows >=5s credited to THAT resident.",
+  "rca_of_issue": "Bug: per-person usage time wrong. Reproduction: create resident, open profile -> workshop, wait >5s, back to home, open stats. Expected: stats-row for that resident >=5s. Actual: row shows only the small pre-profile segment (3s); workshop time goes to total only. Root cause: commitUsage(residentId) computes elapsed for the segment that just ENDED but credits it to the NEWLY passed residentId instead of usageSession.current.residentId (the segment owner). Mitigation: const owner = usageSession.current.residentId; ... by_resident[owner] += elapsed before assigning the new residentId."
+}

@@ -4,6 +4,7 @@ export type Resident = {
   consent_status: string;
   active: boolean;
   created_at: string;
+  photo_uri?: string | null;
 };
 
 export type Question = {
@@ -25,9 +26,16 @@ export type Capsule = {
   status: "assigned" | "unclassified";
   synced: boolean;
   audio_uri?: string | null;
+  transcription?: string | null;
+};
+
+export type UsageState = {
+  total_sec: number;
+  by_resident: Record<string, number>;
 };
 
 export type LocalState = {
   residents: Resident[];
   capsules: Capsule[];
+  usage: UsageState;
 };
