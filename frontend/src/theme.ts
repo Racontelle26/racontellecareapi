@@ -38,51 +38,49 @@ export type ColorScheme = "light" | "dark";
 const light = {
   // ---------------------------------------------------------------------------
   // Surfaces: backgrounds, from the screen down to small fills.
-  // Each `on` key is the text and icon color for that background.
+  // Charte Racontelle : blanc doux, rose thé, sauge douce, brun mémoire,
+  // bleu encre doux.
   // ---------------------------------------------------------------------------
-  surface: "#FAF6F0",
-  onSurface: "#2C2A29",
-  surfaceSecondary: "#F3EDE2",
-  onSurfaceSecondary: "#4A4643",
-  surfaceTertiary: "#E6DCD0",
-  onSurfaceTertiary: "#2C2A29",
-  surfaceInverse: "#2C2A29",
-  onSurfaceInverse: "#FAF6F0",
-  muted: "#7A736D",
+  surface: "#FFFFFF",
+  onSurface: "#2F3E52",
+  surfaceSecondary: "#F7F3EE",
+  onSurfaceSecondary: "#4A5568",
+  surfaceTertiary: "#EFE8DF",
+  onSurfaceTertiary: "#2F3E52",
+  surfaceInverse: "#2F3E52",
+  onSurfaceInverse: "#FFFFFF",
+  muted: "#7C8698",
 
   // ---------------------------------------------------------------------------
-  // Brand: the identity color and the fills built from it.
-  // Neutral by default; replace with the design guidelines values.
+  // Brand: rose thé #E7A7A5, sauge douce #B9C5B3, bleu encre doux #2F3E52.
   // ---------------------------------------------------------------------------
-  brand: "#8C6D4F",
-  onBrand: "#FFFFFF",
-  brandPrimary: "#73573C",
+  brand: "#E7A7A5",
+  onBrand: "#2F3E52",
+  brandPrimary: "#2F3E52",
   onBrandPrimary: "#FFFFFF",
-  brandSecondary: "#D4C5B9",
-  onBrandSecondary: "#2C2A29",
-  brandTertiary: "#EFE6DB",
-  onBrandTertiary: "#59432E",
+  brandSecondary: "#B9C5B3",
+  onBrandSecondary: "#2F3E52",
+  brandTertiary: "#F6E8E7",
+  onBrandTertiary: "#A65F5B",
 
   // ---------------------------------------------------------------------------
-  // Status: semantic only, never decorative. Fill for badges, banners and
-  // toasts; the `on` key is text on that fill. The plain key is also safe as
-  // text on `surface`.
+  // Status: semantic only. Brun mémoire #A67C63 porte les avertissements.
   // ---------------------------------------------------------------------------
-  success: "#4A6B5D",
+  success: "#5F6E57",
   onSuccess: "#FFFFFF",
-  warning: "#A67C37",
+  warning: "#A67C63",
   onWarning: "#FFFFFF",
-  error: "#9E4738",
+  error: "#B0544E",
   onError: "#FFFFFF",
-  info: "#4A5D73",
+  info: "#2F3E52",
   onInfo: "#FFFFFF",
 
   // ---------------------------------------------------------------------------
   // Lines
   // ---------------------------------------------------------------------------
-  border: "#E0D5C7",
-  borderStrong: "#B8A898",
-  divider: "#E8DFD4",
+  border: "#E9E1D7",
+  borderStrong: "#A67C63",
+  divider: "#F0EAE2",
 };
 
 export type ThemeColors = typeof light;

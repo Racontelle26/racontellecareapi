@@ -7,6 +7,7 @@ import {
   useAudioRecorder,
   useAudioRecorderState,
 } from "expo-audio";
+import { Image } from "expo-image";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -37,75 +38,79 @@ const FALLBACK_QUESTIONS: Question[] = [
   { id: "q3", theme: "Transmission", text: "Quel conseil aimeriez-vous transmettre aux plus jeunes ?", sensitive: false },
 ];
 
+// Charte typographique Racontelle :
+// Allura → titres & accroches (script manuscrit élégant)
+// Cormorant Garamond → textes & corps (serif raffiné et lisible)
+// Montserrat → menus, boutons, petits titres (sans-serif moderne)
 const useStyles = makeStyles((colors) => ({
   root: { flex: 1, backgroundColor: colors.surface },
   screen: { paddingHorizontal: 20, gap: 24 },
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   backButton: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.surfaceSecondary, alignItems: "center", justifyContent: "center" },
-  brand: { color: colors.brandPrimary, fontSize: 28, fontFamily: Platform.select({ ios: "Georgia", default: "serif" }), fontStyle: "italic" },
-  eyebrow: { color: colors.muted, fontSize: 12, letterSpacing: 1.5, textTransform: "uppercase", fontWeight: "700" },
-  title: { color: colors.onSurface, fontSize: 30, lineHeight: 36, fontFamily: Platform.select({ ios: "Georgia", default: "serif" }) },
-  heading: { color: colors.onSurface, fontSize: 22, lineHeight: 28, fontWeight: "700" },
-  body: { color: colors.onSurfaceSecondary, fontSize: 15, lineHeight: 22 },
-  small: { color: colors.muted, fontSize: 13, lineHeight: 18 },
+  logo: { width: 176, height: 56 },
+  eyebrow: { color: colors.muted, fontSize: 12, letterSpacing: 1.5, textTransform: "uppercase", fontFamily: "Montserrat-Bold" },
+  title: { color: colors.onSurface, fontSize: 32, lineHeight: 38, fontFamily: "CormorantGaramond-SemiBold" },
+  heading: { color: colors.onSurface, fontSize: 20, lineHeight: 26, fontFamily: "Montserrat-Bold" },
+  body: { color: colors.onSurfaceSecondary, fontSize: 17, lineHeight: 24, fontFamily: "CormorantGaramond-Regular" },
+  small: { color: colors.muted, fontSize: 13, lineHeight: 18, fontFamily: "Montserrat-Medium" },
   status: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.brandTertiary, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 10 },
-  statusText: { color: colors.onBrandTertiary, fontSize: 13, fontWeight: "700" },
+  statusText: { color: colors.onBrandTertiary, fontSize: 13, fontFamily: "Montserrat-Bold" },
   hero: { backgroundColor: colors.surfaceSecondary, borderRadius: 24, padding: 20, borderWidth: 1, borderColor: colors.border },
-  heroTitle: { color: colors.onSurface, fontSize: 20, lineHeight: 27, fontWeight: "700", marginBottom: 8 },
+  heroTitle: { color: colors.onSurface, fontSize: 22, lineHeight: 29, fontFamily: "CormorantGaramond-SemiBold", marginBottom: 8 },
   actionRow: { flexDirection: "row", gap: 12 },
   actionCard: { flex: 1, minHeight: 126, borderRadius: 20, padding: 16, justifyContent: "space-between", borderWidth: 1, borderColor: colors.border },
   actionPrimary: { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },
   actionSecondary: { backgroundColor: colors.brandTertiary },
-  actionTitle: { color: colors.onSurface, fontSize: 16, fontWeight: "700", lineHeight: 21 },
+  actionTitle: { color: colors.onSurface, fontSize: 15, fontFamily: "Montserrat-Bold", lineHeight: 21 },
   actionTitleLight: { color: colors.onBrandPrimary },
-  actionText: { color: colors.onSurfaceSecondary, fontSize: 12, lineHeight: 17 },
+  actionText: { color: colors.onSurfaceSecondary, fontSize: 13, lineHeight: 18, fontFamily: "CormorantGaramond-Regular" },
   actionTextLight: { color: colors.onBrandPrimary, opacity: 0.88 },
   sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   textButton: { minHeight: 44, justifyContent: "center", paddingHorizontal: 4 },
-  textButtonLabel: { color: colors.brandPrimary, fontSize: 14, fontWeight: "700" },
+  textButtonLabel: { color: colors.brandPrimary, fontSize: 14, fontFamily: "Montserrat-Bold" },
   profileGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   profileCard: { width: "47%", minHeight: 108, borderRadius: 18, padding: 14, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border, justifyContent: "space-between" },
   avatar: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: colors.brandSecondary },
-  avatarText: { color: colors.onBrandSecondary, fontSize: 18, fontWeight: "700" },
-  profileName: { color: colors.onSurface, fontSize: 16, fontWeight: "700", marginTop: 10 },
-  consent: { color: colors.success, fontSize: 11, fontWeight: "700", marginTop: 3 },
+  avatarText: { color: colors.onBrandSecondary, fontSize: 18, fontFamily: "Montserrat-Bold" },
+  profileName: { color: colors.onSurface, fontSize: 16, fontFamily: "Montserrat-Bold", marginTop: 10 },
+  consent: { color: colors.success, fontSize: 11, fontFamily: "Montserrat-Bold", marginTop: 3 },
   empty: { borderRadius: 20, borderWidth: 1, borderColor: colors.border, borderStyle: "dashed", padding: 22, alignItems: "center", gap: 8 },
   primaryButton: { minHeight: 52, borderRadius: 18, backgroundColor: colors.brandPrimary, flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "center", paddingHorizontal: 18 },
-  primaryText: { color: colors.onBrandPrimary, fontSize: 16, fontWeight: "700" },
+  primaryText: { color: colors.onBrandPrimary, fontSize: 16, fontFamily: "Montserrat-Bold" },
   secondaryButton: { minHeight: 52, borderRadius: 18, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.borderStrong, flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "center", paddingHorizontal: 18 },
-  secondaryText: { color: colors.onSurface, fontSize: 16, fontWeight: "700" },
+  secondaryText: { color: colors.onSurface, fontSize: 16, fontFamily: "Montserrat-Bold" },
   profileHeader: { alignItems: "center", gap: 10 },
   largeAvatar: { width: 80, height: 80, borderRadius: 40, backgroundColor: colors.brandSecondary, alignItems: "center", justifyContent: "center" },
-  largeAvatarText: { color: colors.onBrandSecondary, fontSize: 30, fontWeight: "700" },
+  largeAvatarText: { color: colors.onBrandSecondary, fontSize: 30, fontFamily: "Montserrat-Bold" },
   capsule: { borderRadius: 18, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border, padding: 16, gap: 10 },
   capsuleTop: { flexDirection: "row", justifyContent: "space-between", gap: 10 },
-  capsuleTitle: { color: colors.onSurface, fontSize: 15, fontWeight: "700", flex: 1 },
-  capsuleDate: { color: colors.muted, fontSize: 12 },
+  capsuleTitle: { color: colors.onSurface, fontSize: 18, lineHeight: 24, fontFamily: "CormorantGaramond-SemiBold", flex: 1 },
+  capsuleDate: { color: colors.muted, fontSize: 12, fontFamily: "Montserrat-Medium" },
   capsuleMeta: { flexDirection: "row", alignItems: "center", gap: 8 },
   tag: { alignSelf: "flex-start", backgroundColor: colors.brandTertiary, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 },
-  tagText: { color: colors.onBrandTertiary, fontSize: 12, fontWeight: "700" },
+  tagText: { color: colors.onBrandTertiary, fontSize: 12, fontFamily: "Montserrat-Bold" },
   workshopTop: { gap: 10 },
   progressTrack: { height: 8, backgroundColor: colors.surfaceTertiary, borderRadius: 8, overflow: "hidden" },
   progressFill: { height: "100%", backgroundColor: colors.brandPrimary, borderRadius: 8 },
   questionCard: { backgroundColor: colors.surfaceSecondary, borderRadius: 24, padding: 22, borderWidth: 1, borderColor: colors.border, gap: 14 },
-  questionText: { color: colors.onSurface, fontSize: 26, lineHeight: 34, fontFamily: Platform.select({ ios: "Georgia", default: "serif" }) },
+  questionText: { color: colors.onSurface, fontSize: 28, lineHeight: 36, fontFamily: "CormorantGaramond-SemiBold" },
   recorderPanel: { alignItems: "center", gap: 18, paddingVertical: 12 },
   recordButton: { width: 112, height: 112, borderRadius: 56, backgroundColor: colors.error, alignItems: "center", justifyContent: "center", borderWidth: 10, borderColor: colors.brandTertiary },
   recordButtonActive: { backgroundColor: colors.brandPrimary },
-  timer: { color: colors.onSurface, fontSize: 30, fontWeight: "700", letterSpacing: 1 },
-  modalBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(44,42,41,0.24)" },
+  timer: { color: colors.onSurface, fontSize: 30, fontFamily: "Montserrat-Bold", letterSpacing: 1 },
+  modalBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(47,62,82,0.28)" },
   modalCard: { backgroundColor: colors.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, borderTopWidth: 1, borderColor: colors.border, maxHeight: "88%" },
-  input: { minHeight: 54, borderRadius: 16, backgroundColor: colors.surfaceTertiary, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 16, color: colors.onSurface, fontSize: 16 },
+  input: { minHeight: 54, borderRadius: 16, backgroundColor: colors.surfaceTertiary, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 16, color: colors.onSurface, fontSize: 18, fontFamily: "CormorantGaramond-Regular" },
   switchRow: { minHeight: 52, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 14 },
   archiveFilter: { flexDirection: "row", gap: 8, paddingBottom: 2 },
   filter: { minHeight: 42, borderRadius: 999, paddingHorizontal: 14, justifyContent: "center", backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border },
   filterActive: { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },
-  filterText: { color: colors.onSurfaceSecondary, fontSize: 13, fontWeight: "700" },
+  filterText: { color: colors.onSurfaceSecondary, fontSize: 13, fontFamily: "Montserrat-Bold" },
   filterTextActive: { color: colors.onBrandPrimary },
   center: { alignItems: "center", justifyContent: "center", gap: 12 },
   pressed: { opacity: 0.78, transform: [{ scale: 0.985 }] },
   notice: { position: "absolute", left: 18, right: 18, minHeight: 52, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: colors.info, flexDirection: "row", alignItems: "center", gap: 10, shadowColor: colors.surfaceInverse, shadowOpacity: 0.15, shadowRadius: 12, elevation: 3 },
-  noticeText: { flex: 1, color: colors.onInfo, fontSize: 13, lineHeight: 18, fontWeight: "600" },
+  noticeText: { flex: 1, color: colors.onInfo, fontSize: 13, lineHeight: 18, fontFamily: "Montserrat-Medium" },
 }));
 
 function Icon({ name, color, size = 22 }: { name: keyof typeof Ionicons.glyphMap; color: string; size?: number }) {
@@ -325,7 +330,7 @@ export default function Index() {
 
 function HomeScreen({ styles, colors, insets, state, onAdd, onProfile, onFree, onArchive, notice }: any) {
   return <ScrollView testID="home-screen" contentContainerStyle={[styles.screen, { paddingTop: insets.top + 22, paddingBottom: insets.bottom + 32 }]}>
-    <View style={styles.header}><View><Text style={styles.eyebrow}>Carnet de l’atelier</Text><Text style={styles.brand}>Racontelle</Text></View><View style={styles.avatar}><Icon name="leaf-outline" color={colors.brandPrimary} /></View></View>
+    <View style={styles.header}><View><Text style={styles.eyebrow}>Carnet de l’atelier</Text><Image testID="home-logo" source={require("../assets/images/racontelle-logo.webp")} style={styles.logo} contentFit="contain" /></View><View style={styles.avatar}><Icon name="leaf-outline" color={colors.onBrandSecondary} /></View></View>
     <View style={styles.status}><Icon name="cloud-offline-outline" color={colors.onBrandTertiary} size={18} /><Text style={styles.statusText}>Mode local actif</Text></View>
     <View style={styles.hero}><Text style={styles.heroTitle}>Les voix que l’on aime racontent les plus belles histoires.</Text><Text style={styles.body}>Un espace simple pour écouter, préserver et transmettre les souvenirs de l’atelier.</Text></View>
     <View style={styles.actionRow}><Pressable testID="home-free-mode" accessibilityRole="button" onPress={onFree} style={({ pressed }) => [styles.actionCard, styles.actionPrimary, pressed && styles.pressed]}><Icon name="mic-outline" color={colors.onBrandPrimary} size={26} /><View><Text style={[styles.actionTitle, styles.actionTitleLight]}>Mode spontané</Text><Text style={[styles.actionText, styles.actionTextLight]}>Enregistrer sans choisir de personne</Text></View></Pressable><Pressable testID="home-archive" accessibilityRole="button" onPress={onArchive} style={({ pressed }) => [styles.actionCard, styles.actionSecondary, pressed && styles.pressed]}><Icon name="albums-outline" color={colors.onBrandTertiary} size={26} /><View><Text style={styles.actionTitle}>Mes souvenirs</Text><Text style={styles.actionText}>Retrouver le carnet audio</Text></View></Pressable></View>
