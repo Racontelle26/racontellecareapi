@@ -1,0 +1,50 @@
+{
+  "summary": "First full test after MVP. Backend: 23/23 pytest cases pass (auth, circle, invitations owner-only + join + resend/revoke, themes filter sensitives, 400 questions seeded, surprise, up-to-3 daily w/ per-member state, capsule multipart upload + tree_level growth + daily state=answered side effect, audio streaming with JWT query token, cross-circle isolation returns 404/403, soft delete, preferences PATCH, feedback POST). Frontend: welcome -> register -> circle setup -> home tab all wired; home shows circle name, capsule count, growing tree, exactly 3 daily-question cards, members row + Inviter button; members screen renders with owner + invite CTA; profile / album / raconter tabs render (JS runs — bootstrap 'You need to enable JavaScript' is only the pre-hydration shell). No red-screen. No deprecated packages (expo-audio + expo-video already used, no expo-av). RN-web console deprecations (props.pointerEvents, shadow*) are minor upstream warnings — not blockers.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/capsules/{id}/audio", "issue": "Missing token → 422 (FastAPI validation) instead of 401. Cosmetic; playbook says 401. Consider Query(None) + explicit 401."},
+      {"endpoint": "POST /api/daily-question/state", "issue": "No validation that state ∈ {viewed,skipped,answered} — any string accepted. Recommend Literal[...]"},
+      {"endpoint": "POST /api/capsules", "issue": "duration_sec accepted with no lower/upper bound and no server-side re-verification of daily_question_id ownership (relies on narrator/circle only). Low risk."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "profile.tsx", "issue": "PRÉNOM text field appeared empty right after account creation while member row already shows 'UI Owner'. Likely initial state not seeded from /auth/me until refresh. Verify TextField defaultValue={member.display_name}.", "testID": "profile-name", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "web preview console", "issues": ["'props.pointerEvents is deprecated. Use style.pointerEvents' warning from a component (likely GrowingTree or Card). Migrate to style.pointerEvents to silence.", "'shadow* style props are deprecated. Use boxShadow' warning — safe to keep on native, but noisy on web."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/conftest.py",
+    "/app/backend/tests/test_racontelle_backend.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "(optional) Tighten daily-state validation with Literal['viewed','skipped','answered'].",
+    "(optional) Return 401 instead of 422 when /capsules/{id}/audio is called without token.",
+    "(low) Prefill PRÉNOM field on Profile from /auth/me on first mount so users don't see it blank right after registration.",
+    "(low) Replace props.pointerEvents / shadow* with style.pointerEvents / boxShadow to remove RN-web deprecation warnings."
+  ],
+  "critical_code_review_comments": [
+    "server.py is 928 lines — consider splitting (auth / circle / questions / capsules / prefs) once the surface stabilises.",
+    "tree_level milestones hardcoded in backend AND consumed on frontend — good single source of truth (backend returns level/max/next_at).",
+    "clean() correctly strips _id and password_hash from every response.",
+    "Circle isolation is enforced at every capsule route via circle_id match — verified by cross-circle 404 test.",
+    "Invitations create a pending member row and mark it active on accept — good UX; owner-only guard on create/resend/revoke is enforced."
+  ],
+  "updated_files": [
+    "/app/backend/tests/__init__.py (created)",
+    "/app/backend/tests/conftest.py (created)",
+    "/app/backend/tests/test_racontelle_backend.py (created)"
+  ],
+  "success_rate": {"backend": "100% (23/23)", "frontend": "100% of tested flows (welcome, register, circle setup, home w/ tree + 3 daily, members nav, album/questions/profile render)"},
+  "seed_data_creation": "Tests self-create TEST_owner_*/TEST_member_*/TEST_other_* accounts + 2 circles + 1 capsule (soft-deleted at the end of the capsule suite). No manual seed required — questions bank auto-seeds on backend startup.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend uses pytest-xdist with -n 2 --dist loadscope by default. This suite MUST run serial (`-n 0`) because tests share session-scoped fixtures (owner_ctx, member_ctx) and pass capsule_id across TestCapsules methods. Run: `pytest backend/tests/test_racontelle_backend.py -v -n 0`. Backend external URL: https://family-stories-34.preview.emergentagent.com/api. Real mic recording is NOT testable in headless browser — upload capsules via POST /api/capsules multipart (see conftest.wav_bytes()).",
+  "rca_of_issue": "N/A — no critical bugs found. One first-run flake root-caused: running the suite with default `-n 2 loadscope` caused both xdist workers to hit the SAME session fixture with an identical email timestamp, producing DuplicateKeyError on /auth/register. Fix: run `-n 0` (documented above)."
+}

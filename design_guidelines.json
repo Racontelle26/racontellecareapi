@@ -1,0 +1,154 @@
+{
+  "app_name": "Racontelle Family",
+  "personality": "3 Editorial structure with 8 Hand-Drawn warmth and textures",
+  "personality_one_liner": "A soft, warm, and precious family keepsake that feels like an elegantly handwritten journal, blending refined typography with organic textures and dusty rose accents.",
+  "color": {
+    "surface": "#FDFBF7",
+    "onSurface": "#3A332C",
+    "surfaceSecondary": "#F5F2EB",
+    "onSurfaceSecondary": "#4A423B",
+    "surfaceTertiary": "#EBE6DC",
+    "onSurfaceTertiary": "#5C5249",
+    "surfaceInverse": "#3A332C",
+    "onSurfaceInverse": "#FDFBF7",
+    "brand": "#C98B8B",
+    "onBrand": "#FDFBF7",
+    "brandPrimary": "#B57477",
+    "onBrandPrimary": "#FDFBF7",
+    "brandSecondary": "#738A70",
+    "onBrandSecondary": "#FDFBF7",
+    "brandTertiary": "#F2DADA",
+    "onBrandTertiary": "#824D4D",
+    "success": "#738A70",
+    "onSuccess": "#FDFBF7",
+    "warning": "#D1A054",
+    "onWarning": "#FDFBF7",
+    "error": "#A85252",
+    "onError": "#FDFBF7",
+    "info": "#8A9691",
+    "onInfo": "#FDFBF7",
+    "border": "#EBE6DC",
+    "borderStrong": "#D6CFC1",
+    "divider": "#EBE6DC",
+    "muted": "#8A8177"
+  },
+  "typography": {
+    "displayFontFamily": "Cormorant Garamond",
+    "textFontFamily": "DM Sans",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Generous editorial spacing with breathable vertical rhythms, avoiding dense card layouts. Soft padding around content to enhance the keepsake feel.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": "0",
+  "navigation": "bottom_tabs",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": "false",
+    "do's": [
+      "Use solid surfaceSecondary with soft borders for elevation instead of glass, maintaining the matte paper aesthetic."
+    ],
+    "dont's": [
+      "No blur or glassmorphism, as it contradicts the hand-drawn, tactile, and natural paper vibe."
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Home (Accueil)",
+      "purpose": "A visual dashboard centered around the symbolic 'Growing Tree' and daily engagement.",
+      "states": {
+        "loading": "A delicate, slow-spinning leafy sprig in brandSecondary.",
+        "empty": "A barren but beautifully sketched tree outline, prompting the user to record their first memory to make it grow.",
+        "error": "A soft text message 'Impossible de charger l'arbre' with a Retry button."
+      },
+      "layout": "Editorial layout. A large, organic hero section featuring the symbolic Growing Tree (an illustration that gains moss-green leaves and dusty-rose flowers as recordings increase). Below the tree, a horizontal scrolling list of 'Questions of the day' (up to 3) in soft surfaceTertiary cards. A section below lists family members with elegant circular avatars."
+    },
+    {
+      "name": "Record & Questions (Capsules)",
+      "purpose": "The core recording interface and question bank to prompt storytelling.",
+      "states": {
+        "loading": "A soft pulsing dot in brandPrimary.",
+        "empty": "No questions selected; showing themed categories to browse.",
+        "error": "Microphone access denied message with a settings link."
+      },
+      "layout": "High-contrast minimalist structure but using warm colors. When recording: A large central timer in Cormorant Garamond, a real-time waveform, and a prominent dusty rose pill button for Start/Pause. When browsing: A grid of themes (Childhood, Love, Career) using brandTertiary tinted containers. Sticky primary CTA at the bottom to 'Start free recording'."
+    },
+    {
+      "name": "Voice Album (Album)",
+      "purpose": "A chronological, private archive of all collected family memories.",
+      "states": {
+        "loading": "Skeleton rows fading smoothly.",
+        "empty": "An elegant vintage photo album illustration with text 'Vos souvenirs s'écriront ici' (Your memories will be written here).",
+        "error": "Unable to load memories message."
+      },
+      "layout": "Scrapbook/Journal rhythm. A pinned filter row at the top (by Narrator, by Theme) using pill shapes. Memories are displayed as a vertical list of elegant cards (surfaceSecondary with a 0.5pt border) featuring the narrator's avatar, date, theme tag, and a soft play button. No heavy shadows."
+    },
+    {
+      "name": "Capsule Detail",
+      "purpose": "Immersive playback of a specific memory.",
+      "states": {
+        "loading": "Loading audio buffer.",
+        "empty": "N/A",
+        "error": "Audio unavailable, Retry."
+      },
+      "layout": "Cinematic yet soft. A cover image (family photo or brand-tinted gradient) with a gradient-to-dark scrim. The title of the question is displayed large in Cormorant Garamond over the scrim. Below the image: audio scrubber, play/pause controls, and text notes. The layout feels like a page from a premium novel."
+    }
+  ],
+  "images": {
+    "home_hero_tree_empty": {
+      "url": "https://images.unsplash.com/photo-1584282000185-87fb204a83d6?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzl8MHwxfHNlYXJjaHwxfHxkZWxpY2F0ZSUyMGR1c3R5JTIwcm9zZSUyMGZsb3JhbCUyMGlsbHVzdHJhdGlvbnxlbnwwfHx8fDE3ODk2NDg2NDF8MA&ixlib=rb-4.1.0&q=85",
+      "alt": "A delicate dusty rose and green botanical painting"
+    },
+    "album_empty_state": {
+      "url": "https://images.pexels.com/photos/9107392/pexels-photo-9107392.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "alt": "A nostalgic still life of vintage photographs and letters"
+    }
+  },
+  "haptics": {
+    "record_start_stop": "heavy",
+    "tab_change": "light",
+    "question_select": "medium",
+    "audio_play_pause": "light"
+  },
+  "instructions_to_main_agent": [
+    "Strictly follow the color palette. Blue and purple are completely banned. Use the deep warm brown (#3A332C) instead of black for text to maintain the soft aesthetic.",
+    "Implement the 'Growing Tree' on the Home screen as a central visual element. It should visually scale or change state (more leaves/flowers) based on the number of capsules recorded.",
+    "Ensure headings use Cormorant Garamond (max weight 500) and body text uses DM Sans. Never use bold/heavy font weights; rely on font size for hierarchy.",
+    "Borders should be used instead of shadows to separate elements, keeping a flat, matte-paper editorial feel.",
+    "For any image with text overlaid (like the Capsule Detail header), you MUST apply the top-to-bottom vertical linear gradient scrim (transparent to surfaceInverse) to ensure text readability.",
+    "The audio recorder should feature a prominent timer and a simple, highly visible waveform, prioritizing usability for all family members.",
+    "Remember the app is exclusively in French. All placeholder text, empty states, and labels must be in French.",
+    "For the bottom tabs, use outlined inactive and filled active states for the Phosphor icons."
+  ]
+}
