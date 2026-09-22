@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { api, setToken, clearToken, getToken } from "@/src/api/client";
 
 export type User = {
@@ -40,6 +41,7 @@ const AuthContext = createContext<AuthState | undefined>(undefined);
 type MeResponse = { user: User; member: Member | null; has_circle: boolean };
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const queryClient = useQueryClient();
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<User | null>(null);
   const [member, setMember] = useState<Member | null>(null);
@@ -65,24 +67,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = useCallback(async (email: string, password: string) => {
     const res = await api.post<{ access_token: string; user: User }>("/auth/login", { email, password });
+    await queryClient.cancelQueries();
+    queryClient.clear();
     await setToken(res.access_token);
     await refresh();
-  }, [refresh]);
+  }, [queryClient, refresh]);
 
   const signUp = useCallback(
     async (payload: { email: string; password: string; display_name: string; relationship_label?: string }) => {
       const res = await api.post<{ access_token: string; user: User }>("/auth/register", payload);
+      await queryClient.cancelQueries();
+      queryClient.clear();
       await setToken(res.access_token);
       await refresh();
     },
-    [refresh],
+    [queryClient, refresh],
   );
 
   const signOut = useCallback(async () => {
+    await queryClient.cancelQueries();
+    queryClient.clear();
     await clearToken();
     setUser(null);
     setMember(null);
-  }, []);
+  }, [queryClient]);
 
   return (
     <AuthContext.Provider

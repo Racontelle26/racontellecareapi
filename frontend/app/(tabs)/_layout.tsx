@@ -61,28 +61,28 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: "Accueil",
-          tabBarIcon: ({ color, focused }) => <House color={color} size={24} weight={focused ? "fill" : "regular"} />,
+          tabBarIcon: ({ color, focused }) => <House color={color as string} size={24} weight={focused ? "fill" : "regular"} />,
         }}
       />
       <Tabs.Screen
         name="questions"
         options={{
           title: "Raconter",
-          tabBarIcon: ({ color, focused }) => <MicrophoneStage color={color} size={24} weight={focused ? "fill" : "regular"} />,
+          tabBarIcon: ({ color, focused }) => <MicrophoneStage color={color as string} size={24} weight={focused ? "fill" : "regular"} />,
         }}
       />
       <Tabs.Screen
         name="album"
         options={{
           title: "Album",
-          tabBarIcon: ({ color, focused }) => <BookOpen color={color} size={24} weight={focused ? "fill" : "regular"} />,
+          tabBarIcon: ({ color, focused }) => <BookOpen color={color as string} size={24} weight={focused ? "fill" : "regular"} />,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: "Profil",
-          tabBarIcon: ({ color, focused }) => <User color={color} size={24} weight={focused ? "fill" : "regular"} />,
+          tabBarIcon: ({ color, focused }) => <User color={color as string} size={24} weight={focused ? "fill" : "regular"} />,
         }}
       />
     </Tabs>

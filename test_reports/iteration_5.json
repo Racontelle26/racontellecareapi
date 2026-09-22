@@ -1,0 +1,56 @@
+{
+  "summary": "Tests complets backend+frontend mobile (390x844) exécutés sur l’URL publique. P0 validé: Question du jour -> enregistrer (>1s) -> arrêt -> zone VOTRE ENREGISTREMENT -> préécoute record-play -> sauvegarde -> redirection /capsule/{id}, présence album, état Répondu accueil. Flux Raconter (question thématique) validé avec sauvegarde et bonne question affichée. Flux Sur le vif validé avec préécoute et sauvegarde. Vérifs générales validées: connexion, ignorer question du jour, recherche album + état vide, lecture audio détail, profil sauvegarde, membres invitation/renvoi/annulation, feedback, déconnexion/reconnexion, absence d’écran rouge/crash bloquant.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Livre romancé (liste/génération/PDF)",
+        "issue": "Après clic sur Générer un chapitre, l’écran est passé en état chargement puis revenu sans chapitre visible; impossible de valider lecture/suppression chapitre ni présence bouton PDF dans ce run.",
+        "affected_testIDs": ["book-generate", "book-export-pdf"]
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": [
+      {
+        "component": "Console Expo web",
+        "issue": "Warnings non bloquants persistants: props.pointerEvents déprécié, shadow* déprécié, Animated useNativeDriver fallback JS."
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration5_backend_core.py",
+    "/app/test_reports/pytest/pytest_iteration5.xml",
+    "/app/test_reports/iteration_5.json",
+    "/app/test_reports/artifacts_iter5/p0_recording_flows.png",
+    "/app/test_reports/artifacts_iter5/general_actions.png",
+    "/app/test_reports/artifacts_iter5/final_checks.png"
+  ],
+  "action_items": [
+    "Corriger/stabiliser le flux Livre: garantir retour visible (chapitre créé ou erreur explicite toast) après book-generate.",
+    "Retester explicitement présence du bouton PDF après génération d’au moins 1 chapitre.",
+    "Optionnel: nettoyer les warnings console dépréciés (pointerEvents/shadow*)."
+  ],
+  "critical_code_review_comments": [
+    "backend /api/capsules multipart avec photos multiples fonctionne et persiste (11/11 tests backend pass).",
+    "Isolation inter-cercles validée sur audio protégé et chapitre livre (404/403 attendu).",
+    "frontend/src/api/client.ts expose photoUrl() vers /capsules/{id}/photo (ancien endpoint), alors que les écrans utilisent /photos/{photo_id}; fonction morte à nettoyer pour éviter confusion.",
+    "backend/tests/conftest.py contient un fallback d’URL codé en dur, non aligné avec la règle 'env only' (mineur mais à corriger pour robustesse)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration5_backend_core.py",
+    "/app/test_reports/iteration_5.json"
+  ],
+  "success_rate": {
+    "backend": "100% (11/11)",
+    "frontend": "~88% des parcours demandés validés; bloc principal restant sur Livre génération/PDF"
+  },
+  "seed_data_creation": "Données de test créées via API publique: comptes TEST_i5_*, cercle, capsules audio, capsules avec photos, invitations, feedback, chapitre (backend test).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "P0 enregistrement/préécoute/sauvegarde est validé en UI réelle sur compte verification@racontelle.fr. Pour livre, reproduire sur /book: clic book-generate puis attendre >30s et confirmer chapitre visible + bouton book-export-pdf.",
+  "rca_of_issue": "RCA probable du bloc Livre UI: génération déclenchée côté interface mais résultat non matérialisé dans la liste dans le run Playwright (soit réponse API échoue sans message utilisateur explicite, soit invalidation/refetch chapitres manquante dans ce timing). Reproduction: login -> accueil -> home-book-cta -> book-generate -> attendre état de fin; attendu: apparition chapter-* et, si au moins un chapitre, book-export-pdf."
+}

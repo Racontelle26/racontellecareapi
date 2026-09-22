@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { View, Pressable, ScrollView, Linking, Platform } from "react-native";
+import { View, Pressable, ScrollView, Linking, Platform, ActivityIndicator } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -43,12 +43,13 @@ export default function RecordScreen() {
   const recState = useAudioRecorderState(recorder);
   const [recordedUri, setRecordedUri] = useState<string | null>(null);
   const [durationSec, setDurationSec] = useState(0);
-  const player = useAudioPlayer(recordedUri || undefined);
+  const player = useAudioPlayer(null);
   const playStatus = useAudioPlayerStatus(player);
 
   const [permission, setPermission] = useState<"unknown" | "granted" | "denied" | "blocked">("unknown");
   const [uploading, setUploading] = useState(false);
-  const [photo, setPhoto] = useState<{ uri: string; mime: string } | null>(null);
+  const [photos, setPhotos] = useState<{ uri: string; mime: string }[]>([]);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   const pickFromLibrary = async () => {
     let perm = await ImagePicker.getMediaLibraryPermissionsAsync();
@@ -58,8 +59,10 @@ export default function RecordScreen() {
       else toast.show("Accès aux photos refusé", "error");
       return;
     }
-    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.7 });
-    if (!res.canceled && res.assets?.[0]) setPhoto({ uri: res.assets[0].uri, mime: res.assets[0].mimeType || "image/jpeg" });
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.7, allowsMultipleSelection: true, selectionLimit: 10 });
+    if (!res.canceled && res.assets?.length) {
+      setPhotos((prev) => [...prev, ...res.assets.map((a) => ({ uri: a.uri, mime: a.mimeType || "image/jpeg" }))]);
+    }
   };
 
   const takePhoto = async () => {
@@ -71,7 +74,9 @@ export default function RecordScreen() {
       return;
     }
     const res = await ImagePicker.launchCameraAsync({ quality: 0.7 });
-    if (!res.canceled && res.assets?.[0]) setPhoto({ uri: res.assets[0].uri, mime: res.assets[0].mimeType || "image/jpeg" });
+    if (!res.canceled && res.assets?.[0]) {
+      setPhotos((prev) => [...prev, { uri: res.assets[0].uri, mime: res.assets[0].mimeType || "image/jpeg" }]);
+    }
   };
 
   const membersQ = useQuery({ queryKey: ["members"], queryFn: () => api.get<Member[]>("/circle/members") });
@@ -111,7 +116,12 @@ export default function RecordScreen() {
       return;
     }
     try {
+      player.pause();
+      player.replace(null);
       setRecordedUri(null);
+      setDurationSec(0);
+      setPreviewLoading(false);
+      await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: true });
       await recorder.prepareToRecordAsync();
       recorder.record();
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
@@ -122,35 +132,64 @@ export default function RecordScreen() {
 
   const stopRecording = async () => {
     try {
+      const durationBeforeStop = Math.max(recState.durationMillis || 0, recorder.currentTime * 1000);
       await recorder.stop();
+      const uri = recorder.uri;
+      if (!uri) throw new Error("Aucun fichier audio créé");
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
-      setDurationSec(Math.round((recState.durationMillis || 0) / 1000));
-      setRecordedUri(recorder.uri ?? null);
+      setDurationSec(Math.max(1, Math.round(durationBeforeStop / 1000)));
+      setRecordedUri(uri);
+      setPreviewLoading(true);
+      await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false });
+      player.replace({ uri });
+      setPreviewLoading(false);
     } catch {
       toast.show("Erreur à l’arrêt de l’enregistrement", "error");
     }
   };
 
-  const togglePlay = () => {
-    if (playStatus.playing) player.pause();
-    else {
-      if ((playStatus.currentTime || 0) >= (playStatus.duration || 1) - 0.1) player.seekTo(0);
-      player.play();
+  useEffect(() => {
+    if (playStatus.isLoaded) setPreviewLoading(false);
+  }, [playStatus.isLoaded]);
+
+  const togglePlay = async () => {
+    try {
+      await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false });
+      if (playStatus.playing) player.pause();
+      else {
+        if ((playStatus.currentTime || 0) >= (playStatus.duration || 1) - 0.1) await player.seekTo(0);
+        player.play();
+      }
+    } catch {
+      toast.show("Impossible de réécouter cet enregistrement", "error");
     }
   };
 
   const reRecord = () => {
+    player.pause();
+    player.replace(null);
     setRecordedUri(null);
     setDurationSec(0);
+    setPreviewLoading(false);
   };
 
   const save = async () => {
-    if (!recordedUri || !narratorId) return;
+    if (!recordedUri) {
+      toast.show("Enregistrez d’abord votre réponse", "error");
+      return;
+    }
+    const selectedNarratorId = narratorId || member?.id;
+    if (!selectedNarratorId) {
+      toast.show("Choisissez la personne qui raconte", "error");
+      membersQ.refetch();
+      return;
+    }
     setUploading(true);
     try {
+      player.pause();
       const form = new FormData();
-      form.append("narrator_member_id", narratorId);
-      form.append("duration_sec", String(durationSec || Math.round((recState.durationMillis || 0) / 1000)));
+      form.append("narrator_member_id", selectedNarratorId);
+      form.append("duration_sec", String(Math.max(1, durationSec)));
       if (params.questionId) form.append("question_id", String(params.questionId));
       if (params.dailyId) form.append("daily_question_id", String(params.dailyId));
       if (params.theme) form.append("theme", String(params.theme));
@@ -160,35 +199,47 @@ export default function RecordScreen() {
         const blob = await (await fetch(recordedUri)).blob();
         form.append("file", blob, name);
       } else {
-        form.append("file", { uri: recordedUri, name, type: "audio/m4a" } as any);
+        form.append("file", { uri: recordedUri, name, type: "audio/mp4" } as any);
       }
-      if (photo) {
-        const pext = photo.mime.includes("png") ? "png" : photo.mime.includes("webp") ? "webp" : "jpg";
-        const pname = `photo-${Date.now()}.${pext}`;
-        if (Platform.OS === "web") {
-          const pblob = await (await fetch(photo.uri)).blob();
-          form.append("photo", pblob, pname);
-        } else {
-          form.append("photo", { uri: photo.uri, name: pname, type: photo.mime } as any);
+      if (photos.length) {
+        for (let i = 0; i < photos.length; i++) {
+          const p = photos[i];
+          const pext = p.mime.includes("png") ? "png" : p.mime.includes("webp") ? "webp" : "jpg";
+          const pname = `photo-${Date.now()}-${i}.${pext}`;
+          if (Platform.OS === "web") {
+            const pblob = await (await fetch(p.uri)).blob();
+            form.append("photos", pblob, pname);
+          } else {
+            form.append("photos", { uri: p.uri, name: pname, type: p.mime } as any);
+          }
         }
       }
       const token = await getToken();
+      if (!token) throw new Error("Votre session a expiré. Reconnectez-vous.");
       const res = await fetch(`${API_BASE}/capsules`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
         body: form,
       });
       if (!res.ok) {
-        const t = await res.text();
-        throw new Error(t || "Échec de l’envoi");
+        const raw = await res.text();
+        let message = "Échec de l’envoi";
+        try {
+          const parsed = JSON.parse(raw);
+          message = parsed.detail || parsed.message || message;
+        } catch {
+          if (raw) message = raw;
+        }
+        throw new Error(message);
       }
+      const saved = await res.json();
       qc.invalidateQueries({ queryKey: ["capsules"] });
       qc.invalidateQueries({ queryKey: ["circle"] });
       qc.invalidateQueries({ queryKey: ["daily"] });
-      toast.show("Souvenir enregistré 🌱", "success");
-      router.back();
-    } catch {
-      toast.show("Impossible d’enregistrer le souvenir", "error");
+      toast.show("Votre réponse est bien enregistrée", "success");
+      router.replace(`/capsule/${saved.id}`);
+    } catch (e: any) {
+      toast.show(e?.message || "Impossible d’enregistrer le souvenir", "error");
     } finally {
       setUploading(false);
     }
@@ -210,10 +261,10 @@ export default function RecordScreen() {
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {params.questionText ? (
           <View style={styles.questionBox}>
-            <Title style={styles.question}>{params.questionText}</Title>
+            <Title style={styles.question} testID="record-question-text">{params.questionText}</Title>
           </View>
         ) : (
-          <Title style={styles.question}>Racontez ce que vous voulez transmettre</Title>
+          <Title style={styles.question} testID="record-question-text">Racontez ce que vous voulez transmettre</Title>
         )}
 
         {/* Narrator */}
@@ -235,27 +286,34 @@ export default function RecordScreen() {
           })}
         </ScrollView>
 
-        {/* Photo */}
-        <Label style={styles.sectionLabel}>PHOTO (OPTIONNEL)</Label>
-        {photo ? (
-          <View style={styles.photoWrap}>
-            <Image source={{ uri: photo.uri }} style={styles.photoPreview} contentFit="cover" />
-            <Pressable style={styles.photoRemove} testID="record-photo-remove" onPress={() => setPhoto(null)}>
-              <X color={colors.onBrandPrimary} size={16} weight="bold" />
-            </Pressable>
-          </View>
-        ) : (
-          <View style={styles.photoButtons}>
-            <Pressable style={styles.photoBtn} testID="record-photo-library" onPress={pickFromLibrary}>
-              <ImageSquare color={colors.brandPrimary} size={22} />
-              <Label style={styles.photoBtnText}>Galerie</Label>
-            </Pressable>
-            <Pressable style={styles.photoBtn} testID="record-photo-camera" onPress={takePhoto}>
-              <Camera color={colors.brandPrimary} size={22} />
-              <Label style={styles.photoBtnText}>Appareil photo</Label>
-            </Pressable>
-          </View>
-        )}
+        {/* Photos */}
+        <Label style={styles.sectionLabel}>PHOTOS (OPTIONNEL)</Label>
+        {photos.length > 0 ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photosRow}>
+            {photos.map((p, i) => (
+              <View key={`${p.uri}-${i}`} style={styles.photoWrap}>
+                <Image source={{ uri: p.uri }} style={styles.photoPreview} contentFit="cover" />
+                <Pressable
+                  style={styles.photoRemove}
+                  testID={`record-photo-remove-${i}`}
+                  onPress={() => setPhotos((prev) => prev.filter((_, idx) => idx !== i))}
+                >
+                  <X color={colors.onBrandPrimary} size={14} weight="bold" />
+                </Pressable>
+              </View>
+            ))}
+          </ScrollView>
+        ) : null}
+        <View style={styles.photoButtons}>
+          <Pressable style={styles.photoBtn} testID="record-photo-library" onPress={pickFromLibrary}>
+            <ImageSquare color={colors.brandPrimary} size={22} />
+            <Label style={styles.photoBtnText}>Galerie</Label>
+          </Pressable>
+          <Pressable style={styles.photoBtn} testID="record-photo-camera" onPress={takePhoto}>
+            <Camera color={colors.brandPrimary} size={22} />
+            <Label style={styles.photoBtnText}>Appareil photo</Label>
+          </Pressable>
+        </View>
 
         {/* Recorder */}
         <View style={styles.recorder}>
@@ -277,25 +335,37 @@ export default function RecordScreen() {
               {isRecording ? <Stop color={colors.onBrandPrimary} size={40} weight="fill" /> : <Microphone color={colors.onBrandPrimary} size={44} weight="fill" />}
             </Pressable>
           ) : (
-            <View style={styles.previewRow}>
+            <View style={styles.previewArea} testID="record-preview">
+              <Label style={styles.previewTitle}>VOTRE ENREGISTREMENT</Label>
+              <View style={styles.previewRow}>
               <Pressable testID="record-reset" onPress={reRecord} style={styles.smallBtn}>
                 <ArrowClockwise color={colors.onSurface} size={24} />
               </Pressable>
-              <Pressable testID="record-play" onPress={togglePlay} style={styles.recBtn}>
-                {playStatus.playing ? <Pause color={colors.onBrandPrimary} size={38} weight="fill" /> : <Play color={colors.onBrandPrimary} size={38} weight="fill" />}
+              <Pressable testID="record-play" onPress={togglePlay} style={styles.recBtn} disabled={previewLoading}>
+                {previewLoading ? (
+                  <ActivityIndicator color={colors.onBrandPrimary} />
+                ) : playStatus.playing ? (
+                  <Pause color={colors.onBrandPrimary} size={38} weight="fill" />
+                ) : (
+                  <Play color={colors.onBrandPrimary} size={38} weight="fill" />
+                )}
               </Pressable>
               <View style={styles.smallBtn} />
+              </View>
+              <Body muted style={styles.previewHelp}>Écoutez votre réponse avant de la conserver, ou recommencez.</Body>
             </View>
           )}
 
           <Body muted style={styles.hint}>
-            {isRecording ? "Enregistrement en cours…" : recordedUri ? "Réécoutez, puis conservez ce souvenir" : "Appuyez pour commencer à raconter"}
+            {recordedUri ? "Réécoutez, puis enregistrez votre réponse" : isRecording ? "Enregistrement en cours…" : "Appuyez pour commencer à raconter"}
           </Body>
         </View>
       </ScrollView>
 
       {recordedUri ? (
-        <Button title="Conserver ce souvenir" testID="record-save" loading={uploading} onPress={save} icon={<Check color={colors.onBrandPrimary} size={20} weight="bold" />} />
+        <View style={styles.saveArea}>
+          <Button title="Enregistrer cette réponse" testID="record-save" loading={uploading} onPress={save} icon={<Check color={colors.onBrandPrimary} size={20} weight="bold" />} />
+        </View>
       ) : null}
     </View>
   );
@@ -318,6 +388,7 @@ const useStyles = makeStyles((colors) => ({
   narratorActive: { borderColor: colors.brand, backgroundColor: colors.surfaceSecondary },
   narratorName: { fontSize: 11, textAlign: "center", color: colors.onSurface },
   photoButtons: { flexDirection: "row", gap: spacing.md },
+  photosRow: { gap: spacing.md, paddingVertical: spacing.xs, paddingRight: spacing.md },
   photoBtn: {
     flex: 1,
     flexDirection: "row",
@@ -353,16 +424,25 @@ const useStyles = makeStyles((colors) => ({
     backgroundColor: colors.brandPrimary,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#3A332C",
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 5,
+    ...Platform.select({
+      web: { boxShadow: "0 6px 16px rgba(58, 51, 44, 0.20)" },
+      default: {
+        shadowColor: "#3A332C",
+        shadowOpacity: 0.2,
+        shadowRadius: 16,
+        shadowOffset: { width: 0, height: 6 },
+        elevation: 5,
+      },
+    }),
   },
   recBtnActive: { backgroundColor: colors.error },
+  previewArea: { alignItems: "center", gap: spacing.md },
+  previewTitle: { color: colors.brandSecondary },
   previewRow: { flexDirection: "row", alignItems: "center", gap: spacing.xl },
+  previewHelp: { textAlign: "center", paddingHorizontal: spacing.md },
   smallBtn: { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceSecondary },
   hint: { textAlign: "center" },
+  saveArea: { paddingTop: spacing.sm },
   permBox: { alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg },
   permText: { textAlign: "center" },
 }));

@@ -39,21 +39,26 @@ export default function BookHome() {
   const qc = useQueryClient();
   const [generating, setGenerating] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [generationError, setGenerationError] = useState<string | null>(null);
 
   const statusQ = useQuery({ queryKey: ["book-status"], queryFn: () => api.get<BookStatus>("/book/status") });
   const chaptersQ = useQuery({ queryKey: ["chapters"], queryFn: () => api.get<Chapter[]>("/book/chapters") });
   const circleQ = useQuery({ queryKey: ["circle"], queryFn: () => api.get<Summary>("/circle") });
 
   const generate = async () => {
+    if (generating) return;
     setGenerating(true);
+    setGenerationError(null);
     try {
       const ch = await api.post<Chapter>("/book/chapters");
-      qc.invalidateQueries({ queryKey: ["chapters"] });
-      qc.invalidateQueries({ queryKey: ["book-status"] });
+      qc.setQueryData<Chapter[]>(["chapters"], (current = []) => [ch, ...current.filter((item) => item.id !== ch.id)]);
+      await Promise.all([chaptersQ.refetch(), statusQ.refetch()]);
       toast.show("Votre chapitre est écrit ✨", "success");
       router.push(`/book/${ch.id}`);
     } catch (e: any) {
-      toast.show(e?.message || "Génération impossible", "error");
+      const message = e?.message || "Génération impossible";
+      setGenerationError(message);
+      toast.show(message, "error");
     } finally {
       setGenerating(false);
     }
@@ -166,8 +171,8 @@ export default function BookHome() {
           <Pressable
             testID="book-generate"
             onPress={generate}
-            disabled={generating || !status?.can_generate}
-            style={[styles.genBtn, (generating || !status?.can_generate) && styles.genBtnDisabled]}
+            disabled={generating || statusQ.isLoading || !status?.can_generate}
+            style={[styles.genBtn, (generating || statusQ.isLoading || !status?.can_generate) && styles.genBtnDisabled]}
           >
             {generating ? (
               <>
@@ -181,6 +186,9 @@ export default function BookHome() {
               </>
             )}
           </Pressable>
+          {generationError ? (
+            <Body style={styles.generationError} testID="book-generation-error">{generationError}</Body>
+          ) : null}
           {!status?.can_generate ? (
             <Body muted style={styles.hint}>Enregistrez au moins un souvenir pour commencer.</Body>
           ) : status?.pending ? (
@@ -250,6 +258,7 @@ const useStyles = makeStyles((colors) => ({
   genBtnDisabled: { opacity: 0.5 },
   genText: { color: colors.onBrandPrimary, fontSize: 15 },
   hint: { textAlign: "center", fontSize: 12, marginTop: spacing.xs },
+  generationError: { color: colors.error, textAlign: "center", fontSize: 13, marginTop: spacing.xs },
   section: { color: colors.brandSecondary, marginTop: spacing.lg, marginBottom: spacing.xs },
   sectionRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   pdfBtn: {

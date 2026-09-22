@@ -4,14 +4,16 @@ import time
 import pytest
 import requests
 
-BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "https://family-stories-34.preview.emergentagent.com").rstrip("/") + "/api"
+PUBLIC_BACKEND_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL")
 
 def _rand():
     return str(int(time.time() * 1000))
 
 @pytest.fixture(scope="session")
 def base_url():
-    return BASE_URL
+    if not PUBLIC_BACKEND_URL:
+        pytest.skip("EXPO_PUBLIC_BACKEND_URL is required for public-endpoint testing")
+    return PUBLIC_BACKEND_URL.rstrip("/") + "/api"
 
 @pytest.fixture(scope="session")
 def session():

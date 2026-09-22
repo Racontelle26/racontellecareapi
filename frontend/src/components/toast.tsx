@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useRef, useState } from "react";
-import { Animated, StyleSheet, Text, View } from "react-native";
+import { Animated, Platform, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { fonts, radius, spacing, useTheme } from "@/src/theme";
 
@@ -21,9 +21,9 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       setMessage(msg);
       setKind(k);
       if (timer.current) clearTimeout(timer.current);
-      Animated.timing(opacity, { toValue: 1, duration: 220, useNativeDriver: true }).start();
+      Animated.timing(opacity, { toValue: 1, duration: 220, useNativeDriver: Platform.OS !== "web" }).start();
       timer.current = setTimeout(() => {
-        Animated.timing(opacity, { toValue: 0, duration: 220, useNativeDriver: true }).start(() =>
+        Animated.timing(opacity, { toValue: 0, duration: 220, useNativeDriver: Platform.OS !== "web" }).start(() =>
           setMessage(null),
         );
       }, 2600);
@@ -38,8 +38,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       {children}
       {message ? (
         <Animated.View
-          pointerEvents="none"
-          style={[styles.wrap, { top: insets.top + spacing.md, opacity }]}
+          style={[styles.wrap, { top: insets.top + spacing.md, opacity, pointerEvents: "none" }]}
           testID="app-toast"
         >
           <View style={[styles.toast, { backgroundColor: bg }]}>

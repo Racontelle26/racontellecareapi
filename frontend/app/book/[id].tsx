@@ -50,15 +50,23 @@ export default function ChapterRead() {
         </Pressable>
       </View>
 
-      {chapterQ.isLoading || !c ? (
-        <ActivityIndicator color={colors.brandSecondary} style={{ marginTop: spacing.xxl }} />
+      {chapterQ.isLoading ? (
+        <ActivityIndicator testID="chapter-loading" color={colors.brandSecondary} style={{ marginTop: spacing.xxl }} />
+      ) : chapterQ.isError || !c ? (
+        <View style={styles.errorState} testID="chapter-error">
+          <Body muted style={styles.errorText}>Ce chapitre ne peut pas être affiché pour le moment.</Body>
+          <Pressable testID="chapter-retry" onPress={() => chapterQ.refetch()} style={styles.retryButton}>
+            <Label style={styles.retryText}>Réessayer</Label>
+          </Pressable>
+        </View>
       ) : (
         <ScrollView
+          testID="chapter-content"
           contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + spacing.xxl }]}
           showsVerticalScrollIndicator={false}
         >
           <Label style={styles.kicker}>CHAPITRE · {c.memory_count} SOUVENIRS</Label>
-          <Display style={styles.title}>{c.title}</Display>
+          <Display style={styles.title} testID="chapter-title">{c.title}</Display>
           <View style={styles.rule} />
           {paragraphs.map((p, i) => (
             <Body key={i} style={[styles.para, i === 0 && styles.firstPara]}>{p}</Body>
@@ -78,4 +86,8 @@ const useStyles = makeStyles((colors) => ({
   rule: { width: 48, height: 2, backgroundColor: colors.brand, marginVertical: spacing.sm },
   para: { fontSize: 17, lineHeight: 28, fontFamily: fonts.body, color: colors.onSurface },
   firstPara: { fontFamily: fonts.body },
+  errorState: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.md, paddingHorizontal: spacing.xl },
+  errorText: { textAlign: "center" },
+  retryButton: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.lg },
+  retryText: { color: colors.brandPrimary },
 }));

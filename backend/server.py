@@ -847,6 +847,28 @@ def _img_ext(ctype: str) -> str:
     return "jpg"
 
 
+async def _store_photo(circle_id: str, capsule_id: str, upload: UploadFile) -> Optional[dict]:
+    img = await upload.read()
+    if not img:
+        return None
+    mime = upload.content_type or "image/jpeg"
+    pid = oid()
+    path = f"{APP_NAME}/photos/{circle_id}/{capsule_id}/{pid}.{_img_ext(mime)}"
+    try:
+        await run_in_threadpool(put_object, path, img, mime)
+    except requests.HTTPError:
+        return None
+    return {"id": pid, "path": path, "mime": mime, "created_at": now().isoformat()}
+
+
+def _capsule_photos(c: dict) -> List[dict]:
+    """Normalized photo list (supports legacy single photo_path)."""
+    items = list(c.get("photos") or [])
+    if not items and c.get("photo_path"):
+        items = [{"id": "legacy", "path": c["photo_path"], "mime": c.get("photo_mime") or "image/jpeg"}]
+    return items
+
+
 @api.post("/capsules")
 async def create_capsule(
     background_tasks: BackgroundTasks,
@@ -857,7 +879,7 @@ async def create_capsule(
     theme: Optional[str] = Form(None),
     title: Optional[str] = Form(None),
     file: UploadFile = File(...),
-    photo: Optional[UploadFile] = File(None),
+    photos: List[UploadFile] = File(default=[]),
     user=Depends(get_current_user),
 ):
     member = await get_member(user)
@@ -889,24 +911,18 @@ async def create_capsule(
             raise HTTPException(402, "Stockage plein — impossible d’enregistrer pour le moment")
         raise HTTPException(500, "Échec de l’enregistrement audio")
 
-    photo_path = None
-    photo_mime = None
-    if photo is not None:
-        img = await photo.read()
-        if img:
-            photo_mime = photo.content_type or "image/jpeg"
-            photo_path = f"{APP_NAME}/photos/{member['circle_id']}/{cid}.{_img_ext(photo_mime)}"
-            try:
-                await run_in_threadpool(put_object, photo_path, img, photo_mime)
-            except requests.HTTPError:
-                photo_path = None
-                photo_mime = None
+    photos_list = []
+    if photos:
+        for up in photos:
+            stored = await _store_photo(member["circle_id"], cid, up)
+            if stored:
+                photos_list.append(stored)
 
     capsule = {
         "id": cid, "circle_id": member["circle_id"], "narrator_member_id": narrator_member_id,
         "recorded_by_user_id": user["id"], "question_id": question_id, "daily_question_id": daily_question_id,
         "theme": theme, "title": title, "storage_path": path, "mime_type": ctype,
-        "photo_path": photo_path, "photo_mime": photo_mime,
+        "photos": photos_list, "photo_path": None, "photo_mime": None,
         "duration_sec": duration_sec, "recorded_at": now().isoformat(), "created_at": now().isoformat(),
         "status": "saved", "transcript": None, "transcript_status": "pending",
     }
@@ -921,7 +937,7 @@ async def create_capsule(
     await db.events.insert_one({"id": oid(), "event_type": "recording_saved", "capsule_id": cid,
                                 "circle_id": member["circle_id"], "narrator_member_id": narrator_member_id,
                                 "occurred_at": now().isoformat()})
-    return clean(capsule)
+    return await _enrich_capsule(capsule)
 
 
 async def _enrich_capsule(c: dict) -> dict:
@@ -933,7 +949,9 @@ async def _enrich_capsule(c: dict) -> dict:
     q = await db.questions.find_one({"id": c.get("question_id")}) if c.get("question_id") else None
     c["question_text"] = q["text"] if q else c.get("title")
     c["audio_url"] = f"/api/capsules/{c['id']}/audio"
-    c["photo_url"] = f"/api/capsules/{c['id']}/photo" if c.get("photo_path") else None
+    photos = _capsule_photos(c)
+    c["photos"] = [{"id": p["id"], "url": f"/api/capsules/{c['id']}/photos/{p['id']}"} for p in photos]
+    c["photo_url"] = c["photos"][0]["url"] if c["photos"] else None
     return c
 
 
@@ -1024,46 +1042,46 @@ async def retranscribe_capsule(capsule_id: str, background_tasks: BackgroundTask
 
 
 # ---------------------------------------------------------------------------
-# Capsule photos
+# Capsule photos (multiple per memory)
 # ---------------------------------------------------------------------------
-@api.post("/capsules/{capsule_id}/photo")
-async def set_capsule_photo(capsule_id: str, photo: UploadFile = File(...), user=Depends(get_current_user)):
+@api.post("/capsules/{capsule_id}/photos")
+async def add_capsule_photos(capsule_id: str, photos: List[UploadFile] = File(...), user=Depends(get_current_user)):
     member = await get_member(user)
     if not member:
         raise HTTPException(404, "Aucun cercle")
     c = await db.capsules.find_one({"id": capsule_id, "circle_id": member["circle_id"], "status": "saved"})
     if not c:
         raise HTTPException(404, "Souvenir introuvable")
-    img = await photo.read()
-    if not img:
-        raise HTTPException(400, "Image vide")
-    ctype = photo.content_type or "image/jpeg"
-    path = f"{APP_NAME}/photos/{member['circle_id']}/{capsule_id}.{_img_ext(ctype)}"
-    try:
-        await run_in_threadpool(put_object, path, img, ctype)
-    except requests.HTTPError as e:
-        code = e.response.status_code if e.response is not None else 500
-        if code == 402:
-            raise HTTPException(402, "Stockage plein")
-        raise HTTPException(500, "Échec de l’envoi de la photo")
-    await db.capsules.update_one({"id": capsule_id}, {"$set": {"photo_path": path, "photo_mime": ctype}})
-    return {"ok": True, "photo_url": f"/api/capsules/{capsule_id}/photo"}
+    added = []
+    for up in photos:
+        stored = await _store_photo(member["circle_id"], capsule_id, up)
+        if stored:
+            added.append(stored)
+    if not added:
+        raise HTTPException(400, "Aucune image valide")
+    await db.capsules.update_one({"id": capsule_id}, {"$push": {"photos": {"$each": added}}})
+    updated = await db.capsules.find_one({"id": capsule_id})
+    return await _enrich_capsule(updated)
 
 
-@api.delete("/capsules/{capsule_id}/photo")
-async def delete_capsule_photo(capsule_id: str, user=Depends(get_current_user)):
+@api.delete("/capsules/{capsule_id}/photos/{photo_id}")
+async def delete_capsule_photo(capsule_id: str, photo_id: str, user=Depends(get_current_user)):
     member = await get_member(user)
     if not member:
         raise HTTPException(404, "Aucun cercle")
     c = await db.capsules.find_one({"id": capsule_id, "circle_id": member["circle_id"]})
     if not c:
         raise HTTPException(404, "Souvenir introuvable")
-    await db.capsules.update_one({"id": capsule_id}, {"$set": {"photo_path": None, "photo_mime": None}})
-    return {"ok": True}
+    if photo_id == "legacy":
+        await db.capsules.update_one({"id": capsule_id}, {"$set": {"photo_path": None, "photo_mime": None}})
+    else:
+        await db.capsules.update_one({"id": capsule_id}, {"$pull": {"photos": {"id": photo_id}}})
+    updated = await db.capsules.find_one({"id": capsule_id})
+    return await _enrich_capsule(updated)
 
 
-@api.get("/capsules/{capsule_id}/photo")
-async def stream_photo(capsule_id: str, token: str = Query(...)):
+@api.get("/capsules/{capsule_id}/photos/{photo_id}")
+async def stream_photo(capsule_id: str, photo_id: str, token: str = Query(...)):
     uid = decode_token(token)
     if not uid:
         raise HTTPException(401, "Non autorisé")
@@ -1071,10 +1089,13 @@ async def stream_photo(capsule_id: str, token: str = Query(...)):
     if not member:
         raise HTTPException(403, "Accès refusé")
     c = await db.capsules.find_one({"id": capsule_id, "circle_id": member["circle_id"], "status": "saved"})
-    if not c or not c.get("photo_path"):
+    if not c:
+        raise HTTPException(404, "Souvenir introuvable")
+    photo = next((p for p in _capsule_photos(c) if p["id"] == photo_id), None)
+    if not photo:
         raise HTTPException(404, "Photo introuvable")
     try:
-        content, ctype = await run_in_threadpool(get_object, c["photo_path"])
+        content, ctype = await run_in_threadpool(get_object, photo["path"])
     except Exception:
         raise HTTPException(404, "Photo indisponible")
     return Response(content=content, media_type=ctype, headers={"Cache-Control": "private, max-age=3600"})

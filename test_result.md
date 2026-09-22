@@ -101,3 +101,75 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+## user_problem_statement: "Les réponses aux questions ne s'enregistrent pas. Elles doivent pouvoir être réécoutées avant la sauvegarde. Faire la vérification générale de toutes les actions."
+## backend:
+##   - task: "Sauvegarde des réponses vocales"
+##     implemented: true
+##     working: true
+##     file: "/app/backend/server.py"
+##     stuck_count: 1
+##     priority: "high"
+##     needs_retesting: false
+##     status_history:
+##       - working: false
+##         agent: "user"
+##         comment: "L'utilisateur indique que les réponses aux questions ne s'enregistrent pas."
+##       - working: true
+##         agent: "main"
+##         comment: "Le POST multipart a été vérifié depuis l'interface et redirige vers le souvenir créé; les erreurs API sont désormais affichées précisément."
+##       - working: true
+##         agent: "testing"
+##         comment: "Itération 5: question du jour, question thématique et Sur le vif sauvegardés; présence confirmée dans le détail et l'album, état Répondu confirmé. Backend 11/11."
+## frontend:
+##   - task: "Préécoute avant sauvegarde"
+##     implemented: true
+##     working: true
+##     file: "/app/frontend/app/record.tsx"
+##     stuck_count: 0
+##     priority: "high"
+##     needs_retesting: false
+##     status_history:
+##       - working: false
+##         agent: "user"
+##         comment: "La réponse doit pouvoir être réécoutée avant sauvegarde."
+##       - working: true
+##         agent: "main"
+##         comment: "Le lecteur de préécoute reçoit explicitement le fichier, le mode audio repasse en lecture et l'écran présente Réécouter/Recommencer avant Enregistrer."
+##       - working: true
+##         agent: "testing"
+##         comment: "Itération 5: préécoute record-play validée avant sauvegarde sur les trois points d'entrée."
+##   - task: "Vérification générale des actions"
+##     implemented: true
+##     working: true
+##     file: "/app/frontend/app"
+##     stuck_count: 0
+##     priority: "high"
+##     needs_retesting: false
+##     status_history:
+##       - working: "NA"
+##         agent: "main"
+##         comment: "À valider: auth, cercle, questions, enregistrement/préécoute/sauvegarde, album, photos, profil, membres, livre, PDF et déconnexion."
+##       - working: true
+##         agent: "testing"
+##         comment: "Itération 5: auth, cercle, questions, audio, album, photos API, profil, membres, feedback et déconnexion/reconnexion validés."
+##       - working: true
+##         agent: "main"
+##         comment: "Auto-vérification complémentaire: lecture chapitre chargée, bouton PDF visible, cache vidé à la déconnexion, reconnexion propre, e-mail géré accepté en HTTP 202."
+## metadata:
+##   created_by: "main_agent"
+##   version: "1.1"
+##   test_sequence: 5
+##   run_ui: true
+## test_plan:
+##   current_focus: []
+##   stuck_tasks: []
+##   test_all: false
+##   test_priority: "high_first"
+## agent_communication:
+##   - agent: "main"
+##     message: "Tester en priorité une question du jour de bout en bout sur mobile: enregistrer > arrêter > réécouter > sauvegarder > voir dans l'album. Puis couvrir tous les parcours et signaler chaque anomalie, même mineure."
+##   - agent: "testing"
+##     message: "Itération 5: 11/11 backend et parcours vocaux P0 validés. Le contrôle livre/PDF a été complété ensuite par le main agent."
+##   - agent: "main"
+##     message: "Validation finale: TypeScript sans erreur, backend 11/11, déconnexion/reconnexion, chapitre chargé, bouton PDF et e-mail géré HTTP 202 confirmés."

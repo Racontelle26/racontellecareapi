@@ -7,9 +7,9 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { useAudioPlayer, useAudioPlayerStatus, setAudioModeAsync } from "expo-audio";
-import { CaretLeft, Play, Pause, Trash, ImageSquare } from "phosphor-react-native";
+import { CaretLeft, Play, Pause, Trash, ImageSquare, X } from "phosphor-react-native";
 import { Body, Label, Title, Avatar } from "@/src/components/ui";
-import { api, audioUrl, photoUrl, API_BASE, getToken } from "@/src/api/client";
+import { api, audioUrl, API_BASE, getToken } from "@/src/api/client";
 import { useToast } from "@/src/components/toast";
 import { makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
@@ -26,6 +26,7 @@ type Capsule = {
   transcript?: string | null;
   transcript_status?: string;
   photo_url?: string | null;
+  photos?: { id: string; url: string }[];
 };
 
 function fmt(sec: number) {
@@ -43,53 +44,66 @@ export default function CapsuleDetail() {
 
   const capsuleQ = useQuery({ queryKey: ["capsule", id], queryFn: () => api.get<Capsule>(`/capsules/${id}`) });
   const [url, setUrl] = useState<string | null>(null);
-  const [photoSrc, setPhotoSrc] = useState<string | null>(null);
+  const [token, setTok] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   useEffect(() => {
     (async () => {
       await setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
       setUrl(await audioUrl(String(id)));
+      setTok(await getToken());
     })();
   }, [id]);
-  useEffect(() => {
-    (async () => {
-      if (capsuleQ.data?.photo_url) setPhotoSrc(await photoUrl(String(id)));
-      else setPhotoSrc(null);
-    })();
-  }, [capsuleQ.data?.photo_url, id]);
 
-  const changePhoto = async () => {
+  const photoList = capsuleQ.data?.photos ?? [];
+  const photoSrcs = token
+    ? photoList.map((p) => ({ id: p.id, uri: `${process.env.EXPO_PUBLIC_BACKEND_URL}${p.url}?token=${token}` }))
+    : [];
+
+  const addPhotos = async () => {
     let perm = await ImagePicker.getMediaLibraryPermissionsAsync();
     if (perm.status !== "granted" && perm.canAskAgain) perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (perm.status !== "granted") {
       toast.show("Accès aux photos refusé", "error");
       return;
     }
-    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.7 });
-    if (res.canceled || !res.assets?.[0]) return;
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.7, allowsMultipleSelection: true, selectionLimit: 10 });
+    if (res.canceled || !res.assets?.length) return;
     setUploadingPhoto(true);
     try {
-      const asset = res.assets[0];
-      const mime = asset.mimeType || "image/jpeg";
-      const ext = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : "jpg";
-      const form = new FormData();
       const { Platform } = require("react-native");
-      if (Platform.OS === "web") {
-        const blob = await (await fetch(asset.uri)).blob();
-        form.append("photo", blob, `photo.${ext}`);
-      } else {
-        form.append("photo", { uri: asset.uri, name: `photo.${ext}`, type: mime } as any);
+      const form = new FormData();
+      for (let i = 0; i < res.assets.length; i++) {
+        const asset = res.assets[i];
+        const mime = asset.mimeType || "image/jpeg";
+        const ext = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : "jpg";
+        const name = `photo-${i}.${ext}`;
+        if (Platform.OS === "web") {
+          const blob = await (await fetch(asset.uri)).blob();
+          form.append("photos", blob, name);
+        } else {
+          form.append("photos", { uri: asset.uri, name, type: mime } as any);
+        }
       }
-      const token = await getToken();
-      const r = await fetch(`${API_BASE}/capsules/${id}/photo`, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: form });
+      const tk = await getToken();
+      const r = await fetch(`${API_BASE}/capsules/${id}/photos`, { method: "POST", headers: { Authorization: `Bearer ${tk}` }, body: form });
       if (!r.ok) throw new Error();
       await capsuleQ.refetch();
       qc.invalidateQueries({ queryKey: ["capsules"] });
-      toast.show("Photo ajoutée", "success");
+      toast.show("Photo(s) ajoutée(s)", "success");
     } catch {
-      toast.show("Échec de l’envoi de la photo", "error");
+      toast.show("Échec de l’envoi des photos", "error");
     } finally {
       setUploadingPhoto(false);
+    }
+  };
+
+  const removePhoto = async (photoId: string) => {
+    try {
+      await api.del(`/capsules/${id}/photos/${photoId}`);
+      await capsuleQ.refetch();
+      qc.invalidateQueries({ queryKey: ["capsules"] });
+    } catch {
+      toast.show("Suppression impossible", "error");
     }
   };
 
@@ -123,8 +137,8 @@ export default function CapsuleDetail() {
   return (
     <View style={styles.container}>
       <View style={styles.hero}>
-        {photoSrc ? (
-          <Image source={{ uri: photoSrc }} style={styles.heroBg} contentFit="cover" transition={200} />
+        {photoSrcs.length > 0 ? (
+          <Image source={{ uri: photoSrcs[0].uri }} style={styles.heroBg} contentFit="cover" transition={200} />
         ) : (
           <LinearGradient colors={[colors.brand, colors.brandPrimary]} style={styles.heroBg} />
         )}
@@ -157,13 +171,26 @@ export default function CapsuleDetail() {
               </View>
             </View>
 
-            <Pressable style={styles.photoAction} testID="capsule-change-photo" onPress={changePhoto} disabled={uploadingPhoto}>
+            {photoSrcs.length > 0 ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.galleryRow}>
+                {photoSrcs.map((p) => (
+                  <View key={p.id} style={styles.galleryItem}>
+                    <Image source={{ uri: p.uri }} style={styles.galleryImg} contentFit="cover" transition={150} />
+                    <Pressable style={styles.galleryRemove} testID={`capsule-photo-remove-${p.id}`} onPress={() => removePhoto(p.id)}>
+                      <X color={colors.onBrandPrimary} size={13} weight="bold" />
+                    </Pressable>
+                  </View>
+                ))}
+              </ScrollView>
+            ) : null}
+
+            <Pressable style={styles.photoAction} testID="capsule-change-photo" onPress={addPhotos} disabled={uploadingPhoto}>
               {uploadingPhoto ? (
                 <ActivityIndicator color={colors.brandPrimary} size="small" />
               ) : (
                 <ImageSquare color={colors.brandPrimary} size={20} />
               )}
-              <Label style={styles.photoActionText}>{c.photo_url ? "Changer la photo" : "Ajouter une photo"}</Label>
+              <Label style={styles.photoActionText}>{photoSrcs.length > 0 ? "Ajouter des photos" : "Ajouter une photo"}</Label>
             </Pressable>
 
             <View style={styles.playerCard}>
@@ -237,6 +264,20 @@ const useStyles = makeStyles((colors) => ({
   date: { color: colors.muted },
   photoAction: { flexDirection: "row", alignItems: "center", gap: spacing.sm, alignSelf: "flex-start" },
   photoActionText: { color: colors.brandPrimary },
+  galleryRow: { gap: spacing.md, paddingVertical: spacing.xs },
+  galleryItem: { position: "relative" },
+  galleryImg: { width: 110, height: 110, borderRadius: radius.md },
+  galleryRemove: {
+    position: "absolute",
+    top: -6,
+    right: -6,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.brandPrimary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   playerCard: {
     flexDirection: "row",
     alignItems: "center",

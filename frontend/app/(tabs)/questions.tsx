@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, Pressable, FlatList, ScrollView, ActivityIndicator } from "react-native";
+import { View, Pressable, FlatList, ScrollView, ActivityIndicator, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
@@ -155,11 +155,16 @@ const useStyles = makeStyles((colors) => ({
     paddingHorizontal: spacing.xl,
     paddingVertical: 14,
     borderRadius: radius.pill,
-    shadowColor: "#3A332C",
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    ...Platform.select({
+      web: { boxShadow: "0 4px 12px rgba(58, 51, 44, 0.15)" },
+      default: {
+        shadowColor: "#3A332C",
+        shadowOpacity: 0.15,
+        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 4 },
+        elevation: 4,
+      },
+    }),
   },
   surpriseText: { color: colors.onBrandPrimary, fontSize: 15 },
 }));

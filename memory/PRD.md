@@ -55,9 +55,16 @@ Trois cahiers des charges fournis (Beta test, MVP technique chiffrable, V7 ritue
 - Bouton « Sur le vif » : bouton flottant sur l'accueil pour lancer instantanément un enregistrement libre (sans question).
 - Tests itération 4 : 14/14 backend OK (endpoints photo + isolation), présences frontend vérifiées.
 
+## Correctifs et vérification générale (2026-09, itération 5)
+- Réponses vocales fiabilisées sur les trois entrées : question du jour, question thématique et « Sur le vif ».
+- Préécoute explicite avant sauvegarde : lecture/pause, recommencer, session audio basculée du micro vers la lecture.
+- Sauvegarde renforcée : narrateur garanti, durée minimale cohérente, erreurs API lisibles et confirmation par ouverture du souvenir créé.
+- Cache privé annulé et vidé à la déconnexion/reconnexion pour éviter requêtes 401 résiduelles et données d’un compte précédent.
+- Livre stabilisé : chapitre ajouté immédiatement à la liste, erreur visible, états chargement/erreur sur la lecture, bouton PDF confirmé.
+- Vérification générale : 11/11 tests backend et parcours mobiles auth, questions, album, audio, photos, profil, membres, invitations, feedback, livre et déconnexion validés.
+- E-mail géré vérifié sur l’adresse de validation du fournisseur : requête acceptée (HTTP 202).
+
 ## Backlog (prioritized)
-- P1 : Génération IA du "livre romancé" (chapitre à partir des souvenirs) — demandé pour plus tard.
-- P1 : Transcription audio (préparer le livre) + recherche dans l'album.
 - P2 : Réponse texte/photo à une question ; carte postale souvenir PDF ; capsule temporelle.
 - P2 : Export des événements CSV (mesure bêta) via endpoint admin.
 - P2 : Avatar évolutif / badges non compétitifs.
@@ -65,4 +72,4 @@ Trois cahiers des charges fournis (Beta test, MVP technique chiffrable, V7 ritue
 
 ## Next tasks
 - Recueillir les retours bêta des familles.
-- Préparer l'intégration IA du livre romancé quand l'utilisateur le décidera.
+- Vérifier la délivrabilité des invitations sur quelques adresses familiales réelles pendant la bêta.
