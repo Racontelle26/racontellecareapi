@@ -253,3 +253,39 @@
 ##     message: "Itération 7: backend 3/3; cartes membres, statistiques, état vide, durées secondes/minutes/heures, liste, détail, invitation et Profil validés."
 ##   - agent: "main"
 ##     message: "RCA 502: démarrage à froid Metro, aucun défaut applicatif. Santé publique 5/5 HTTP 200. Nom long contenu à 342 px; agrégation Mongo optimisée; retest backend 3/3 et TypeScript OK."
+
+## user_problem_statement_4: "Sécuriser les médias : valider réellement les formats audio/image, imposer des types sûrs et nosniff; limiter tailles/nombre/requête, valider la durée et répondre 413 en cas de dépassement."
+## backend_4:
+##   - task: "Validation binaire et types MIME sûrs"
+##     implemented: true
+##     working: true
+##     file: "/app/backend/server.py"
+##     priority: "security-medium"
+##     needs_retesting: false
+##   - task: "Limites audio 50 Mo, photo 10 Mo, 10 photos, requête 100 Mo, durée 1s-2h"
+##     implemented: true
+##     working: true
+##     file: "/app/backend/server.py"
+##     priority: "security-medium"
+##     needs_retesting: false
+## frontend_4:
+##   - task: "Compteur et limite de dix photos avec erreurs API visibles"
+##     implemented: true
+##     working: true
+##     files: ["/app/frontend/app/record.tsx", "/app/frontend/app/capsule/[id].tsx"]
+##     priority: "high"
+##     needs_retesting: false
+## metadata_4:
+##   created_by: "main_agent"
+##   version: "1.4"
+##   test_sequence: 8
+##   run_ui: true
+## agent_communication_4:
+##   - agent: "main"
+##     message: "Formats autorisés par signature: JPEG/PNG/WebP/HEIC et M4A/MP4/MP3/WAV/WebM. Les flux utilisent un MIME dérivé du chemin, Content-Disposition inline et X-Content-Type-Options nosniff. Lints/TypeScript OK; régressions itérations 6+7: 13/13. Tester les seuils, codes 413/415/422, en-têtes et uploads valides."
+##   - agent: "testing"
+##     message: "Itération 8 initiale: 19/20. Toutes validations 413/415/422 et nosniff passent; compteur détail 0/10 manquait; Cache-Control public imposait no-store au lieu de private."
+##   - agent: "main"
+##     message: "Compteur 0/10 ajouté et vérifié visuellement. Cache uniformisé volontairement en no-store, no-cache, must-revalidate local/public: politique plus stricte que private pour des médias familiaux; nosniff et MIME sûr confirmés. Tests ciblés hors ancienne assertion: 19/19. Retest final requis."
+##   - agent: "testing"
+##     message: "Itération 9 finale: 20/20 backend et 100% frontend ciblé. Formats, spoofing, 413/415/422, durées, limites cumulées, nosniff, MIME, no-store, isolation, compteurs 0/10-2/10-10/10, lecture et galerie validés. Aucun blocant."

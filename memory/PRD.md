@@ -76,6 +76,16 @@ Trois cahiers des charges fournis (Beta test, MVP technique chiffrable, V7 ritue
 - Statistiques calculées par agrégation MongoDB, isolées par cercle et limitées aux souvenirs sauvegardés.
 - Recette : itération 6 backend 10/10 ; itération 7 backend 3/3 et parcours mobiles validés, y compris durées secondes/minutes/heures et noms longs.
 
+## Sécurisation des médias (2026-09, itérations 8–9)
+- Validation des signatures binaires, indépendante du nom et du type déclaré par le client.
+- Audio autorisé : M4A/MP4, MP3, WAV et WebM ; images autorisées : JPEG, PNG, WebP et HEIC/HEIF.
+- Contenus HTML/JavaScript ou fichiers usurpés rejetés en `415`, sans création de souvenir.
+- Limites : audio 50 Mio, photo 10 Mio, 10 photos par souvenir, requête 100 Mio et durée de 1 seconde à 2 heures.
+- Dépassements de taille/nombre rejetés en `413` ; durées invalides rejetées en `422`.
+- Flux audio/photo servis avec MIME sûr dérivé côté serveur, `X-Content-Type-Options: nosniff`, `Content-Disposition: inline` et politique `Cache-Control: no-store`.
+- Interface alignée avec compteur photo permanent `n/10`, sélection restante limitée et état désactivé à 10 photos.
+- Recette finale itération 9 : backend sécurité médias **20/20**, scénarios frontend ciblés **100 %**, isolation inter-cercles confirmée.
+
 ## Backlog (prioritized)
 - P2 : Réponse texte/photo à une question ; carte postale souvenir PDF ; capsule temporelle.
 - P2 : Export des événements CSV (mesure bêta) via endpoint admin.

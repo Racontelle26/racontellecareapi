@@ -32,6 +32,7 @@ type Capsule = {
   photos?: { id: string; url: string }[];
 };
 type Member = { id: string; display_name: string; initials_color?: string; relationship_label?: string | null; status: string };
+const MAX_PHOTOS = 10;
 
 function fmt(sec: number) {
   return `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, "0")}`;
@@ -76,13 +77,15 @@ export default function CapsuleDetail() {
     : [];
 
   const addPhotos = async () => {
+    const remaining = MAX_PHOTOS - photoList.length;
+    if (remaining <= 0) return toast.show("10 photos maximum par souvenir", "error");
     let perm = await ImagePicker.getMediaLibraryPermissionsAsync();
     if (perm.status !== "granted" && perm.canAskAgain) perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (perm.status !== "granted") {
       toast.show("Accès aux photos refusé", "error");
       return;
     }
-    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.7, allowsMultipleSelection: true, selectionLimit: 10 });
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.7, allowsMultipleSelection: true, selectionLimit: remaining });
     if (res.canceled || !res.assets?.length) return;
     setUploadingPhoto(true);
     try {
@@ -102,12 +105,15 @@ export default function CapsuleDetail() {
       }
       const tk = await getToken();
       const r = await fetch(`${API_BASE}/capsules/${id}/photos`, { method: "POST", headers: { Authorization: `Bearer ${tk}` }, body: form });
-      if (!r.ok) throw new Error();
+      if (!r.ok) {
+        const payload = await r.json().catch(() => null);
+        throw new Error(payload?.detail || "Échec de l’envoi des photos");
+      }
       await capsuleQ.refetch();
       qc.invalidateQueries({ queryKey: ["capsules"] });
       toast.show("Photo(s) ajoutée(s)", "success");
-    } catch {
-      toast.show("Échec de l’envoi des photos", "error");
+    } catch (e: any) {
+      toast.show(e?.message || "Échec de l’envoi des photos", "error");
     } finally {
       setUploadingPhoto(false);
     }
@@ -242,13 +248,13 @@ export default function CapsuleDetail() {
               </ScrollView>
             ) : null}
 
-            <Pressable style={styles.photoAction} testID="capsule-change-photo" onPress={addPhotos} disabled={uploadingPhoto}>
+            <Pressable style={styles.photoAction} testID="capsule-change-photo" onPress={addPhotos} disabled={uploadingPhoto || photoSrcs.length >= MAX_PHOTOS}>
               {uploadingPhoto ? (
                 <ActivityIndicator color={colors.brandPrimary} size="small" />
               ) : (
                 <ImageSquare color={colors.brandPrimary} size={20} />
               )}
-              <Label style={styles.photoActionText}>{photoSrcs.length > 0 ? "Ajouter des photos" : "Ajouter une photo"}</Label>
+              <Label style={styles.photoActionText}>{photoSrcs.length >= MAX_PHOTOS ? "10 photos maximum" : `${photoSrcs.length > 0 ? "Ajouter des photos" : "Ajouter une photo"} · ${photoSrcs.length}/${MAX_PHOTOS}`}</Label>
             </Pressable>
 
             <View style={styles.playerCard}>

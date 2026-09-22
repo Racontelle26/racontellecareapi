@@ -1,0 +1,56 @@
+{
+  "summary": "Security-focused backend and mobile-web regression run completed for media signature validation, upload limits, duration bounds, media headers, and core UI photo-limit indicators. Backend passed 19/20 tests; one header policy mismatch remains.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "GET /api/capsules/{id}/audio and likely GET /api/capsules/{id}/photos/{photo_id}",
+        "issue": "Cache-Control observed as 'no-store, no-cache, must-revalidate' via public endpoint instead of required private policy; expected private media cache semantics are not delivered end-to-end.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Capsule detail photo CTA",
+        "issue": "When a capsule has zero photos, detail screen shows 'Ajouter une photo' without n/10 indicator. Requirement asks detail to show n/10 or max message.",
+        "testID": "capsule-change-photo",
+        "priority": "medium"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration8_media_security.py",
+    "/app/test_reports/pytest/pytest_iteration8_media_security.xml",
+    "/app/test_reports/artifacts_iter8/home_load_iter8.jpeg",
+    "/app/test_reports/artifacts_iter8/ui_photo_counter_detail.jpeg",
+    "/app/test_reports/iteration_8.json"
+  ],
+  "action_items": [
+    "Fix media response Cache-Control policy on public endpoint path so audio/photo return required private policy end-to-end.",
+    "Update capsule detail UI text to expose photo count (e.g., 0/10) even when no photo is attached.",
+    "After fixes, rerun /app/backend/tests/test_iteration8_media_security.py and targeted mobile UI check on record/detail counters."
+  ],
+  "critical_code_review_comments": [
+    "backend/server.py sets private Cache-Control in stream handlers, but public response headers show different value; this points to middleware/proxy header override in deployed path.",
+    "Binary signature validation and size guardrails are effectively enforced in create_capsule/add_capsule_photos based on passing negative tests (415/413/422 pathways).",
+    "Frontend uses EXPO_PUBLIC_BACKEND_URL in media URL composition; verify env-key alignment with deployment conventions to avoid future drift."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration8_media_security.py",
+    "/app/test_reports/iteration_8.json"
+  ],
+  "success_rate": {
+    "backend": "95% (19/20)",
+    "frontend": "90% (core tested flows pass; one requirement gap on detail counter text)"
+  },
+  "seed_data_creation": "Created isolated TEST_i8_* accounts/circles and several TEST_I8 capsules/photos via public API for signature/limits/header/isolation validation.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Use /app/backend/tests/test_iteration8_media_security.py as regression baseline. Current single failing assertion is cache-control policy on media GET responses over public ingress.",
+  "rca_of_issue": "Repro for header issue: create valid capsule then GET /api/capsules/{id}/audio?token=<owner_jwt>; observed headers include x-content-type-options=nosniff and inline disposition, but Cache-Control becomes no-store/no-cache/must-revalidate. Backend code returns private,max-age=3600, so mismatch likely from external middleware/edge override between app and client."
+}

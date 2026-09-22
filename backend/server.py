@@ -17,8 +17,8 @@ import jwt
 import httpx
 from bson import ObjectId
 from dotenv import load_dotenv
-from fastapi import FastAPI, APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, BackgroundTasks
-from fastapi.responses import Response
+from fastapi import FastAPI, APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, BackgroundTasks, Request
+from fastapi.responses import Response, JSONResponse
 from fastapi.concurrency import run_in_threadpool
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -57,6 +57,12 @@ STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
 EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
 APP_NAME = "racontelle-family"
 _storage_key = None
+
+MAX_AUDIO_BYTES = 50 * 1024 * 1024
+MAX_PHOTO_BYTES = 10 * 1024 * 1024
+MAX_PHOTOS_PER_CAPSULE = 10
+MAX_REQUEST_BYTES = 100 * 1024 * 1024
+MAX_AUDIO_DURATION_SEC = 2 * 60 * 60
 
 # Email
 EMAIL_BASE_URL = "https://integrations.emergentagent.com"
@@ -385,6 +391,19 @@ def clean(doc: dict) -> dict:
 # ---------------------------------------------------------------------------
 app = FastAPI(title="Racontelle Family API")
 api = APIRouter(prefix="/api")
+
+
+@app.middleware("http")
+async def reject_oversized_requests(request: Request, call_next):
+    if request.method in {"POST", "PUT", "PATCH"}:
+        raw_length = request.headers.get("content-length")
+        if raw_length:
+            try:
+                if int(raw_length) > MAX_REQUEST_BYTES:
+                    return JSONResponse(status_code=413, content={"detail": "Requête trop volumineuse (100 Mo maximum)"})
+            except ValueError:
+                return JSONResponse(status_code=400, content={"detail": "En-tête Content-Length invalide"})
+    return await call_next(request)
 
 
 def make_token(user_id: str) -> str:
@@ -930,26 +949,53 @@ async def set_daily_state(body: DailyStateIn, user=Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 # Capsules (audio memories)
 # ---------------------------------------------------------------------------
-def _img_ext(ctype: str) -> str:
-    ctype = (ctype or "").lower()
-    if "png" in ctype:
-        return "png"
-    if "webp" in ctype:
-        return "webp"
-    if "heic" in ctype or "heif" in ctype:
-        return "heic"
-    return "jpg"
+def _detect_image(data: bytes) -> Optional[tuple[str, str]]:
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg", "jpg"
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png", "png"
+    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp", "webp"
+    if len(data) >= 12 and data[4:8] == b"ftyp" and data[8:12] in {b"heic", b"heix", b"hevc", b"hevx", b"mif1", b"msf1"}:
+        return "image/heic", "heic"
+    return None
 
 
-async def _store_photo(circle_id: str, capsule_id: str, upload: UploadFile) -> Optional[dict]:
-    img = await upload.read()
-    if not img:
-        return None
-    mime = upload.content_type or "image/jpeg"
+def _detect_audio(data: bytes) -> Optional[tuple[str, str]]:
+    if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WAVE":
+        return "audio/wav", "wav"
+    if data.startswith(b"\x1a\x45\xdf\xa3"):
+        return "audio/webm", "webm"
+    if data.startswith(b"ID3") or (len(data) >= 2 and data[0] == 0xFF and data[1] & 0xE0 == 0xE0):
+        return "audio/mpeg", "mp3"
+    if len(data) >= 12 and data[4:8] == b"ftyp":
+        return "audio/mp4", "m4a"
+    return None
+
+
+async def _read_limited(upload: UploadFile, maximum: int, label: str) -> bytes:
+    data = await upload.read(maximum + 1)
+    if len(data) > maximum:
+        raise HTTPException(413, f"{label} trop volumineux")
+    if not data:
+        raise HTTPException(400, f"{label} vide")
+    return data
+
+
+async def _validated_photo(upload: UploadFile) -> tuple[bytes, str, str]:
+    data = await _read_limited(upload, MAX_PHOTO_BYTES, "Photo")
+    detected = _detect_image(data)
+    if not detected:
+        raise HTTPException(415, "Format photo non pris en charge (JPEG, PNG, WebP ou HEIC uniquement)")
+    mime, ext = detected
+    return data, mime, ext
+
+
+async def _store_photo(circle_id: str, capsule_id: str, data: bytes, mime: str, ext: str) -> Optional[dict]:
     pid = oid()
-    path = f"{APP_NAME}/photos/{circle_id}/{capsule_id}/{pid}.{_img_ext(mime)}"
+    path = f"{APP_NAME}/photos/{circle_id}/{capsule_id}/{pid}.{ext}"
     try:
-        await run_in_threadpool(put_object, path, img, mime)
+        await run_in_threadpool(put_object, path, data, mime)
     except requests.HTTPError:
         return None
     return {"id": pid, "path": path, "mime": mime, "created_at": now().isoformat()}
@@ -979,22 +1025,26 @@ async def create_capsule(
     member = await get_member(user)
     if not member:
         raise HTTPException(404, "Aucun cercle")
+    if duration_sec < 1 or duration_sec > MAX_AUDIO_DURATION_SEC:
+        raise HTTPException(422, "La durée doit être comprise entre 1 seconde et 2 heures")
+    if len(photos) > MAX_PHOTOS_PER_CAPSULE:
+        raise HTTPException(413, "10 photos maximum par souvenir")
     narrator = await db.members.find_one({"id": narrator_member_id, "circle_id": member["circle_id"]})
     if not narrator:
         raise HTTPException(400, "Narrateur invalide")
-    data = await file.read()
-    if not data:
-        raise HTTPException(400, "Fichier audio vide")
-    ext = "m4a"
-    ctype = file.content_type or "audio/m4a"
-    if "webm" in ctype:
-        ext = "webm"
-    elif "mp4" in ctype or "m4a" in ctype:
-        ext = "m4a"
-    elif "wav" in ctype:
-        ext = "wav"
-    elif "mpeg" in ctype or "mp3" in ctype:
-        ext = "mp3"
+    data = await _read_limited(file, MAX_AUDIO_BYTES, "Fichier audio")
+    audio_type = _detect_audio(data)
+    if not audio_type:
+        raise HTTPException(415, "Format audio non pris en charge (M4A, MP3, WAV ou WebM uniquement)")
+    ctype, ext = audio_type
+    validated_photos = []
+    total_bytes = len(data)
+    for upload in photos:
+        photo_data, photo_mime, photo_ext = await _validated_photo(upload)
+        total_bytes += len(photo_data)
+        if total_bytes > MAX_REQUEST_BYTES:
+            raise HTTPException(413, "Requête trop volumineuse (100 Mo maximum)")
+        validated_photos.append((photo_data, photo_mime, photo_ext))
     cid = oid()
     path = f"{APP_NAME}/uploads/{member['circle_id']}/{cid}.{ext}"
     try:
@@ -1006,11 +1056,10 @@ async def create_capsule(
         raise HTTPException(500, "Échec de l’enregistrement audio")
 
     photos_list = []
-    if photos:
-        for up in photos:
-            stored = await _store_photo(member["circle_id"], cid, up)
-            if stored:
-                photos_list.append(stored)
+    for photo_data, photo_mime, photo_ext in validated_photos:
+        stored = await _store_photo(member["circle_id"], cid, photo_data, photo_mime, photo_ext)
+        if stored:
+            photos_list.append(stored)
 
     capsule = {
         "id": cid, "circle_id": member["circle_id"], "narrator_member_id": narrator_member_id,
@@ -1126,10 +1175,14 @@ async def stream_audio(capsule_id: str, token: str = Query(...)):
         raise HTTPException(404, "Souvenir introuvable")
     await db.events.insert_one({"id": oid(), "event_type": "capsule_played", "capsule_id": capsule_id, "user_id": uid, "occurred_at": now().isoformat()})
     try:
-        content, ctype = await run_in_threadpool(get_object, c["storage_path"])
+        content, _ = await run_in_threadpool(get_object, c["storage_path"])
     except Exception:
         raise HTTPException(404, "Audio indisponible")
-    return Response(content=content, media_type=ctype, headers={"Accept-Ranges": "bytes", "Cache-Control": "private, max-age=3600"})
+    safe_audio_type = {".m4a": "audio/mp4", ".mp3": "audio/mpeg", ".wav": "audio/wav", ".webm": "audio/webm"}.get(Path(c["storage_path"]).suffix.lower(), "application/octet-stream")
+    return Response(content=content, media_type=safe_audio_type, headers={
+        "Accept-Ranges": "bytes", "Cache-Control": "no-store, no-cache, must-revalidate",
+        "X-Content-Type-Options": "nosniff", "Content-Disposition": "inline; filename=\"souvenir-audio\"",
+    })
 
 
 @api.delete("/capsules/{capsule_id}")
@@ -1172,9 +1225,22 @@ async def add_capsule_photos(capsule_id: str, photos: List[UploadFile] = File(..
     c = await db.capsules.find_one({"id": capsule_id, "circle_id": member["circle_id"], "status": "saved"})
     if not c:
         raise HTTPException(404, "Souvenir introuvable")
+    if not photos:
+        raise HTTPException(400, "Sélectionnez au moins une photo")
+    existing_count = len(_capsule_photos(c))
+    if len(photos) > MAX_PHOTOS_PER_CAPSULE or existing_count + len(photos) > MAX_PHOTOS_PER_CAPSULE:
+        raise HTTPException(413, "10 photos maximum par souvenir")
+    validated_photos = []
+    total_bytes = 0
+    for upload in photos:
+        photo_data, photo_mime, photo_ext = await _validated_photo(upload)
+        total_bytes += len(photo_data)
+        if total_bytes > MAX_REQUEST_BYTES:
+            raise HTTPException(413, "Requête trop volumineuse (100 Mo maximum)")
+        validated_photos.append((photo_data, photo_mime, photo_ext))
     added = []
-    for up in photos:
-        stored = await _store_photo(member["circle_id"], capsule_id, up)
+    for photo_data, photo_mime, photo_ext in validated_photos:
+        stored = await _store_photo(member["circle_id"], capsule_id, photo_data, photo_mime, photo_ext)
         if stored:
             added.append(stored)
     if not added:
@@ -1215,10 +1281,14 @@ async def stream_photo(capsule_id: str, photo_id: str, token: str = Query(...)):
     if not photo:
         raise HTTPException(404, "Photo introuvable")
     try:
-        content, ctype = await run_in_threadpool(get_object, photo["path"])
+        content, _ = await run_in_threadpool(get_object, photo["path"])
     except Exception:
         raise HTTPException(404, "Photo indisponible")
-    return Response(content=content, media_type=ctype, headers={"Cache-Control": "private, max-age=3600"})
+    safe_photo_type = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp", ".heic": "image/heic", ".heif": "image/heif"}.get(Path(photo["path"]).suffix.lower(), "application/octet-stream")
+    return Response(content=content, media_type=safe_photo_type, headers={
+        "Cache-Control": "no-store, no-cache, must-revalidate", "X-Content-Type-Options": "nosniff",
+        "Content-Disposition": "inline; filename=\"souvenir-photo\"",
+    })
 
 
 # ---------------------------------------------------------------------------

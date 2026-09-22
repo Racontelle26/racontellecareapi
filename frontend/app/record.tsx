@@ -23,6 +23,7 @@ import { useToast } from "@/src/components/toast";
 import { makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 type Member = { id: string; display_name: string; initials_color?: string; status: string };
+const MAX_PHOTOS = 10;
 
 function fmt(ms: number) {
   const s = Math.floor(ms / 1000);
@@ -53,6 +54,8 @@ export default function RecordScreen() {
   const [freeTitle, setFreeTitle] = useState("Souvenir sur le vif");
 
   const pickFromLibrary = async () => {
+    const remaining = MAX_PHOTOS - photos.length;
+    if (remaining <= 0) return toast.show("10 photos maximum par souvenir", "error");
     let perm = await ImagePicker.getMediaLibraryPermissionsAsync();
     if (perm.status !== "granted" && perm.canAskAgain) perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (perm.status !== "granted") {
@@ -60,13 +63,14 @@ export default function RecordScreen() {
       else toast.show("Accès aux photos refusé", "error");
       return;
     }
-    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.7, allowsMultipleSelection: true, selectionLimit: 10 });
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.7, allowsMultipleSelection: true, selectionLimit: remaining });
     if (!res.canceled && res.assets?.length) {
-      setPhotos((prev) => [...prev, ...res.assets.map((a) => ({ uri: a.uri, mime: a.mimeType || "image/jpeg" }))]);
+      setPhotos((prev) => [...prev, ...res.assets.map((a) => ({ uri: a.uri, mime: a.mimeType || "image/jpeg" }))].slice(0, MAX_PHOTOS));
     }
   };
 
   const takePhoto = async () => {
+    if (photos.length >= MAX_PHOTOS) return toast.show("10 photos maximum par souvenir", "error");
     let perm = await ImagePicker.getCameraPermissionsAsync();
     if (perm.status !== "granted" && perm.canAskAgain) perm = await ImagePicker.requestCameraPermissionsAsync();
     if (perm.status !== "granted") {
@@ -299,7 +303,7 @@ export default function RecordScreen() {
         ) : null}
 
         {/* Photos */}
-        <Label style={styles.sectionLabel}>PHOTOS (OPTIONNEL)</Label>
+        <Label style={styles.sectionLabel}>PHOTOS (OPTIONNEL) · {photos.length}/{MAX_PHOTOS}</Label>
         {photos.length > 0 ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photosRow}>
             {photos.map((p, i) => (
