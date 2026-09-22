@@ -86,6 +86,15 @@ Trois cahiers des charges fournis (Beta test, MVP technique chiffrable, V7 ritue
 - Interface alignée avec compteur photo permanent `n/10`, sélection restante limitée et état désactivé à 10 photos.
 - Recette finale itération 9 : backend sécurité médias **20/20**, scénarios frontend ciblés **100 %**, isolation inter-cercles confirmée.
 
+## Correction export PDF web (2026-09, itération 11)
+- Cause racine : sur navigateur, `expo-print` imprimait la page React active et ignorait le HTML personnalisé contenant les histoires.
+- Le clic « Livre PDF » ouvre désormais immédiatement une fenêtre d’impression dédiée, puis récupère explicitement le contenu complet de chaque chapitre.
+- Le document généré contient couverture, date, numérotation, titres, paragraphes complets et album photo facultatif.
+- Une garde vérifie dans le DOM imprimable la parité du nombre de chapitres et la présence de chaque contenu avant l’impression.
+- Confirmation utilisateur : « PDF prêt : N histoires incluses » ; message explicite si les fenêtres d’impression sont bloquées.
+- La branche mobile conserve `Print.printToFileAsync` et le partage natif avec le même HTML complet.
+- Recette itération 11 : 2 chapitres visibles, 2 histoires incluses, requêtes détails confirmées et scénario popup bloqué validé.
+
 ## Backlog (prioritized)
 - P2 : Réponse texte/photo à une question ; carte postale souvenir PDF ; capsule temporelle.
 - P2 : Export des événements CSV (mesure bêta) via endpoint admin.

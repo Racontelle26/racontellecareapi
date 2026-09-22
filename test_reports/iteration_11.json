@@ -1,0 +1,47 @@
+{
+  "summary": "Frontend-only retest of PDF export fix completed. Login succeeded, exactly 2 chapter cards were visible in Livre romancé, export flow produced runtime attestation text 'PDF prêt : 2 histoires incluses.', chapter/capsule network calls were confirmed, and popup-blocked path correctly prevented export fetches.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Popup deep DOM inspection after export click",
+        "issue": "Popup was captured but closed before full DOM assertions could complete in this run ('Target page...closed'). Fallback runtime proof on main page validated expected parity/output.",
+        "affected_testIDs": [
+          "book-export-pdf",
+          "book-export-summary"
+        ]
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/artifacts_iter11/final_iter11.jpeg",
+    "/root/.emergent/automation_output/20260922_131215/console_20260922_131215.log"
+  ],
+  "action_items": [
+    "Optional: add a test-only guard to keep popup open slightly longer if strict popup DOM assertions are required by CI tooling.",
+    "No functional regression detected on requested flow; keep current fallback attestation check in place."
+  ],
+  "critical_code_review_comments": [
+    "Web export path still opens print window synchronously before async chapter fetches (correct popup strategy).",
+    "Runtime parity guard is active: export compares chapter count/content lengths and surfaces explicit mismatch error.",
+    "Mobile branch remains unchanged and still uses full HTML via Print.printToFileAsync + Sharing.shareAsync."
+  ],
+  "updated_files": [
+    "/app/test_reports/iteration_11.json"
+  ],
+  "success_rate": {
+    "backend": "N/A (skipped by request)",
+    "frontend": "92%"
+  },
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Validated end-to-end fallback attestation path with exact summary text and absence of parity error, verified two chapter detail GETs and one capsules GET after export click, and confirmed blocked-popup path shows warning and triggers zero chapter/capsule fetches.",
+  "rca_of_issue": "Original bug context (missing stories in desktop PDF) appears addressed for tested flow: export now fetches chapter details before print and exposes runtime summary only after parity checks pass. In this run, popup handle became unavailable too quickly for strict DOM interrogation, but fallback DOM-derived attestation and network evidence both matched expected behavior."
+}

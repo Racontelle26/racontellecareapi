@@ -289,3 +289,27 @@
 ##     message: "Compteur 0/10 ajouté et vérifié visuellement. Cache uniformisé volontairement en no-store, no-cache, must-revalidate local/public: politique plus stricte que private pour des médias familiaux; nosniff et MIME sûr confirmés. Tests ciblés hors ancienne assertion: 19/19. Retest final requis."
 ##   - agent: "testing"
 ##     message: "Itération 9 finale: 20/20 backend et 100% frontend ciblé. Formats, spoofing, 413/415/422, durées, limites cumulées, nosniff, MIME, no-store, isolation, compteurs 0/10-2/10-10/10, lecture et galerie validés. Aucun blocant."
+
+## user_problem_statement_5: "Le PDF est créé sur ordinateur mais ne contient pas les chapitres/histoires pourtant visibles dans Notre livre."
+## frontend_5:
+##   - task: "Exporter les chapitres complets dans le PDF web"
+##     implemented: true
+##     working: true
+##     files: ["/app/frontend/app/book/index.tsx", "/app/frontend/src/book/book-pdf.ts"]
+##     priority: "high"
+##     needs_retesting: false
+##     root_cause: "expo-print printAsync ignore le paramètre HTML sur web et imprime seulement l'écran React courant."
+## metadata_5:
+##   created_by: "main_agent"
+##   version: "1.5"
+##   test_sequence: 10
+##   run_ui: true
+## agent_communication_5:
+##   - agent: "main"
+##     message: "Correctif: ouverture synchrone d'une fenêtre d'impression dédiée, récupération explicite de chaque chapitre complet, génération HTML avec un article par histoire, attente des images puis print. Auto-test Playwright: 2 cartes visibles = 2 chapitres exportés, contenus >80 caractères, print déclenché. Validation testing_agent obligatoire."
+##   - agent: "testing"
+##     message: "Itération 10 incomplète: 2 chapitres visibles et requêtes détails déclenchées, mais la stratégie wait_for_event armée trop tard n'a pas capturé le popup. Retest requis."
+##   - agent: "main"
+##     message: "Ajout d'une attestation runtime issue du DOM de la fenêtre imprimable: printBookWindow retourne nombre d'articles et longueurs, bloque si parité/contenu invalide, puis affiche book-export-summary. Cette preuve est testable depuis la page principale même sans handle popup."
+##   - agent: "testing"
+##     message: "Itération 11: exactement 2 cartes et attestation 'PDF prêt : 2 histoires incluses.' validées; 2 GET chapitres + 1 GET capsules confirmés; erreur de parité absente; popup bloqué géré sans requêtes. Retest false."

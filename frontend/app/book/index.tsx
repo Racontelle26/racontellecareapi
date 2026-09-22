@@ -10,15 +10,13 @@ import { Body, Card, Label, Title } from "@/src/components/ui";
 import { api, getToken } from "@/src/api/client";
 import { useToast } from "@/src/components/toast";
 import { makeStyles, radius, spacing, useTheme } from "@/src/theme";
+import { buildBookHtml, openPrintPreviewWindow, printBookWindow, type PdfPhoto } from "@/src/book/book-pdf";
 
 type BookStatus = { memory_count: number; transcribed: number; pending: number; chapter_count: number; can_generate: boolean };
 type Chapter = { id: string; title: string; content?: string; memory_count: number; created_at: string };
 type Summary = { circle: { name: string } };
 type Capsule = { id: string; photo_url?: string | null; narrator_name?: string; question_text?: string };
 
-function esc(s: string) {
-  return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
 async function toDataUrl(url: string): Promise<string> {
   const res = await fetch(url);
   const blob = await res.blob();
@@ -40,6 +38,7 @@ export default function BookHome() {
   const [generating, setGenerating] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
+  const [pdfSummary, setPdfSummary] = useState<string | null>(null);
 
   const statusQ = useQuery({ queryKey: ["book-status"], queryFn: () => api.get<BookStatus>("/book/status") });
   const chaptersQ = useQuery({ queryKey: ["chapters"], queryFn: () => api.get<Chapter[]>("/book/chapters") });
@@ -65,62 +64,46 @@ export default function BookHome() {
   };
 
   const exportPdf = async () => {
-    const chapters = chaptersQ.data || [];
-    if (chapters.length === 0) {
+    const chapterRefs = chaptersQ.data || [];
+    if (chapterRefs.length === 0) {
       toast.show("Créez au moins un chapitre", "error");
       return;
     }
+    const webPrintWindow = Platform.OS === "web" ? openPrintPreviewWindow() : null;
+    if (Platform.OS === "web" && !webPrintWindow) {
+      toast.show("Autorisez la fenêtre d’impression pour créer le PDF", "error");
+      return;
+    }
     setExporting(true);
+    setPdfSummary(null);
     try {
       const familyName = circleQ.data?.circle?.name || "Notre famille";
-      let gallery = "";
+      const chapters = await Promise.all(chapterRefs.map((chapter) => api.get<Required<Chapter>>(`/book/chapters/${chapter.id}`)));
+      if (chapters.some((chapter) => !chapter.content?.trim())) throw new Error("Un chapitre est vide. Ouvrez-le puis réessayez.");
+      const gallery: PdfPhoto[] = [];
       try {
         const caps = await api.get<Capsule[]>("/capsules");
         const withPhotos = caps.filter((c) => c.photo_url).slice(0, 30);
         const token = await getToken();
-        const items: string[] = [];
         for (const c of withPhotos) {
           try {
             const dataUrl = await toDataUrl(`${process.env.EXPO_PUBLIC_BACKEND_URL}${c.photo_url}?token=${token}`);
-            items.push(`<figure class="ph"><img src="${dataUrl}"/><figcaption>${esc(c.narrator_name || "")} — ${esc(c.question_text || "")}</figcaption></figure>`);
+            gallery.push({ src: dataUrl, caption: `${c.narrator_name || ""} — ${c.question_text || ""}` });
           } catch {
             /* skip photo */
           }
         }
-        if (items.length) gallery = `<section class="gallery"><h2>Album de famille</h2>${items.join("")}</section>`;
       } catch {
         /* gallery optional */
       }
-      const chaptersHtml = chapters
-        .map((ch) => {
-          const paras = (ch.content || "")
-            .split(/\n{2,}/)
-            .map((p) => `<p>${esc(p.replace(/\n/g, " ").trim())}</p>`)
-            .join("");
-          return `<section class="chapter"><h2>${esc(ch.title)}</h2>${paras}</section>`;
-        })
-        .join("");
       const date = new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/><style>
-        @page { margin: 48px; }
-        body { font-family: Georgia, 'Times New Roman', serif; color: #3A332C; }
-        .cover { text-align:center; padding: 150px 0; page-break-after: always; }
-        .cover .brand { color:#B57477; font-size:20px; letter-spacing:3px; }
-        .cover h1 { font-size:44px; margin: 24px 0 8px; color:#3A332C; }
-        .cover .date { color:#8A8177; font-size:14px; }
-        .chapter { page-break-after: always; }
-        h2 { color:#B57477; font-size:26px; border-bottom:1px solid #EBE6DC; padding-bottom:8px; }
-        p { font-size:15px; line-height:1.7; text-align:justify; }
-        .gallery .ph { display:inline-block; width:46%; margin:2%; vertical-align:top; text-align:center; page-break-inside:avoid; }
-        .gallery img { width:100%; border-radius:8px; }
-        .gallery figcaption { font-size:11px; color:#8A8177; margin-top:4px; }
-      </style></head><body>
-        <div class="cover"><div class="brand">RACONTELLE FAMILY</div><h1>${esc(familyName)}</h1><div class="date">Livre de souvenirs · ${date}</div></div>
-        ${chaptersHtml}
-        ${gallery}
-      </body></html>`;
+      const html = buildBookHtml(familyName, date, chapters, gallery);
       if (Platform.OS === "web") {
-        await Print.printAsync({ html });
+        const result = await printBookWindow(webPrintWindow!, html);
+        if (result.chapterCount !== chapters.length || result.contentLengths.some((length) => length === 0)) {
+          throw new Error("Les histoires n’ont pas toutes été intégrées au PDF");
+        }
+        setPdfSummary(`PDF prêt : ${result.chapterCount} histoire${result.chapterCount > 1 ? "s" : ""} incluse${result.chapterCount > 1 ? "s" : ""}.`);
       } else {
         const { uri } = await Print.printToFileAsync({ html });
         if (await Sharing.isAvailableAsync()) {
@@ -128,9 +111,11 @@ export default function BookHome() {
         } else {
           toast.show("PDF créé", "success");
         }
+        setPdfSummary(`PDF prêt : ${chapters.length} histoire${chapters.length > 1 ? "s" : ""} incluse${chapters.length > 1 ? "s" : ""}.`);
       }
-    } catch {
-      toast.show("Création du PDF impossible", "error");
+    } catch (e: any) {
+      webPrintWindow?.close();
+      toast.show(e?.message || "Création du PDF impossible", "error");
     } finally {
       setExporting(false);
     }
@@ -209,6 +194,7 @@ export default function BookHome() {
             </Pressable>
           ) : null}
         </View>
+        {pdfSummary ? <Body style={styles.pdfSummary} testID="book-export-summary">{pdfSummary}</Body> : null}
         {chaptersQ.isLoading ? (
           <ActivityIndicator color={colors.brandSecondary} style={{ marginTop: spacing.md }} />
         ) : (chaptersQ.data?.length ?? 0) === 0 ? (
@@ -272,6 +258,7 @@ const useStyles = makeStyles((colors) => ({
     marginTop: spacing.lg,
   },
   pdfText: { color: colors.brandPrimary },
+  pdfSummary: { color: colors.success, fontSize: 13, textAlign: "right" },
   empty: { marginTop: spacing.sm },
   chapterCard: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   chapterInfo: { flex: 1, gap: 4 },
