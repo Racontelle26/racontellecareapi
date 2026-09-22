@@ -101,3 +101,36 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+## user_problem_statement: "Les réponses aux questions sont visibles sous le profil du répondant"
+## frontend:
+##   - task: "Afficher les réponses guidées dans la fiche du répondant"
+##     implemented: true
+##     working: true
+##     file: "/app/frontend/app/index.tsx"
+##     stuck_count: 0
+##     priority: "high"
+##     needs_retesting: false
+##     status_history:
+##       - working: "NA"
+##         agent: "main"
+##         comment: "La fiche distingue toutes les réponses aux questions des souvenirs libres. Le rendu vide a été vérifié sur mobile."
+##       - working: true
+##         agent: "testing"
+##         comment: "Itération 10 : parcours complet validé, compteur passé de 0 à 1 et réponse guidée visible sous Claire avec question, audio et transcription en attente. Capsule de test supprimée ensuite."
+## metadata:
+##   created_by: "main_agent"
+##   version: "1.0"
+##   test_sequence: 10
+##   run_ui: true
+## test_plan:
+##   current_focus:
+##     - "Enregistrer une réponse guidée pour un profil puis vérifier sa présence dans la section Réponses aux questions de cette fiche"
+##   stuck_tasks: []
+##   test_all: false
+##   test_priority: "high_first"
+## agent_communication:
+##   - agent: "main"
+##     message: "Tester le parcours profil → atelier → question guidée → enregistrement → sauvegarde → retour fiche, puis vérifier question, audio et transcription dans la section dédiée."
+##   - agent: "testing"
+##     message: "Validation frontend réussie à 100 %, aucun problème bloquant. Rapport : /app/test_reports/iteration_10.json."

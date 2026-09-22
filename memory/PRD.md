@@ -48,6 +48,7 @@ Clarifications utilisateur : offline-first avec stockage local (smartphones/tabl
 - **Création de profil fiable** (it. 8) : bouton « Créer le profil » collé au clavier (KeyboardAwareScrollView + KeyboardStickyView), création via touche « done », message si prénom vide.
 - **Renommage** (it. 8) : profils (clic sur le nom, `PATCH /api/residents/{id}`) et souvenirs sur le vif (`PATCH /api/capsules/{id}`), avec rattachement d'un souvenir à un profil (`PATCH /api/capsules/{id}/assign`, modale edit-capsule).
 - **Archive « Mes souvenirs »** (it. 9) : la vue « Tous » masque les souvenirs libres déjà réattribués (visibles dans la fiche du membre et son filtre).
+- **Réponses guidées par profil** : la fiche de chaque personne distingue désormais clairement toutes ses réponses aux questions de ses souvenirs libres ; la question, l'audio et la transcription restent réunis dans la même carte.
 - Flux complet : Accueil → création de profil (max 10, modal scrollable, bouton accessible clavier) → atelier libre ou 3 questions/jour → enregistrement audio → archive datée par profil.
 - Persistance locale JSON (profils + capsules), synchronisation serveur best-effort.
 - `testID` sur les éléments interactifs ; réponses HTTP `201` conformes.

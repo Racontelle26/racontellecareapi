@@ -1,0 +1,47 @@
+{
+  "summary": "Frontend-only mobile test completed on public URL (390x844). Verified Claire profile flow end-to-end: workshop start, guided question recording with simulated microphone, save, return to profile, and guided answers rendering under profile. No blocking console/runtime errors.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Profile (Claire)",
+        "issues": [
+          "Informational notice/toast can overlap lower action area briefly after save (non-blocking in this run)."
+        ]
+      }
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/screens/iter10/home-loaded.jpeg",
+    "/app/test_reports/screens/iter10/profile-initial.jpeg",
+    "/app/test_reports/screens/iter10/profile-after-guided-save.jpeg",
+    "/root/.emergent/automation_output/20260922_123601/console_20260922_123601.log"
+  ],
+  "action_items": [
+    "Optional: replace deprecated React Native web shadow* style props with boxShadow to remove warning noise.",
+    "Technical debt: split /app/frontend/app/index.tsx (1097 lines) into smaller modules/components (>700 guideline)."
+  ],
+  "critical_code_review_comments": [
+    "Requested separation is implemented in ProfileScreen: guided answers are filtered with capsule.mode === 'question' and rendered in testID profile-guided-answers-section; free memories are filtered with capsule.mode === 'free' and rendered in testID profile-free-memories-section only when present.",
+    "Empty guided-state is implemented with testID profile-guided-answers-empty and was observed before recording (count 0).",
+    "CapsuleRow includes required card metadata and controls: question/title text, date+duration line, play control, and transcription status pending/ready testIDs."
+  ],
+  "updated_files": [
+    "/app/test_reports/iteration_10.json"
+  ],
+  "success_rate": {
+    "backend": "N/A (frontend-only request)",
+    "frontend": "100% of requested checks passed"
+  },
+  "seed_data_creation": "Created 1 guided response capsule on Claire profile during E2E validation; not deleted in this run.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Claire now has at least 1 guided answer from this run. Initial empty guided state was validated in-session before creating the answer.",
+  "rca_of_issue": ""
+}
