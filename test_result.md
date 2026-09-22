@@ -173,3 +173,83 @@
 ##     message: "Itération 5: 11/11 backend et parcours vocaux P0 validés. Le contrôle livre/PDF a été complété ensuite par le main agent."
 ##   - agent: "main"
 ##     message: "Validation finale: TypeScript sans erreur, backend 11/11, déconnexion/reconnexion, chapitre chargé, bouton PDF et e-mail géré HTTP 202 confirmés."
+
+## user_problem_statement_2: "Créer directement 4 profils familiaux (créateur + 3 proches), invitation e-mail au-delà de 4, page descriptive Racontelle au clic du logo, profils sans e-mail modifiables/supprimables, souvenirs Sur le vif renommables et rattachables à un membre."
+## backend_2:
+##   - task: "Profils familiaux directs et limite d'invitation"
+##     implemented: true
+##     working: true
+##     file: "/app/backend/server.py"
+##     priority: "high"
+##     needs_retesting: false
+##   - task: "Modification du titre et du narrateur d'un souvenir Sur le vif"
+##     implemented: true
+##     working: true
+##     file: "/app/backend/server.py"
+##     priority: "high"
+##     needs_retesting: false
+## frontend_2:
+##   - task: "Créateur + trois profils au setup, gestion depuis Membres"
+##     implemented: true
+##     working: true
+##     files: ["/app/frontend/app/circle/setup.tsx", "/app/frontend/app/members.tsx"]
+##     priority: "high"
+##     needs_retesting: false
+##   - task: "Page À propos de Racontelle et e-mail cliquable"
+##     implemented: true
+##     working: true
+##     files: ["/app/frontend/app/about.tsx", "/app/frontend/app/(tabs)/index.tsx"]
+##     priority: "medium"
+##     needs_retesting: false
+##   - task: "Nom et réattribution des souvenirs Sur le vif"
+##     implemented: true
+##     working: true
+##     files: ["/app/frontend/app/record.tsx", "/app/frontend/app/capsule/[id].tsx"]
+##     priority: "high"
+##     needs_retesting: false
+## metadata_2:
+##   created_by: "main_agent"
+##   version: "1.2"
+##   test_sequence: 6
+##   run_ui: true
+## agent_communication_2:
+##   - agent: "main"
+##     message: "Auto-test réussi: création cercle avec Alice + Jeanne + Paul + Lina, compteur 4/4, profil édité, page Racontelle affichée, souvenir nommé puis renommé et réattribué de Jeanne à Paul. Tester les limites backend, la suppression d'un profil sans souvenir, le blocage si souvenirs, l'invitation e-mail et les non-régressions."
+##   - agent: "testing"
+##     message: "Itération 6: backend 10/10 et fonctions profils/About/Sur le vif validées. Bug actions invitations détecté."
+##   - agent: "main"
+##     message: "Bug invitation corrigé par liaison member_id; boutons Renvoyer et Annuler auto-testés avec succès."
+
+## user_problem_statement_3: "Dans Profil, tous les membres actifs doivent être visibles et accessibles; leur fiche affiche nombre de souvenirs, temps d'enregistrement et liste des souvenirs ouvrables."
+## backend_3:
+##   - task: "Statistiques par membre actif"
+##     implemented: true
+##     working: true
+##     file: "/app/backend/server.py"
+##     priority: "high"
+##     needs_retesting: false
+## frontend_3:
+##   - task: "Cartes de tous les membres actifs dans Profil"
+##     implemented: true
+##     working: true
+##     file: "/app/frontend/app/(tabs)/profile.tsx"
+##     priority: "high"
+##     needs_retesting: false
+##   - task: "Fiche membre avec statistiques et liste de souvenirs"
+##     implemented: true
+##     working: true
+##     file: "/app/frontend/app/family-member/[id].tsx"
+##     priority: "high"
+##     needs_retesting: false
+## metadata_3:
+##   created_by: "main_agent"
+##   version: "1.3"
+##   test_sequence: 7
+##   run_ui: true
+## agent_communication_3:
+##   - agent: "main"
+##     message: "Auto-test: Profil affiche Alice/Paul/Lina actifs uniquement. Fiche Alice affiche 1 souvenir, 1 s, la liste et ouvre le détail. TypeScript et lints OK. Vérifier statistiques backend, état vide et non-régressions."
+##   - agent: "testing"
+##     message: "Itération 7: backend 3/3; cartes membres, statistiques, état vide, durées secondes/minutes/heures, liste, détail, invitation et Profil validés."
+##   - agent: "main"
+##     message: "RCA 502: démarrage à froid Metro, aucun défaut applicatif. Santé publique 5/5 HTTP 200. Nom long contenu à 342 px; agrégation Mongo optimisée; retest backend 3/3 et TypeScript OK."

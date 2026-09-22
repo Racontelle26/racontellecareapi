@@ -1,8 +1,12 @@
 {
-  "app_name": "Racontelle Family",
-  "personality": "3 Editorial structure with 8 Hand-Drawn warmth and textures",
-  "personality_one_liner": "A soft, warm, and precious family keepsake that feels like an elegantly handwritten journal, blending refined typography with organic textures and dusty rose accents.",
-  "color": {
+  "project_title": "Racontelle Family Memory App - Member Profile & Memories Enhancement",
+  "app_type": "mobile_fullstack_family_memory_app",
+  "theme": {
+    "primary_mode": "light",
+    "style": "warm_editorial_heritage",
+    "description": "Warm, nostalgic, family-heritage aesthetic with soft cream backgrounds, vintage muted terracotta/rose accents, sage green secondary highlights, and elegant serif typography (Cormorant Garamond) combined with clean sans-serif (DM Sans)."
+  },
+  "colors": {
     "surface": "#FDFBF7",
     "onSurface": "#3A332C",
     "surfaceSecondary": "#F5F2EB",
@@ -11,6 +15,7 @@
     "onSurfaceTertiary": "#5C5249",
     "surfaceInverse": "#3A332C",
     "onSurfaceInverse": "#FDFBF7",
+    "muted": "#8A8177",
     "brand": "#C98B8B",
     "onBrand": "#FDFBF7",
     "brandPrimary": "#B57477",
@@ -29,126 +34,88 @@
     "onInfo": "#FDFBF7",
     "border": "#EBE6DC",
     "borderStrong": "#D6CFC1",
-    "divider": "#EBE6DC",
-    "muted": "#8A8177"
+    "divider": "#EBE6DC"
   },
   "typography": {
-    "displayFontFamily": "Cormorant Garamond",
-    "textFontFamily": "DM Sans",
-    "scale": {
-      "sm": 12,
-      "base": 14,
+    "display": "Cormorant",
+    "displayMedium": "CormorantMedium",
+    "displaySemiBold": "CormorantSemiBold",
+    "body": "DMSans",
+    "bodyMedium": "DMSansMedium",
+    "rules": {
+      "headings": "Use Cormorant Garamond / CormorantSemiBold for high emotional storytelling hierarchy (Titles, Member Names, Section Headers)",
+      "body": "Use DM Sans / DMSansMedium for maximum legibility on mobile screens (Stats, Timestamps, Descriptions, Form labels)",
+      "max_heading_size": "32px on mobile to avoid layout breaking",
+      "hierarchy": "Header 24px-28px Cormorant, Subtitle 16px DMSansMedium, Card Label 12px uppercase tracking-wider"
+    }
+  },
+  "layout_and_spacing": {
+    "spacing_scale": {
+      "xs": 4,
+      "sm": 8,
+      "md": 12,
       "lg": 16,
-      "xl": 20,
-      "2xl": 24
+      "xl": 24,
+      "xxl": 32,
+      "xxxl": 48
+    },
+    "border_radius": {
+      "sm": 6,
+      "md": 12,
+      "lg": 20,
+      "pill": 999
+    },
+    "container_padding": "16px horizontal, 24px vertical with safe area insets consideration",
+    "profile_section_rules": {
+      "active_members_grid": "Horizontal scroll or 2-column grid of active family members with avatar, initial color badge, total memories badge, and total recorded duration",
+      "member_card": "Card container with background #F5F2EB, subtle border #EBE6DC, rounded 16px, click feedback touchable ripple/opacity",
+      "member_detail_sheet": "Mobile-optimized modal or full screen showing member bio badge, total recorded duration formatted in hours/minutes (e.g., '1h 45 min' or '12 min'), total memories count, and chronological list of memories with direct navigation to memory detail"
     }
   },
-  "spacing": {
-    "rule": "Generous editorial spacing with breathable vertical rhythms, avoiding dense card layouts. Soft padding around content to enhance the keepsake feel.",
-    "xs": 4,
-    "sm": 8,
-    "md": 12,
-    "lg": 16,
-    "xl": 24,
-    "2xl": 32,
-    "3xl": 48
-  },
-  "radius_tokens": {
-    "sm": 6,
-    "md": 12,
-    "lg": 20,
-    "pill": 999
-  },
-  "shadow_tier": "0",
-  "navigation": "bottom_tabs",
-  "icon_set": "Phosphor",
-  "glassmorphism": {
-    "enabled": "false",
-    "do's": [
-      "Use solid surfaceSecondary with soft borders for elevation instead of glass, maintaining the matte paper aesthetic."
-    ],
-    "dont's": [
-      "No blur or glassmorphism, as it contradicts the hand-drawn, tactile, and natural paper vibe."
-    ]
-  },
-  "platform_libraries": {
-    "glass": {
-      "ios": "expo-glass-effect",
-      "android": "expo-blur",
-      "low_end_android_fallback": "solid surfaceSecondary"
+  "key_features_and_components": {
+    "active_family_members_section": {
+      "location": "app/(tabs)/profile.tsx",
+      "title": "Membres de la famille",
+      "description": "Displays only active profile members in the Profile tab. Shows clickable avatar cards displaying total recorded memories and total audio duration.",
+      "test_ids": ["profile-active-members-section", "member-card-{id}", "member-card-avatar-{id}", "member-card-stats-{id}"]
     },
-    "image": "expo-image",
-    "blur": "expo-blur",
-    "bottom_sheet": "@gorhom/bottom-sheet",
-    "animation": "react-native-reanimated",
-    "gesture": "react-native-gesture-handler"
-  },
-  "screens": [
-    {
-      "name": "Home (Accueil)",
-      "purpose": "A visual dashboard centered around the symbolic 'Growing Tree' and daily engagement.",
-      "states": {
-        "loading": "A delicate, slow-spinning leafy sprig in brandSecondary.",
-        "empty": "A barren but beautifully sketched tree outline, prompting the user to record their first memory to make it grow.",
-        "error": "A soft text message 'Impossible de charger l'arbre' with a Retry button."
-      },
-      "layout": "Editorial layout. A large, organic hero section featuring the symbolic Growing Tree (an illustration that gains moss-green leaves and dusty-rose flowers as recordings increase). Below the tree, a horizontal scrolling list of 'Questions of the day' (up to 3) in soft surfaceTertiary cards. A section below lists family members with elegant circular avatars."
+    "member_detail_modal_or_screen": {
+      "location": "app/members/[id].tsx or modal bottom sheet in profile",
+      "description": "Fiche membre mobile containing summary metrics (number of memories, total recording duration), chronological timeline of audio/text memories, and click-through to memory detail (e.g. /capsule/[id]).",
+      "test_ids": ["member-detail-modal", "member-detail-name", "member-detail-memory-count", "member-detail-duration", "member-memory-item-{id}"]
     },
-    {
-      "name": "Record & Questions (Capsules)",
-      "purpose": "The core recording interface and question bank to prompt storytelling.",
-      "states": {
-        "loading": "A soft pulsing dot in brandPrimary.",
-        "empty": "No questions selected; showing themed categories to browse.",
-        "error": "Microphone access denied message with a settings link."
-      },
-      "layout": "High-contrast minimalist structure but using warm colors. When recording: A large central timer in Cormorant Garamond, a real-time waveform, and a prominent dusty rose pill button for Start/Pause. When browsing: A grid of themes (Childhood, Love, Career) using brandTertiary tinted containers. Sticky primary CTA at the bottom to 'Start free recording'."
-    },
-    {
-      "name": "Voice Album (Album)",
-      "purpose": "A chronological, private archive of all collected family memories.",
-      "states": {
-        "loading": "Skeleton rows fading smoothly.",
-        "empty": "An elegant vintage photo album illustration with text 'Vos souvenirs s'écriront ici' (Your memories will be written here).",
-        "error": "Unable to load memories message."
-      },
-      "layout": "Scrapbook/Journal rhythm. A pinned filter row at the top (by Narrator, by Theme) using pill shapes. Memories are displayed as a vertical list of elegant cards (surfaceSecondary with a 0.5pt border) featuring the narrator's avatar, date, theme tag, and a soft play button. No heavy shadows."
-    },
-    {
-      "name": "Capsule Detail",
-      "purpose": "Immersive playback of a specific memory.",
-      "states": {
-        "loading": "Loading audio buffer.",
-        "empty": "N/A",
-        "error": "Audio unavailable, Retry."
-      },
-      "layout": "Cinematic yet soft. A cover image (family photo or brand-tinted gradient) with a gradient-to-dark scrim. The title of the question is displayed large in Cormorant Garamond over the scrim. Below the image: audio scrubber, play/pause controls, and text notes. The layout feels like a page from a premium novel."
-    }
-  ],
-  "images": {
-    "home_hero_tree_empty": {
-      "url": "https://images.unsplash.com/photo-1584282000185-87fb204a83d6?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzl8MHwxfHNlYXJjaHwxfHxkZWxpY2F0ZSUyMGR1c3R5JTIwcm9zZSUyMGZsb3JhbCUyMGlsbHVzdHJhdGlvbnxlbnwwfHx8fDE3ODk2NDg2NDF8MA&ixlib=rb-4.1.0&q=85",
-      "alt": "A delicate dusty rose and green botanical painting"
-    },
-    "album_empty_state": {
-      "url": "https://images.pexels.com/photos/9107392/pexels-photo-9107392.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
-      "alt": "A nostalgic still life of vintage photographs and letters"
+    "member_management_navigation": {
+      "description": "Quick link button to manage all members ('Gérer les membres')",
+      "test_ids": ["profile-members-manage-btn", "profile-members"]
     }
   },
-  "haptics": {
-    "record_start_stop": "heavy",
-    "tab_change": "light",
-    "question_select": "medium",
-    "audio_play_pause": "light"
+  "image_urls": {
+    "vintage_family_1": {
+      "url": "https://images.unsplash.com/photo-1722173205783-d602329f0743?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzZ8MHwxfHNlYXJjaHxf331&q=85",
+      "description": "Family photos sheet background for memory album",
+      "category": "album_header"
+    },
+    "elder_grandmother": {
+      "url": "https://images.pexels.com/photos/7545445/pexels-photo-7545445.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "description": "Elder grandmother reviewing family memories",
+      "category": "member_avatar_fallback"
+    },
+    "vintage_photo_memory": {
+      "url": "https://images.pexels.com/photos/15124798/pexels-photo-15124798.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+      "description": "Vintage photograph held by hand",
+      "category": "memory_thumbnail"
+    }
   },
-  "instructions_to_main_agent": [
-    "Strictly follow the color palette. Blue and purple are completely banned. Use the deep warm brown (#3A332C) instead of black for text to maintain the soft aesthetic.",
-    "Implement the 'Growing Tree' on the Home screen as a central visual element. It should visually scale or change state (more leaves/flowers) based on the number of capsules recorded.",
-    "Ensure headings use Cormorant Garamond (max weight 500) and body text uses DM Sans. Never use bold/heavy font weights; rely on font size for hierarchy.",
-    "Borders should be used instead of shadows to separate elements, keeping a flat, matte-paper editorial feel.",
-    "For any image with text overlaid (like the Capsule Detail header), you MUST apply the top-to-bottom vertical linear gradient scrim (transparent to surfaceInverse) to ensure text readability.",
-    "The audio recorder should feature a prominent timer and a simple, highly visible waveform, prioritizing usability for all family members.",
-    "Remember the app is exclusively in French. All placeholder text, empty states, and labels must be in French.",
-    "For the bottom tabs, use outlined inactive and filled active states for the Phosphor icons."
+  "accessibility_and_testing": {
+    "test_id_rules": "All interactive buttons, member cards, memory list items, toggles, inputs, and text counts MUST contain explicit data-testid or testID attributes matching kebab-case convention.",
+    "min_touch_target": "44x44px for touch targets",
+    "contrast_ratio": "Minimum 4.5:1 for body text against warm background #FDFBF7"
+  },
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": [
+    "Always preserve existing warm Racontelle design tokens (#FDFBF7 surface, #C98B8B brand rose, #738A70 sage green, Cormorant font for titles).",
+    "Active family profiles only must be listed in the Profile screen section.",
+    "Clicking a family member card must open their detailed profile sheet/view displaying total memory count, total recording duration formatted clearly, and chronological list of memories.",
+    "Each memory item in the member's list must be tap-navigable to the detail screen (/capsule/[id] or equivalent detail route).",
+    "Maintain complete data-testid attributes for automated testing."
   ]
 }

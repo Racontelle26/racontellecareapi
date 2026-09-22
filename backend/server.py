@@ -454,8 +454,19 @@ class ResetConfirmIn(BaseModel):
     new_password: str = Field(min_length=6, max_length=128)
 
 
+class FamilyProfileIn(BaseModel):
+    display_name: str = Field(min_length=1, max_length=60)
+    relationship_label: str = Field(min_length=1, max_length=60)
+
+
+class FamilyProfileUpdateIn(BaseModel):
+    display_name: str = Field(min_length=1, max_length=60)
+    relationship_label: str = Field(min_length=1, max_length=60)
+
+
 class CircleIn(BaseModel):
     name: str = Field(min_length=1, max_length=80)
+    initial_members: List[FamilyProfileIn] = Field(default_factory=list, max_length=3)
 
 
 class InviteIn(BaseModel):
@@ -485,6 +496,11 @@ class FeedbackIn(BaseModel):
     rating: Optional[int] = None
     comment: Optional[str] = None
     page_context: Optional[str] = None
+
+
+class CapsuleUpdateIn(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
+    narrator_member_id: str
 
 
 AVATAR_COLORS = ["#C98B8B", "#738A70", "#D1A054", "#8A9691", "#B57477", "#A38160"]
@@ -590,8 +606,20 @@ async def create_circle(body: CircleIn, user=Depends(get_current_user)):
               "initials_color": AVATAR_COLORS[0], "status": "active", "role": "owner",
               "daily_email": True, "created_at": now().isoformat()}
     await db.members.insert_one(member)
+    created_profiles = []
+    for index, profile in enumerate(body.initial_members[:3], start=1):
+        direct_member = {
+            "id": oid(), "circle_id": cid, "user_id": None,
+            "display_name": profile.display_name.strip(),
+            "relationship_label": profile.relationship_label.strip(),
+            "initials_color": AVATAR_COLORS[index % len(AVATAR_COLORS)],
+            "status": "active", "role": "profile", "daily_email": False,
+            "managed_profile": True, "created_at": now().isoformat(),
+        }
+        await db.members.insert_one(direct_member)
+        created_profiles.append(clean(direct_member))
     await db.events.insert_one({"id": oid(), "event_type": "circle_created", "circle_id": cid, "user_id": user["id"], "occurred_at": now().isoformat()})
-    return {"circle": clean(circle), "member": clean(member)}
+    return {"circle": clean(circle), "member": clean(member), "profiles": created_profiles}
 
 
 async def circle_summary(circle_id: str) -> dict:
@@ -636,12 +664,75 @@ async def list_members(user=Depends(get_current_user)):
     if not member:
         raise HTTPException(404, "Aucun cercle")
     members = await db.members.find({"circle_id": member["circle_id"], "status": {"$ne": "revoked"}}).to_list(100)
+    stats = await db.capsules.aggregate([
+        {"$match": {"circle_id": member["circle_id"], "status": "saved"}},
+        {"$group": {"_id": "$narrator_member_id", "capsule_count": {"$sum": 1},
+                    "total_seconds": {"$sum": {"$ifNull": ["$duration_sec", 0]}}}},
+    ]).to_list(100)
+    stats_by_member = {item["_id"]: item for item in stats}
     out = []
     for m in members:
         m = clean(m)
-        m["capsule_count"] = await db.capsules.count_documents({"circle_id": member["circle_id"], "narrator_member_id": m["id"], "status": "saved"})
+        member_stats = stats_by_member.get(m["id"], {})
+        m["capsule_count"] = int(member_stats.get("capsule_count") or 0)
+        m["total_seconds"] = int(member_stats.get("total_seconds") or 0)
         out.append(m)
     return out
+
+
+@api.post("/circle/members")
+async def create_direct_member(body: FamilyProfileIn, user=Depends(get_current_user)):
+    member = await get_member(user)
+    if not member or member.get("role") != "owner":
+        raise HTTPException(403, "Seul le créateur du cercle peut ajouter un profil")
+    circle_id = member["circle_id"]
+    current_count = await db.members.count_documents({"circle_id": circle_id, "status": "active", "role": {"$in": ["owner", "profile"]}})
+    if current_count >= 4:
+        raise HTTPException(400, "À partir du 5e membre, utilisez une invitation par e-mail")
+    profile = {
+        "id": oid(), "circle_id": circle_id, "user_id": None,
+        "display_name": body.display_name.strip(),
+        "relationship_label": body.relationship_label.strip(),
+        "initials_color": AVATAR_COLORS[current_count % len(AVATAR_COLORS)],
+        "status": "active", "role": "profile", "daily_email": False,
+        "managed_profile": True, "created_at": now().isoformat(),
+    }
+    await db.members.insert_one(profile)
+    await db.events.insert_one({"id": oid(), "event_type": "direct_profile_created", "circle_id": circle_id,
+                                "member_id": profile["id"], "user_id": user["id"], "occurred_at": now().isoformat()})
+    return clean(profile)
+
+
+@api.patch("/circle/members/{member_id}")
+async def update_direct_member(member_id: str, body: FamilyProfileUpdateIn, user=Depends(get_current_user)):
+    owner = await get_member(user)
+    if not owner or owner.get("role") != "owner":
+        raise HTTPException(403, "Action non autorisée")
+    profile = await db.members.find_one({"id": member_id, "circle_id": owner["circle_id"], "status": "active"})
+    if not profile or profile.get("user_id") or profile.get("role") == "owner":
+        raise HTTPException(400, "Seuls les profils sans compte peuvent être modifiés")
+    updates = {"display_name": body.display_name.strip(), "relationship_label": body.relationship_label.strip(),
+               "updated_at": now().isoformat()}
+    await db.members.update_one({"id": member_id}, {"$set": updates})
+    updated = await db.members.find_one({"id": member_id}, {"_id": 0})
+    return clean(updated)
+
+
+@api.delete("/circle/members/{member_id}")
+async def delete_direct_member(member_id: str, user=Depends(get_current_user)):
+    owner = await get_member(user)
+    if not owner or owner.get("role") != "owner":
+        raise HTTPException(403, "Action non autorisée")
+    profile = await db.members.find_one({"id": member_id, "circle_id": owner["circle_id"], "status": "active"})
+    if not profile or profile.get("user_id") or profile.get("role") == "owner":
+        raise HTTPException(400, "Seuls les profils sans compte peuvent être supprimés")
+    memories = await db.capsules.count_documents({"circle_id": owner["circle_id"], "narrator_member_id": member_id, "status": "saved"})
+    if memories:
+        raise HTTPException(400, "Rattachez d’abord les souvenirs de ce profil à un autre membre")
+    await db.members.update_one({"id": member_id}, {"$set": {"status": "revoked", "deleted_at": now().isoformat()}})
+    await db.events.insert_one({"id": oid(), "event_type": "direct_profile_deleted", "circle_id": owner["circle_id"],
+                                "member_id": member_id, "user_id": user["id"], "occurred_at": now().isoformat()})
+    return {"ok": True}
 
 
 @api.post("/circle/invitations")
@@ -650,6 +741,9 @@ async def create_invitation(body: InviteIn, user=Depends(get_current_user)):
     if not member or member.get("role") != "owner":
         raise HTTPException(403, "Seul le créateur du cercle peut inviter")
     circle_id = member["circle_id"]
+    current_count = await db.members.count_documents({"circle_id": circle_id, "status": "active", "role": {"$in": ["owner", "profile"]}})
+    if current_count < 4:
+        raise HTTPException(400, "Créez d’abord vos 4 profils familiaux, puis invitez les membres suivants par e-mail")
     circle = await db.circles.find_one({"id": circle_id})
     # create pending member profile
     new_member = {"id": oid(), "circle_id": circle_id, "user_id": None,
@@ -921,7 +1015,7 @@ async def create_capsule(
     capsule = {
         "id": cid, "circle_id": member["circle_id"], "narrator_member_id": narrator_member_id,
         "recorded_by_user_id": user["id"], "question_id": question_id, "daily_question_id": daily_question_id,
-        "theme": theme, "title": title, "storage_path": path, "mime_type": ctype,
+        "theme": theme, "title": title or ("Souvenir sur le vif" if not question_id else None), "storage_path": path, "mime_type": ctype,
         "photos": photos_list, "photo_path": None, "photo_mime": None,
         "duration_sec": duration_sec, "recorded_at": now().isoformat(), "created_at": now().isoformat(),
         "status": "saved", "transcript": None, "transcript_status": "pending",
@@ -988,6 +1082,32 @@ async def get_capsule(capsule_id: str, user=Depends(get_current_user)):
     if not c:
         raise HTTPException(404, "Souvenir introuvable")
     return await _enrich_capsule(c)
+
+
+@api.patch("/capsules/{capsule_id}")
+async def update_capsule(capsule_id: str, body: CapsuleUpdateIn, user=Depends(get_current_user)):
+    member = await get_member(user)
+    if not member:
+        raise HTTPException(404, "Aucun cercle")
+    capsule = await db.capsules.find_one({"id": capsule_id, "circle_id": member["circle_id"], "status": "saved"})
+    if not capsule:
+        raise HTTPException(404, "Souvenir introuvable")
+    if capsule.get("question_id"):
+        raise HTTPException(400, "Seuls les souvenirs Sur le vif peuvent être renommés")
+    if capsule.get("recorded_by_user_id") != user["id"] and member.get("role") != "owner":
+        raise HTTPException(403, "Vous ne pouvez modifier que vos souvenirs")
+    narrator = await db.members.find_one({"id": body.narrator_member_id, "circle_id": member["circle_id"], "status": "active"})
+    if not narrator:
+        raise HTTPException(400, "Profil familial invalide")
+    await db.capsules.update_one(
+        {"id": capsule_id},
+        {"$set": {"title": body.title.strip(), "narrator_member_id": body.narrator_member_id,
+                  "updated_at": now().isoformat()}},
+    )
+    await db.events.insert_one({"id": oid(), "event_type": "capsule_updated", "capsule_id": capsule_id,
+                                "circle_id": member["circle_id"], "user_id": user["id"], "occurred_at": now().isoformat()})
+    updated = await db.capsules.find_one({"id": capsule_id}, {"_id": 0})
+    return await _enrich_capsule(updated)
 
 
 @api.get("/capsules/{capsule_id}/audio")

@@ -58,7 +58,9 @@ export default function Home() {
             <Label style={styles.hello}>VOTRE FAMILLE</Label>
             <Title testID="home-circle-name">{circleQ.data?.circle?.name || "…"}</Title>
           </View>
-          <Image source={require("../../assets/images/racontelle-logo.png")} style={styles.logo} resizeMode="contain" />
+          <Pressable testID="racontelle-logo-button" onPress={() => router.push("/about")} hitSlop={8} accessibilityLabel="À propos de Racontelle">
+            <Image source={require("../../assets/images/racontelle-logo.png")} style={styles.logo} resizeMode="contain" />
+          </Pressable>
         </View>
 
         {circleQ.isLoading ? (
@@ -168,7 +170,7 @@ export default function Home() {
             <View style={styles.addCircle}>
               <Plus color={colors.brandPrimary} size={24} />
             </View>
-            <Label style={styles.memberName}>Inviter</Label>
+            <Label style={styles.memberName}>Ajouter</Label>
           </Pressable>
         </ScrollView>
       </ScrollView>

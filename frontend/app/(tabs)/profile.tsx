@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { View, Pressable, ScrollView, Switch } from "react-native";
+import { View, Pressable, ScrollView, Switch, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useQueryClient } from "@tanstack/react-query";
-import { CaretRight, Users, ChatCircleDots, SignOut } from "phosphor-react-native";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { CaretRight, Users, ChatCircleDots, SignOut, Microphone, Clock } from "phosphor-react-native";
 import { Body, Button, Card, Label, TextField, Title, Avatar } from "@/src/components/ui";
 import { api } from "@/src/api/client";
 import { useAuth } from "@/src/auth/auth-context";
@@ -12,6 +12,14 @@ import { usesNativeTabs } from "@/src/navigation";
 import { makeStyles, spacing, useTheme } from "@/src/theme";
 
 const COLORS = ["#C98B8B", "#738A70", "#D1A054", "#8A9691", "#B57477", "#A38160"];
+type FamilyMember = { id: string; display_name: string; relationship_label?: string | null; initials_color?: string; status: string; capsule_count?: number; total_seconds?: number };
+
+function shortDuration(seconds: number) {
+  if (seconds < 60) return `${seconds} s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min`;
+  return `${Math.floor(minutes / 60)} h ${minutes % 60 ? `${minutes % 60} min` : ""}`.trim();
+}
 
 export default function Profile() {
   const router = useRouter();
@@ -22,6 +30,8 @@ export default function Profile() {
   const { user, member, signOut, refresh } = useAuth();
   const qc = useQueryClient();
   const toast = useToast();
+  const membersQ = useQuery({ queryKey: ["members"], queryFn: () => api.get<FamilyMember[]>("/circle/members") });
+  const activeMembers = membersQ.data?.filter((item) => item.status === "active") ?? [];
 
   const [name, setName] = useState(user?.display_name ?? "");
   const [relationship, setRelationship] = useState(user?.relationship_label ?? "");
@@ -102,6 +112,27 @@ export default function Profile() {
         <Button title="Enregistrer" testID="profile-save" loading={saving} onPress={save} />
       </Card>
 
+      <View style={styles.familySection} testID="profile-family-section">
+        <View style={styles.familyHeader}>
+          <View><Label style={styles.section}>MEMBRES DE LA FAMILLE</Label><Title style={styles.familyTitle}>Leurs souvenirs</Title></View>
+          <Pressable testID="profile-manage-members" onPress={() => router.push("/members")} style={styles.manageButton}><Label style={styles.manageText}>Gérer</Label></Pressable>
+        </View>
+        {membersQ.isLoading ? <ActivityIndicator color={colors.brandSecondary} /> : activeMembers.map((item) => (
+          <Pressable key={item.id} testID={`profile-family-member-${item.id}`} onPress={() => router.push(`/family-member/${item.id}`)} style={({ pressed }) => [styles.familyCard, pressed && styles.familyCardPressed]}>
+            <Avatar name={item.display_name} color={item.initials_color} size={52} />
+            <View style={styles.familyInfo}>
+              <Body style={styles.familyName} numberOfLines={1}>{item.display_name}</Body>
+              <Label style={styles.familyRelation} numberOfLines={1}>{item.relationship_label || "Membre"}</Label>
+              <View style={styles.familyStats}>
+                <View style={styles.familyStat}><Microphone color={colors.brandSecondary} size={15} /><Label>{item.capsule_count ?? 0} souvenir{(item.capsule_count ?? 0) > 1 ? "s" : ""}</Label></View>
+                <View style={styles.familyStat}><Clock color={colors.brandSecondary} size={15} /><Label>{shortDuration(item.total_seconds ?? 0)}</Label></View>
+              </View>
+            </View>
+            <CaretRight color={colors.muted} size={19} />
+          </Pressable>
+        ))}
+      </View>
+
       <Card style={styles.linksCard}>
         <Pressable style={styles.link} testID="profile-members" onPress={() => router.push("/members")}>
           <Users color={colors.brandPrimary} size={22} />
@@ -137,6 +168,18 @@ const useStyles = makeStyles((colors) => ({
   swatchActive: { borderColor: colors.onSurface },
   toggleRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginTop: spacing.xs },
   toggleSub: { fontSize: 12 },
+  familySection: { gap: spacing.md },
+  familyHeader: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between" },
+  familyTitle: { fontSize: 22 },
+  manageButton: { minWidth: 54, minHeight: 44, alignItems: "center", justifyContent: "center" },
+  manageText: { color: colors.brandPrimary },
+  familyCard: { minHeight: 88, flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.lg, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border, borderRadius: 20 },
+  familyCardPressed: { opacity: 0.78 },
+  familyInfo: { flex: 1, gap: 2 },
+  familyName: { fontSize: 17 },
+  familyRelation: { color: colors.muted },
+  familyStats: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md, marginTop: spacing.xs },
+  familyStat: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
   linksCard: { padding: 0, overflow: "hidden" },
   link: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.lg },
   linkText: { flex: 1, fontSize: 15 },

@@ -1,0 +1,60 @@
+{
+  "summary": "Backend and mobile-web UI retest completed for the requested family-profile, invitation gate, About page, and Sur le vif rename/re-assign features. Backend rules pass (10/10). Frontend key flows pass except a blocking invitation-management UI regression: pending invitations do not expose revoke/resend actions in Membres.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Membres pending invitations",
+        "issue": "After sending an invitation from UI, pending card appears but revoke/resend buttons are missing, so owner cannot revoke from UI.",
+        "testID": "revoke-* / resend-* (not rendered)",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "Invitation + revocation after 4 direct profiles",
+        "issue": "Backend invitation creation works, but frontend cannot map pending member to invitation actions (UI list shows pending item without controls).",
+        "affected_testIDs": [
+          "members-invite-open",
+          "member-invite-form",
+          "member-form-submit"
+        ]
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration6_family_profiles.py",
+    "/app/test_reports/pytest/pytest_iteration6.xml",
+    "/app/test_reports/artifacts_iter6/members_flow.jpeg",
+    "/app/test_reports/artifacts_iter6/final_20260922_100717.jpeg",
+    "/app/test_reports/iteration_6.json"
+  ],
+  "action_items": [
+    "Fix members pending-invitation mapping in frontend (currently matched by display_name); map by invitation.member_id or include display_name in GET /api/circle/invitations response.",
+    "Retest revoke/resend buttons visibility and click path after fix.",
+    "Optional regression check: rerun one end-to-end voice save on real device/browser with microphone permission (not fully executable in this web automation run)."
+  ],
+  "critical_code_review_comments": [
+    "frontend/app/members.tsx: pending invitation action rendering relies on `invitesQ.data?.find((entry) => entry.display_name === item.display_name)`. Backend invitation payload does not reliably provide `display_name`, causing missing revoke/resend controls.",
+    "backend/server.py invitation gate logic is correct: before 4 direct profiles returns 400; at 4 direct profiles invitation succeeds.",
+    "backend/server.py circle/profile and capsule update endpoints consistently strip `_id` via clean(), and backend tests confirmed no Mongo ObjectId leakage in tested responses."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration6_family_profiles.py",
+    "/app/test_reports/iteration_6.json"
+  ],
+  "success_rate": {
+    "backend": "100% (10/10)",
+    "frontend": "~85% (major requested flows pass, invitation revoke UI blocked)"
+  },
+  "seed_data_creation": "Created multiple TEST_i6_* accounts and circles through public API/UI, including circles with 4 direct profiles and pending invites for validation.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "During UI run with profils@racontelle.fr, deleting a managed profile succeeded (counter became 3/4), and a pending invite card remained visible but without revoke action controls. Counter behavior on fresh setup is correct (4/4 after waiting for members query).",
+  "rca_of_issue": "RCA: Pending invitation actions are derived by matching member display_name against invitation display_name in frontend. Backend invitation documents do not consistently include display_name, so `invitation` resolves undefined and resend/revoke buttons are not rendered. Repro: login owner with 4/4 direct -> open Membres -> send invitation -> observe pending card but no action icons; expected resend/revoke controls."
+}

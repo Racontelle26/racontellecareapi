@@ -16,7 +16,7 @@ import {
   setAudioModeAsync,
 } from "expo-audio";
 import { X, Microphone, Stop, Play, Pause, ArrowClockwise, Check, ImageSquare, Camera } from "phosphor-react-native";
-import { Body, Button, Label, Title, Avatar } from "@/src/components/ui";
+import { Body, Button, Label, TextField, Title, Avatar } from "@/src/components/ui";
 import { api, API_BASE, getToken } from "@/src/api/client";
 import { useAuth } from "@/src/auth/auth-context";
 import { useToast } from "@/src/components/toast";
@@ -50,6 +50,7 @@ export default function RecordScreen() {
   const [uploading, setUploading] = useState(false);
   const [photos, setPhotos] = useState<{ uri: string; mime: string }[]>([]);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [freeTitle, setFreeTitle] = useState("Souvenir sur le vif");
 
   const pickFromLibrary = async () => {
     let perm = await ImagePicker.getMediaLibraryPermissionsAsync();
@@ -193,7 +194,7 @@ export default function RecordScreen() {
       if (params.questionId) form.append("question_id", String(params.questionId));
       if (params.dailyId) form.append("daily_question_id", String(params.dailyId));
       if (params.theme) form.append("theme", String(params.theme));
-      if (params.questionText) form.append("title", String(params.questionText));
+      form.append("title", params.questionText ? String(params.questionText) : (freeTitle.trim() || "Souvenir sur le vif"));
       const name = `memoire-${Date.now()}.${Platform.OS === "web" ? "webm" : "m4a"}`;
       if (Platform.OS === "web") {
         const blob = await (await fetch(recordedUri)).blob();
@@ -285,6 +286,17 @@ export default function RecordScreen() {
             );
           })}
         </ScrollView>
+
+        {!params.questionId ? (
+          <TextField
+            label="NOM DU SOUVENIR"
+            testID="sur-le-vif-title-input"
+            value={freeTitle}
+            onChangeText={setFreeTitle}
+            placeholder="Un dimanche chez Mamie"
+            maxLength={120}
+          />
+        ) : null}
 
         {/* Photos */}
         <Label style={styles.sectionLabel}>PHOTOS (OPTIONNEL)</Label>

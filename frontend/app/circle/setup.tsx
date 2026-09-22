@@ -20,15 +20,30 @@ export default function CircleSetup() {
   const [mode, setMode] = useState<"create" | "join">("create");
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
+  const [profiles, setProfiles] = useState([
+    { display_name: "", relationship_label: "" },
+    { display_name: "", relationship_label: "" },
+    { display_name: "", relationship_label: "" },
+  ]);
   const [loading, setLoading] = useState(false);
+
+  const updateProfile = (index: number, field: "display_name" | "relationship_label", value: string) => {
+    setProfiles((current) => current.map((profile, i) => (i === index ? { ...profile, [field]: value } : profile)));
+  };
 
   const submit = async () => {
     setLoading(true);
     try {
       if (mode === "create") {
         if (!name.trim()) throw new Error("Donnez un nom à votre famille");
-        await api.post("/circles", { name: name.trim() });
-        toast.show("Cercle créé 🌱", "success");
+        const initialMembers = profiles
+          .filter((profile) => profile.display_name.trim() || profile.relationship_label.trim())
+          .map((profile) => ({ display_name: profile.display_name.trim(), relationship_label: profile.relationship_label.trim() }));
+        if (initialMembers.some((profile) => !profile.display_name || !profile.relationship_label)) {
+          throw new Error("Indiquez le prénom et le lien familial de chaque proche ajouté");
+        }
+        await api.post("/circles", { name: name.trim(), initial_members: initialMembers });
+        toast.show(`Cercle créé avec ${initialMembers.length + 1} profil${initialMembers.length ? "s" : ""}`, "success");
       } else {
         if (!code.trim()) throw new Error("Entrez votre code d’invitation");
         await api.post("/invitations/accept", { code: code.trim() });
@@ -72,13 +87,38 @@ export default function CircleSetup() {
         </View>
 
         {mode === "create" ? (
-          <TextField
-            label="NOM DE LA FAMILLE"
-            testID="setup-circle-name"
-            value={name}
-            onChangeText={setName}
-            placeholder="La famille Dupont"
-          />
+          <View style={styles.createFields}>
+            <TextField
+              label="NOM DE LA FAMILLE"
+              testID="setup-circle-name"
+              value={name}
+              onChangeText={setName}
+              placeholder="La famille Dupont"
+            />
+            <View style={styles.profilesIntro} testID="setup-profiles-info">
+              <Title style={styles.profilesTitle}>Vous + 3 proches</Title>
+              <Body muted>Ajoutez maintenant jusqu’à trois profils. Aucun e-mail n’est nécessaire.</Body>
+            </View>
+            {profiles.map((profile, index) => (
+              <View key={index} style={styles.profileCard} testID={`setup-profile-${index + 1}`}>
+                <Label style={styles.profileNumber}>PROCHE {index + 1} · OPTIONNEL</Label>
+                <TextField
+                  label="PRÉNOM"
+                  testID={`setup-profile-name-${index + 1}`}
+                  value={profile.display_name}
+                  onChangeText={(value) => updateProfile(index, "display_name", value)}
+                  placeholder={index === 0 ? "Mamie Jeanne" : "Prénom"}
+                />
+                <TextField
+                  label="LIEN FAMILIAL"
+                  testID={`setup-profile-relation-${index + 1}`}
+                  value={profile.relationship_label}
+                  onChangeText={(value) => updateProfile(index, "relationship_label", value)}
+                  placeholder={index === 0 ? "Grand-mère" : "Ex : Oncle, Fille…"}
+                />
+              </View>
+            ))}
+          </View>
         ) : (
           <TextField
             label="CODE D’INVITATION"
@@ -107,6 +147,11 @@ export default function CircleSetup() {
 const useStyles = makeStyles((colors) => ({
   container: { flex: 1, backgroundColor: colors.surface, paddingHorizontal: spacing.xl },
   content: { gap: spacing.lg, paddingBottom: spacing.xxl },
+  createFields: { gap: spacing.lg },
+  profilesIntro: { gap: spacing.xs, marginTop: spacing.sm },
+  profilesTitle: { fontSize: 22 },
+  profileCard: { gap: spacing.md, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, padding: spacing.lg },
+  profileNumber: { color: colors.brandSecondary },
   logo: { width: 170, height: 58, alignSelf: "center" },
   title: { fontSize: 28, textAlign: "center" },
   sub: { textAlign: "center", marginBottom: spacing.sm },

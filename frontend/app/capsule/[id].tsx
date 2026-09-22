@@ -7,14 +7,17 @@ import { LinearGradient } from "expo-linear-gradient";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { useAudioPlayer, useAudioPlayerStatus, setAudioModeAsync } from "expo-audio";
-import { CaretLeft, Play, Pause, Trash, ImageSquare, X } from "phosphor-react-native";
-import { Body, Label, Title, Avatar } from "@/src/components/ui";
+import { CaretLeft, Play, Pause, Trash, ImageSquare, X, PencilSimple, Check } from "phosphor-react-native";
+import { Body, Button, Label, TextField, Title, Avatar } from "@/src/components/ui";
 import { api, audioUrl, API_BASE, getToken } from "@/src/api/client";
+import { useAuth } from "@/src/auth/auth-context";
 import { useToast } from "@/src/components/toast";
 import { makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 type Capsule = {
   id: string;
+  question_id?: string | null;
+  title?: string | null;
   narrator_name?: string;
   narrator_color?: string;
   narrator_member_id: string;
@@ -28,6 +31,7 @@ type Capsule = {
   photo_url?: string | null;
   photos?: { id: string; url: string }[];
 };
+type Member = { id: string; display_name: string; initials_color?: string; relationship_label?: string | null; status: string };
 
 function fmt(sec: number) {
   return `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, "0")}`;
@@ -41,11 +45,17 @@ export default function CapsuleDetail() {
   const { colors } = useTheme();
   const toast = useToast();
   const qc = useQueryClient();
+  const { user, member } = useAuth();
 
   const capsuleQ = useQuery({ queryKey: ["capsule", id], queryFn: () => api.get<Capsule>(`/capsules/${id}`) });
+  const membersQ = useQuery({ queryKey: ["members"], queryFn: () => api.get<Member[]>("/circle/members") });
   const [url, setUrl] = useState<string | null>(null);
   const [token, setTok] = useState<string | null>(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editNarratorId, setEditNarratorId] = useState("");
   useEffect(() => {
     (async () => {
       await setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
@@ -53,6 +63,12 @@ export default function CapsuleDetail() {
       setTok(await getToken());
     })();
   }, [id]);
+
+  useEffect(() => {
+    if (!capsuleQ.data || editing) return;
+    setEditTitle(capsuleQ.data.title || capsuleQ.data.question_text || "Souvenir sur le vif");
+    setEditNarratorId(capsuleQ.data.narrator_member_id);
+  }, [capsuleQ.data, editing]);
 
   const photoList = capsuleQ.data?.photos ?? [];
   const photoSrcs = token
@@ -131,8 +147,26 @@ export default function CapsuleDetail() {
     }
   };
 
+  const saveEdit = async () => {
+    if (!editTitle.trim() || !editNarratorId) return toast.show("Nom et profil familial requis", "error");
+    setSavingEdit(true);
+    try {
+      await api.patch(`/capsules/${id}`, { title: editTitle.trim(), narrator_member_id: editNarratorId });
+      await capsuleQ.refetch();
+      qc.invalidateQueries({ queryKey: ["capsules"] });
+      setEditing(false);
+      toast.show("Souvenir mis à jour", "success");
+    } catch (e: any) {
+      toast.show(e?.message || "Modification impossible", "error");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
   const c = capsuleQ.data;
   const canDelete = !!c;
+  const canEditFree = !!c && !c.question_id && (c.recorded_by_user_id === user?.id || member?.role === "owner");
+  const activeMembers = membersQ.data?.filter((item) => item.status === "active") ?? [];
 
   return (
     <View style={styles.container}>
@@ -170,6 +204,30 @@ export default function CapsuleDetail() {
                 </Label>
               </View>
             </View>
+
+            {canEditFree ? editing ? (
+              <View style={styles.editCard} testID="sur-le-vif-edit-form">
+                <Label style={styles.editLabel}>MODIFIER CE SOUVENIR</Label>
+                <TextField label="NOM DU SOUVENIR" testID="sur-le-vif-title-edit" value={editTitle} onChangeText={setEditTitle} maxLength={120} />
+                <Label style={styles.pickerLabel}>RATTACHER AU PROFIL DE</Label>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.memberPicker} testID="sur-le-vif-narrator-picker">
+                  {activeMembers.map((item) => {
+                    const selected = editNarratorId === item.id;
+                    return <Pressable key={item.id} testID={`sur-le-vif-narrator-${item.id}`} onPress={() => setEditNarratorId(item.id)} style={[styles.pickerItem, selected && styles.pickerSelected]}>
+                      <Avatar name={item.display_name} color={item.initials_color} size={38} />
+                      <Label style={styles.pickerName} numberOfLines={1}>{item.display_name}</Label>
+                    </Pressable>;
+                  })}
+                </ScrollView>
+                <Button title="Enregistrer les modifications" testID="sur-le-vif-save-button" loading={savingEdit} onPress={saveEdit} icon={<Check color={colors.onBrandPrimary} size={18} weight="bold" />} />
+                <Pressable testID="sur-le-vif-edit-cancel" onPress={() => setEditing(false)} style={styles.cancelEdit}><Label style={styles.cancelEditText}>Annuler</Label></Pressable>
+              </View>
+            ) : (
+              <Pressable testID="sur-le-vif-rename-button" onPress={() => setEditing(true)} style={styles.editButton}>
+                <PencilSimple color={colors.brandPrimary} size={19} />
+                <Label style={styles.editButtonText}>Renommer ou changer de profil</Label>
+              </Pressable>
+            ) : null}
 
             {photoSrcs.length > 0 ? (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.galleryRow}>
@@ -262,6 +320,17 @@ const useStyles = makeStyles((colors) => ({
   narratorRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   narratorName: { fontSize: 17 },
   date: { color: colors.muted },
+  editButton: { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.pill },
+  editButtonText: { color: colors.brandPrimary },
+  editCard: { gap: spacing.md, padding: spacing.lg, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg },
+  editLabel: { color: colors.brandSecondary },
+  pickerLabel: { color: colors.muted, marginTop: spacing.xs },
+  memberPicker: { gap: spacing.sm, paddingVertical: spacing.xs },
+  pickerItem: { width: 72, alignItems: "center", gap: spacing.xs, padding: spacing.sm, borderWidth: 1, borderColor: "transparent", borderRadius: radius.md },
+  pickerSelected: { borderColor: colors.brandPrimary, backgroundColor: colors.brandTertiary },
+  pickerName: { fontSize: 11, color: colors.onSurface, textAlign: "center" },
+  cancelEdit: { minHeight: 44, alignItems: "center", justifyContent: "center" },
+  cancelEditText: { color: colors.muted },
   photoAction: { flexDirection: "row", alignItems: "center", gap: spacing.sm, alignSelf: "flex-start" },
   photoActionText: { color: colors.brandPrimary },
   galleryRow: { gap: spacing.md, paddingVertical: spacing.xs },

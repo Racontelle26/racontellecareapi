@@ -64,6 +64,18 @@ Trois cahiers des charges fournis (Beta test, MVP technique chiffrable, V7 ritue
 - Vérification générale : 11/11 tests backend et parcours mobiles auth, questions, album, audio, photos, profil, membres, invitations, feedback, livre et déconnexion validés.
 - E-mail géré vérifié sur l’adresse de validation du fournisseur : requête acceptée (HTTP 202).
 
+## Profils familiaux et fiches membres (2026-09, itérations 6–7)
+- Création initiale du cercle avec le créateur et jusqu’à trois profils familiaux sans e-mail.
+- Création directe limitée à quatre profils ; invitation par e-mail à partir du cinquième membre.
+- Profils sans compte modifiables et supprimables depuis « Membres » ; suppression bloquée tant que des souvenirs leur sont rattachés.
+- Actions « Renvoyer » et « Annuler » des invitations liées fiablement par `member_id`.
+- Page « À propos de Racontelle » accessible par le logo, avec texte de présentation et contact `laracontelle@gmail.com`.
+- Souvenirs « Sur le vif » nommables avant sauvegarde, puis renommables et réattribuables à un autre profil familial.
+- Onglet Profil enrichi avec tous les membres actifs : prénom, lien familial, nombre de souvenirs et temps enregistré.
+- Fiche membre dédiée avec statistiques, durée totale, état vide et liste chronologique ouvrant chaque souvenir.
+- Statistiques calculées par agrégation MongoDB, isolées par cercle et limitées aux souvenirs sauvegardés.
+- Recette : itération 6 backend 10/10 ; itération 7 backend 3/3 et parcours mobiles validés, y compris durées secondes/minutes/heures et noms longs.
+
 ## Backlog (prioritized)
 - P2 : Réponse texte/photo à une question ; carte postale souvenir PDF ; capsule temporelle.
 - P2 : Export des événements CSV (mesure bêta) via endpoint admin.
