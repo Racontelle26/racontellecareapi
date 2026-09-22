@@ -19,6 +19,7 @@ export default function TabsLayout() {
   }
 
   if (usesNativeTabs) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- loads the iOS-only implementation conditionally
     const { NativeTabs } = require("expo-router/unstable-native-tabs");
     return (
       <NativeTabs>

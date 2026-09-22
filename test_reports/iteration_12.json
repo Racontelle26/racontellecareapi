@@ -1,0 +1,50 @@
+{
+  "summary": "Frontend-only validation of Android PDF sharing fix performed with web regression, static code review, dependency verification, and build/lint checks. Web export still works with 2 stories and summary message; Android-native share path cannot be device-validated in this environment.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Android export build validation",
+        "issue": "`yarn expo export --platform android` failed in environment: Hermes compiler binary execution error (`hermesc: Syntax error: word unexpected`). Android bundle compile could not be confirmed here.",
+        "affected_testIDs": [
+          "book-export-pdf"
+        ]
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/artifacts_iter12/home_load_iter12.jpeg",
+    "/app/test_reports/artifacts_iter12/book_export_regression.jpeg",
+    "/root/.emergent/automation_output/20260922_134328/console_20260922_134328.log",
+    "/root/.emergent/automation_output/20260922_134347/console_20260922_134347.log"
+  ],
+  "action_items": [
+    "Validate Android native sharing on real device/emulator (Expo Go/dev build): ensure share sheet opens and no 'Not allowed to read file under given URL'.",
+    "Investigate CI/container Hermes toolchain issue blocking `expo export --platform android`.",
+    "Address blocking lint errors before considering this branch lint-clean (`react-hooks/set-state-in-effect`, `react-hooks/refs`)."
+  ],
+  "critical_code_review_comments": [
+    "Non-web branch correctly uses `Print.printToFileAsync({ html })` then `preparePdfForSharing(uri)` then `Sharing.shareAsync(shareableUri, ...)`; original print URI is not passed to share.",
+    "`preparePdfForSharing` enforces `file://`, copies to `FileSystem.cacheDirectory` with `.pdf` filename, then validates `exists` + non-zero `size`.",
+    "Android options are present (`mimeType: application/pdf`, `dialogTitle`), and iOS-only `UTI: com.adobe.pdf` is conditionally applied.",
+    "Web regression path remains isolated (`Platform.OS === 'web'`): popup print flow and `book-export-summary` succeed without hitting mobile sharing path."
+  ],
+  "updated_files": [
+    "/app/test_reports/iteration_12.json"
+  ],
+  "success_rate": {
+    "backend": "N/A (skipped by request)",
+    "frontend": "88%"
+  },
+  "seed_data_creation": "None",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Login with verification@racontelle.fr succeeded; mobile-web viewport test reached Livre romancé with exactly 2 chapter cards; clicking `book-export-pdf` showed `PDF prêt : 2 histoires incluses.`. Static checks confirm share URI copy strategy and platform-specific options. Remaining gap is native Android device/emulator validation and Hermes export environment failure.",
+  "rca_of_issue": "Target Android bug root cause appears addressed in code by copying expo-print output to cache .pdf before share. Unresolved risk is unverified runtime behavior on real Android due unavailable native execution path in this run; separate environment/toolchain issue blocked Android export bundle verification."
+}

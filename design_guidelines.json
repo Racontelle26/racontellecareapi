@@ -1,10 +1,10 @@
 {
-  "project_title": "Racontelle Family Memory App - Member Profile & Memories Enhancement",
+  "project_title": "Racontelle Family Memory App - Fingerprint Biometric Auth & Quick Unlock",
   "app_type": "mobile_fullstack_family_memory_app",
   "theme": {
     "primary_mode": "light",
     "style": "warm_editorial_heritage",
-    "description": "Warm, nostalgic, family-heritage aesthetic with soft cream backgrounds, vintage muted terracotta/rose accents, sage green secondary highlights, and elegant serif typography (Cormorant Garamond) combined with clean sans-serif (DM Sans)."
+    "description": "Warm, nostalgic, family-heritage aesthetic with soft cream backgrounds (#FDFBF7), vintage muted terracotta/rose accents (#C98B8B, #B57477), sage green highlights (#738A70), and elegant display typography (Cormorant Garamond) combined with legibility body fonts (DM Sans)."
   },
   "colors": {
     "surface": "#FDFBF7",
@@ -24,6 +24,10 @@
     "onBrandSecondary": "#FDFBF7",
     "brandTertiary": "#F2DADA",
     "onBrandTertiary": "#824D4D",
+    "biometricGlow": "#C98B8B26",
+    "biometricIcon": "#B57477",
+    "biometricSuccess": "#738A70",
+    "biometricError": "#A85252",
     "success": "#738A70",
     "onSuccess": "#FDFBF7",
     "warning": "#D1A054",
@@ -43,10 +47,10 @@
     "body": "DMSans",
     "bodyMedium": "DMSansMedium",
     "rules": {
-      "headings": "Use Cormorant Garamond / CormorantSemiBold for high emotional storytelling hierarchy (Titles, Member Names, Section Headers)",
-      "body": "Use DM Sans / DMSansMedium for maximum legibility on mobile screens (Stats, Timestamps, Descriptions, Form labels)",
+      "headings": "Use Cormorant Garamond / CormorantSemiBold for high emotional storytelling hierarchy (Titles, Lock Screen Greetings, Security Modal Headings)",
+      "body": "Use DM Sans / DMSansMedium for maximum legibility on mobile screens (Status hints, Error banners, Settings toggles, PIN prompt descriptions)",
       "max_heading_size": "32px on mobile to avoid layout breaking",
-      "hierarchy": "Header 24px-28px Cormorant, Subtitle 16px DMSansMedium, Card Label 12px uppercase tracking-wider"
+      "hierarchy": "Header 24px-28px Cormorant, Subtitle 16px DMSansMedium, Label/Caption 12px-14px uppercase tracking-wider"
     }
   },
   "layout_and_spacing": {
@@ -66,33 +70,92 @@
       "pill": 999
     },
     "container_padding": "16px horizontal, 24px vertical with safe area insets consideration",
-    "profile_section_rules": {
-      "active_members_grid": "Horizontal scroll or 2-column grid of active family members with avatar, initial color badge, total memories badge, and total recorded duration",
-      "member_card": "Card container with background #F5F2EB, subtle border #EBE6DC, rounded 16px, click feedback touchable ripple/opacity",
-      "member_detail_sheet": "Mobile-optimized modal or full screen showing member bio badge, total recorded duration formatted in hours/minutes (e.g., '1h 45 min' or '12 min'), total memories count, and chronological list of memories with direct navigation to memory detail"
+    "lock_screen_layout": {
+      "hero_avatar": "Centred warm family emblem or user profile avatar surrounded by subtle brand ring (#C98B8B)",
+      "greeting_text": "Cormorant display font: 'Bienvenue, [User]' or 'Déverrouiller Racontelle'",
+      "fingerprint_trigger_card": "Interactive card/button with pulsing biometric fingerprint icon (#B57477) and tactile feedback",
+      "fallback_actions": "Secondary button for 'Utiliser le code / PIN du téléphone' and text link for 'Se connecter avec e-mail et mot de passe'"
     }
   },
+  "biometric_unlock_blueprint": {
+    "flow_description": "Enables rapid fingerprint biometric unlock for returning users without re-entering email and password.",
+    "key_functionalities": [
+      {
+        "name": "Hardware & Enrollment Detection",
+        "details": "Verifies hardware support (isEnrolled / hasHardware via expo-local-authentication or navigator.credentials). Sets state to unsupported / not enrolled gracefully."
+      },
+      {
+        "name": "Activation Post First Login",
+        "details": "After successful email/password auth, prompts user to enable fingerprint unlock or automatically registers saved auth token for quick biometric resume."
+      },
+      {
+        "name": "App Resume Lock Screen",
+        "details": "When app returns from background or launches with an active stored session and biometrics enabled, displays the Lock Screen requiring fingerprint/PIN verification."
+      },
+      {
+        "name": "Fallback to Phone PIN",
+        "details": "If fingerprint authentication fails or user requests system backup, triggers phone fallback (fallbackToPin / device passcode authentication)."
+      },
+      {
+        "name": "Email & Password Alternative",
+        "details": "Always provides a direct route back to full credential login ('Se connecter avec e-mail/mot de passe')."
+      },
+      {
+        "name": "Profile Security Toggle",
+        "details": "Dedicated setting in Profile ('Déverrouillage par empreinte digitale') allowing users to enable/disable biometrics anytime."
+      },
+      {
+        "name": "Session Expiration & Cancellation Handling",
+        "details": "Handles cancelled attempts without locking user out; clears biometric session and redirects to full login if auth token is expired."
+      },
+      {
+        "name": "Web Compatibility",
+        "details": "Safely ignores native biometric prompts on web or relies on WebAuthn if supported, ensuring unchanged web functionality."
+      }
+    ]
+  },
   "key_features_and_components": {
-    "active_family_members_section": {
+    "lock_screen_view": {
+      "location": "app/(auth)/lock-screen.tsx or embedded LockScreen overlay in auth navigator",
+      "title": "Déverrouillage Biométrique",
+      "description": "Lock screen rendered when user opens app with an active cached session and biometric unlock enabled.",
+      "test_ids": [
+        "lock-screen-container",
+        "lock-screen-user-name",
+        "biometric-unlock-button",
+        "biometric-fingerprint-icon",
+        "fallback-pin-button",
+        "use-email-password-button",
+        "biometric-status-message",
+        "session-expired-banner"
+      ]
+    },
+    "profile_biometric_settings_section": {
       "location": "app/(tabs)/profile.tsx",
-      "title": "Membres de la famille",
-      "description": "Displays only active profile members in the Profile tab. Shows clickable avatar cards displaying total recorded memories and total audio duration.",
-      "test_ids": ["profile-active-members-section", "member-card-{id}", "member-card-avatar-{id}", "member-card-stats-{id}"]
+      "title": "Sécurité & Biométrie",
+      "description": "Profile tab section providing toggle switch for enabling or disabling fingerprint unlock.",
+      "test_ids": [
+        "profile-security-section",
+        "biometric-toggle-switch",
+        "biometric-status-label",
+        "biometric-hardware-warning"
+      ]
     },
-    "member_detail_modal_or_screen": {
-      "location": "app/members/[id].tsx or modal bottom sheet in profile",
-      "description": "Fiche membre mobile containing summary metrics (number of memories, total recording duration), chronological timeline of audio/text memories, and click-through to memory detail (e.g. /capsule/[id]).",
-      "test_ids": ["member-detail-modal", "member-detail-name", "member-detail-memory-count", "member-detail-duration", "member-memory-item-{id}"]
-    },
-    "member_management_navigation": {
-      "description": "Quick link button to manage all members ('Gérer les membres')",
-      "test_ids": ["profile-members-manage-btn", "profile-members"]
+    "login_screen_biometric_prompt": {
+      "location": "app/(auth)/login.tsx",
+      "title": "Proposer Empreinte après Connexion",
+      "description": "Post-login prompt or quick biometric setup banner offering user to activate fingerprint unlock for future sessions.",
+      "test_ids": [
+        "enable-biometric-prompt-modal",
+        "enable-biometric-confirm-btn",
+        "enable-biometric-skip-btn"
+      ]
     }
   },
   "image_urls": {
     "vintage_family_1": {
       "url": "https://images.unsplash.com/photo-1722173205783-d602329f0743?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzZ8MHwxfHNlYXJjaHxf331&q=85",
-      "description": "Family photos sheet background for memory album",
+      "description": "Family photo header background for memory album and lock screen header",
       "category": "album_header"
     },
     "elder_grandmother": {
@@ -107,15 +170,19 @@
     }
   },
   "accessibility_and_testing": {
-    "test_id_rules": "All interactive buttons, member cards, memory list items, toggles, inputs, and text counts MUST contain explicit data-testid or testID attributes matching kebab-case convention.",
+    "test_id_rules": "All interactive biometric triggers, PIN fallback links, setting toggles, error banners, and password buttons MUST contain explicit data-testid or testID attributes in kebab-case format.",
     "min_touch_target": "44x44px for touch targets",
     "contrast_ratio": "Minimum 4.5:1 for body text against warm background #FDFBF7"
   },
   "UNIVERSAL GUIDELINES FOR MAIN AGENT": [
     "Always preserve existing warm Racontelle design tokens (#FDFBF7 surface, #C98B8B brand rose, #738A70 sage green, Cormorant font for titles).",
-    "Active family profiles only must be listed in the Profile screen section.",
-    "Clicking a family member card must open their detailed profile sheet/view displaying total memory count, total recording duration formatted clearly, and chronological list of memories.",
-    "Each memory item in the member's list must be tap-navigable to the detail screen (/capsule/[id] or equivalent detail route).",
-    "Maintain complete data-testid attributes for automated testing."
+    "Integrate fingerprint biometric unlock natively with expo-local-authentication fallback logic.",
+    "Display Lock Screen when reopening app with an existing active token and biometric preference set to true.",
+    "Provide system PIN fallback button ('Utiliser le code / PIN du téléphone') when biometric verification fails.",
+    "Always maintain a clean escape route to full email/password login ('Se connecter avec e-mail et mot de passe').",
+    "Ensure toggle in Profile screen allows enabling and disabling fingerprint unlock seamlessly with state saved to secure storage.",
+    "Gracefully present informative states for: hardware not supported, no fingerprint enrolled, user cancelled, or session token expired.",
+    "Keep Web application flow unchanged and error-free when native biometric modules are absent.",
+    "Maintain complete data-testid attributes across all lock screen and security profile elements for automated testing."
   ]
 }

@@ -11,6 +11,7 @@ import { api, getToken } from "@/src/api/client";
 import { useToast } from "@/src/components/toast";
 import { makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { buildBookHtml, openPrintPreviewWindow, printBookWindow, type PdfPhoto } from "@/src/book/book-pdf";
+import { preparePdfForSharing } from "@/src/book/share-pdf";
 
 type BookStatus = { memory_count: number; transcribed: number; pending: number; chapter_count: number; can_generate: boolean };
 type Chapter = { id: string; title: string; content?: string; memory_count: number; created_at: string };
@@ -107,9 +108,14 @@ export default function BookHome() {
       } else {
         const { uri } = await Print.printToFileAsync({ html });
         if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(uri, { mimeType: "application/pdf", UTI: "com.adobe.pdf", dialogTitle: "Votre livre de famille" });
+          const shareableUri = await preparePdfForSharing(uri);
+          await Sharing.shareAsync(shareableUri, {
+            mimeType: "application/pdf",
+            dialogTitle: "Partager votre livre de famille",
+            ...(Platform.OS === "ios" ? { UTI: "com.adobe.pdf" } : {}),
+          });
         } else {
-          toast.show("PDF créé", "success");
+          throw new Error("Le partage de fichiers n’est pas disponible sur cet appareil");
         }
         setPdfSummary(`PDF prêt : ${chapters.length} histoire${chapters.length > 1 ? "s" : ""} incluse${chapters.length > 1 ? "s" : ""}.`);
       }

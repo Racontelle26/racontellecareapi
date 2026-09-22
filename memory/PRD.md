@@ -95,6 +95,17 @@ Trois cahiers des charges fournis (Beta test, MVP technique chiffrable, V7 ritue
 - La branche mobile conserve `Print.printToFileAsync` et le partage natif avec le même HTML complet.
 - Recette itération 11 : 2 chapitres visibles, 2 histoires incluses, requêtes détails confirmées et scénario popup bloqué validé.
 
+## Partage PDF Android et ouverture par empreinte (2026-09, itérations 12–13)
+- Android : le PDF généré est copié depuis le répertoire interne `expo-print` vers un fichier `.pdf` du cache applicatif avant l’appel à la feuille de partage.
+- Le partage direct conserve MIME PDF et titre Android ; l’UTI Adobe reste limité à iOS.
+- Ouverture biométrique facultative avec `expo-local-authentication` : empreinte forte uniquement, code/PIN système autorisé en secours.
+- Activation/désactivation depuis une nouvelle section « Ouverture par empreinte » dans Profil.
+- Au démarrage avec session mémorisée, ou après 30 secondes en arrière-plan, un écran opaque protège l’accès aux souvenirs.
+- Une connexion e-mail/mot de passe reste toujours disponible ; un JWT expiré est supprimé et impose la reconnexion.
+- Aucun mot de passe n’est stocké. Le JWT reste dans SecureStore et seule la préférence booléenne est conservée dans le stockage général.
+- Web inchangé : aucune interface ni API biométrique exécutée.
+- Validation itération 13 : TypeScript/lint et parcours web réussis. Le prompt natif empreinte/PIN et le partage PDF Android doivent être confirmés sur un téléphone Android réel.
+
 ## Backlog (prioritized)
 - P2 : Réponse texte/photo à une question ; carte postale souvenir PDF ; capsule temporelle.
 - P2 : Export des événements CSV (mesure bêta) via endpoint admin.

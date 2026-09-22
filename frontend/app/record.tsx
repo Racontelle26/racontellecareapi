@@ -87,9 +87,7 @@ export default function RecordScreen() {
   const membersQ = useQuery({ queryKey: ["members"], queryFn: () => api.get<Member[]>("/circle/members") });
   const activeMembers = membersQ.data?.filter((m) => m.status === "active") ?? [];
   const [narratorId, setNarratorId] = useState<string | null>(null);
-  useEffect(() => {
-    if (!narratorId && member) setNarratorId(member.id);
-  }, [member, narratorId]);
+  const effectiveNarratorId = narratorId || member?.id || null;
 
   useEffect(() => {
     (async () => {
@@ -153,10 +151,6 @@ export default function RecordScreen() {
     }
   };
 
-  useEffect(() => {
-    if (playStatus.isLoaded) setPreviewLoading(false);
-  }, [playStatus.isLoaded]);
-
   const togglePlay = async () => {
     try {
       await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false });
@@ -183,8 +177,7 @@ export default function RecordScreen() {
       toast.show("Enregistrez d’abord votre réponse", "error");
       return;
     }
-    const selectedNarratorId = narratorId || member?.id;
-    if (!selectedNarratorId) {
+    if (!effectiveNarratorId) {
       toast.show("Choisissez la personne qui raconte", "error");
       membersQ.refetch();
       return;
@@ -193,7 +186,7 @@ export default function RecordScreen() {
     try {
       player.pause();
       const form = new FormData();
-      form.append("narrator_member_id", selectedNarratorId);
+      form.append("narrator_member_id", effectiveNarratorId);
       form.append("duration_sec", String(Math.max(1, durationSec)));
       if (params.questionId) form.append("question_id", String(params.questionId));
       if (params.dailyId) form.append("daily_question_id", String(params.dailyId));
@@ -276,7 +269,7 @@ export default function RecordScreen() {
         <Label style={styles.sectionLabel}>QUI RACONTE ?</Label>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.narrators}>
           {activeMembers.map((m) => {
-            const active = narratorId === m.id;
+            const active = effectiveNarratorId === m.id;
             return (
               <Pressable
                 key={m.id}

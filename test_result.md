@@ -313,3 +313,48 @@
 ##     message: "Ajout d'une attestation runtime issue du DOM de la fenêtre imprimable: printBookWindow retourne nombre d'articles et longueurs, bloque si parité/contenu invalide, puis affiche book-export-summary. Cette preuve est testable depuis la page principale même sans handle popup."
 ##   - agent: "testing"
 ##     message: "Itération 11: exactement 2 cartes et attestation 'PDF prêt : 2 histoires incluses.' validées; 2 GET chapitres + 1 GET capsules confirmés; erreur de parité absente; popup bloqué géré sans requêtes. Retest false."
+
+## user_problem_statement_6: "Sur mobile Android, le partage du PDF échoue : ExpoSharing.shareAsync rejected, Not allowed to read file under given URL. L'utilisateur souhaite ouvrir directement le partage WhatsApp/e-mail/fichiers."
+## frontend_6:
+##   - task: "Copier le PDF dans un fichier cache Android partageable avant shareAsync"
+##     implemented: true
+##     working: true
+##     files: ["/app/frontend/app/book/index.tsx", "/app/frontend/src/book/share-pdf.ts", "/app/frontend/package.json"]
+##     priority: "critical"
+##     needs_retesting: true
+##     root_cause: "Le fichier temporaire créé dans le répertoire interne de expo-print n'était pas autorisé par ExpoSharing sur Android."
+## metadata_6:
+##   created_by: "main_agent"
+##   version: "1.6"
+##   test_sequence: 12
+##   run_ui: true
+## agent_communication_6:
+##   - agent: "main"
+##     message: "Correctif: expo-file-system/legacy copie le fichier source file:// vers cacheDirectory/racontelle-livre-<timestamp>.pdf, vérifie existence/taille, puis partage cette URI. UTI envoyé seulement sur iOS. expo-file-system 57.0.6 direct et dédupliqué; TypeScript/lints OK. Tester Android et régression web."
+##   - agent: "testing"
+##     message: "Itération 12: stratégie cache Android et options plateforme validées statiquement, régression PDF web validée. Partage natif réel non confirmable ici; export Android bloqué par hermesc x86-64 incompatible avec hôte ARM64. Retest appareil requis."
+
+## user_problem_statement_7: "Ajouter l'ouverture par empreinte digitale comme alternative au login/mot de passe; empreinte uniquement, code/PIN du téléphone en secours."
+## frontend_7:
+##   - task: "Déverrouillage local par empreinte/PIN avec session JWT existante"
+##     implemented: true
+##     working: true
+##     files: ["/app/frontend/src/auth/biometric.ts", "/app/frontend/src/auth/auth-context.tsx", "/app/frontend/src/auth/biometric-lock-screen.tsx", "/app/frontend/app/_layout.tsx"]
+##     priority: "high"
+##     needs_retesting: true
+##   - task: "Activation/désactivation biométrique dans Profil"
+##     implemented: true
+##     working: true
+##     files: ["/app/frontend/app/(tabs)/profile.tsx", "/app/frontend/app.json", "/app/frontend/package.json"]
+##     priority: "high"
+##     needs_retesting: true
+## metadata_7:
+##   created_by: "main_agent"
+##   version: "1.7"
+##   test_sequence: 13
+##   run_ui: true
+## agent_communication_7:
+##   - agent: "main"
+##     message: "expo-local-authentication 57.0.3; vérification hardware/enrollment/FINGERPRINT; biométrie strong; disableDeviceFallback false; PIN système; verrou au démarrage et après 30s en arrière-plan; login mot de passe alternatif; toggle Profil. Web inchangé. Aucun mot de passe stocké. yarn lint et tsc passent."
+##   - agent: "testing"
+##     message: "Itération 13: code/config, sécurité du stockage et régressions web validés; login/profil/logout/PDF passent; biométrie cachée sur web. Prompt empreinte, PIN, persistance et expiration JWT restent à confirmer sur Android réel. Retest natif requis."

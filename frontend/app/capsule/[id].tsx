@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { View, Pressable, ScrollView, ActivityIndicator } from "react-native";
+import { View, Pressable, ScrollView, ActivityIndicator, Platform } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -65,12 +65,6 @@ export default function CapsuleDetail() {
     })();
   }, [id]);
 
-  useEffect(() => {
-    if (!capsuleQ.data || editing) return;
-    setEditTitle(capsuleQ.data.title || capsuleQ.data.question_text || "Souvenir sur le vif");
-    setEditNarratorId(capsuleQ.data.narrator_member_id);
-  }, [capsuleQ.data, editing]);
-
   const photoList = capsuleQ.data?.photos ?? [];
   const photoSrcs = token
     ? photoList.map((p) => ({ id: p.id, uri: `${process.env.EXPO_PUBLIC_BACKEND_URL}${p.url}?token=${token}` }))
@@ -89,7 +83,6 @@ export default function CapsuleDetail() {
     if (res.canceled || !res.assets?.length) return;
     setUploadingPhoto(true);
     try {
-      const { Platform } = require("react-native");
       const form = new FormData();
       for (let i = 0; i < res.assets.length; i++) {
         const asset = res.assets[i];
@@ -229,7 +222,11 @@ export default function CapsuleDetail() {
                 <Pressable testID="sur-le-vif-edit-cancel" onPress={() => setEditing(false)} style={styles.cancelEdit}><Label style={styles.cancelEditText}>Annuler</Label></Pressable>
               </View>
             ) : (
-              <Pressable testID="sur-le-vif-rename-button" onPress={() => setEditing(true)} style={styles.editButton}>
+              <Pressable testID="sur-le-vif-rename-button" onPress={() => {
+                setEditTitle(c.title || c.question_text || "Souvenir sur le vif");
+                setEditNarratorId(c.narrator_member_id);
+                setEditing(true);
+              }} style={styles.editButton}>
                 <PencilSimple color={colors.brandPrimary} size={19} />
                 <Label style={styles.editButtonText}>Renommer ou changer de profil</Label>
               </Pressable>
