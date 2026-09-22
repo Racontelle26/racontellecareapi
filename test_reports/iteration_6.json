@@ -1,0 +1,61 @@
+{
+  "summary": "Iteration 6 validated all 3 new features on the PUBLIC preview URL. Backend: 28 pytest (8 new TTS) -> 27 pass, 1 spec deviation. TTS: POST /api/tts returns {path} (/api/tts/<sha256>.mp3), GET returns 200 audio/mpeg with valid MP3 magic bytes (ID3/frame-sync), 2nd identical POST reuses cache (same path), whitespace/URL-only text -> 400, unknown key -> 404. Deviation: empty string text -> 422 (Pydantic min_length) instead of the requested 400. Frontend: PIN flow fully verified - 1st tap on 'Espace professionnel' opens pin-modal in CREATE mode, 4-digit code auto-submits and opens stats; subsequent access is UNLOCK mode; wrong code shows pin-error and keeps stats closed; correct code opens. profile-remove opens pin-modal first, wrong PIN blocked, correct PIN opens remove-profile-modal (cancelled; Jeanne untouched). Archive search (archive-search): matches on title ('libre'), resident first name ('jeanne') and transcription word; unknown word shows 'Aucun souvenir trouvé' with list hidden; clearing restores. TTS frontend: workshop question mode shows workshop-listen-question; tap fires POST /api/tts -> 200 and label switches to 'Lecture en cours…'; capsule with transcription shows capsule-listen-<id>, tap fires POST /api/tts -> 200 and label switches to 'Lecture…'. Regressions pass: record+save (real web mic), auto-transcription (arrived in seconds), stats counters. Merge modal NOT re-tested (no duplicates on server; merge entry lives inside the PIN-gated stats screen, so it is transitively protected - merge itself does not re-ask the PIN).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/tts", "issue": "Empty string text returns 422 (Pydantic min_length=1) instead of the spec'd 400. Whitespace-only/URL-only text correctly returns 400 after normalization. Fix: drop min_length from the Field and let the normalized-text check raise the 400.", "priority": "MINOR"},
+      {"endpoint": "GET /api/tts/{key}.mp3", "issue": "Cache-Control 'public, max-age=31536000' set by the app is rewritten to 'no-store' by the preview ingress (Cloudflare) - infrastructure artifact, not an app bug; audio bytes + content-type are correct."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "CapsuleRow action row", "issue": "At 390px width the 3 actions (Écouter / Retranscrire / Partager à la famille) overflow horizontally - 'Partager à la famille' is cut off at the right edge (capsuleActions has no flexWrap).", "testID": "capsule-share-<id>", "priority": "MINOR"},
+      {"component": "Notice toast", "issue": "The notice (no auto-dismiss) overlays bottom actions until tapped; it covered profile-remove and swallowed the first tap in two separate sessions. Consider auto-hide after ~4s or a higher bottom offset.", "testID": "profile-remove", "priority": "MINOR"},
+      {"component": "Remove profile modal", "issue": "remove-cancel close button rendered outside the 390x844 viewport in the bottom sheet (same below-fold pattern as iter5 merge modal); needed JS-assisted scroll in tests.", "testID": "remove-cancel", "priority": "MINOR"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Archive / Profile capsule cards", "issues": ["Capsule action row overflows at 390px - add flexWrap or icon-only buttons"]},
+      {"screen": "Global notice", "issues": ["Toast persists until manual dismissal and blocks bottom CTAs"]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_tts_api.py",
+    "/app/test_reports/pytest/pytest_results_iter6.xml",
+    "/app/test_reports/screens/iter6-pin-create.png",
+    "/app/test_reports/screens/iter6-pin-error.png",
+    "/app/test_reports/screens/iter6-stats.png",
+    "/app/test_reports/screens/iter6-workshop-listen.png",
+    "/app/test_reports/screens/iter6-remove-pin-gate.png",
+    "/app/test_reports/screens/iter6-remove-modal.png",
+    "/app/test_reports/screens/iter6-archive.png",
+    "/app/test_reports/screens/iter6-archive-search-empty.png",
+    "/app/test_reports/screens/iter6-capsule-listen.png"
+  ],
+  "action_items": [
+    "Backend: make POST /api/tts return 400 (not 422) for empty text - remove min_length=1 from TtsRequest and rely on the existing normalized-text check.",
+    "Frontend: add flexWrap (or icon-only actions) to CapsuleRow capsuleActions so 'Partager à la famille' is not cut off at 390px.",
+    "Frontend: auto-dismiss the notice toast after a few seconds so it cannot block bottom CTAs like profile-remove.",
+    "Frontend: keep remove-cancel visible in the remove-profile bottom sheet at 390x844 (same fix family as iter5 merge modal).",
+    "Decision needed (spec interpretation): merge of duplicates is only gated by the stats-screen PIN, not re-asked at merge-confirm; profile-remove and stats re-ask every time. Confirm this is intended."
+  ],
+  "critical_code_review_comments": [
+    "server.py TTS block - solid: text sanitization (URLs/markdown stripped), sha256 cache key over text+voice+speed+model+format, tts_cache doc before storage reuse, 502 on provider/storage failure, 404 on unknown key, object-storage backed MP3. Empty-string 422 vs spec'd 400 is the only deviation.",
+    "index.tsx PIN flow (requirePin/submitPin, lines 733-761) - correct: create mode persists pin in local state, unlock compares and clears draft on error, auto-submit at 4 digits, number-pad + secureTextEntry. PIN is stored in plaintext localStorage - acceptable for a device-local atelier lock but not a real security barrier; flag if requirements grow.",
+    "index.tsx speakText (lines 515-540) - dedicated useAudioPlayer + setAudioModeAsync(allowsRecording:false) so recorder session is closed before playback; handleRecordPress re-enables recording mode afterwards. Correct.",
+    "Archive search (visibleCapsules, lines 719-729) - matches title, transcription, theme and the capsule's resident display_name, case-insensitive; empty-state copy distinguishes 'no result for query' vs 'empty archive'. Correct.",
+    "No deprecated Expo packages (expo-audio, expo-image, expo-file-system/legacy, expo-sharing, expo-clipboard all current). No red-screen errors; zero console errors during all runs.",
+    "Test harness note (not app bugs): Playwright auto-scroll fails inside RNW bottom sheets - use el.scrollIntoView + el.click() via evaluate; the persistent notice toast intercepts bottom clicks."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_tts_api.py",
+    "/app/test_reports/iteration_6.json"
+  ],
+  "success_rate": {"backend": "96% (27/28; only failure is the 422-vs-400 spec deviation)", "frontend": "100% of tested flows"},
+  "seed_data_creation": "Created then cleaned: 4 test capsules on Jeanne (today, silence recordings) and 2 TEST_ residents from the pytest suite - all deleted. Server is back to 2 active residents (Jeanne, Claire). NOTE: 1 capsule from 2026-09-17 (main agent's own TTS verification) still remains on Jeanne server-side. PIN 1234 existed only in ephemeral browser contexts - each new browser context will re-create its own PIN on first use.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All iter6 features work. To re-test PIN: every browser_automation run is a fresh profile, so first home-stats tap is always CREATE mode. Dismiss the notice toast (click its text) before tapping bottom buttons like profile-remove. Use evaluate(el.scrollIntoView + el.click()) inside bottom-sheet modals - remove-cancel and merge-confirm can be outside the 390x844 viewport. Whisper hallucinates 'Sous-titres réalisés para la communauté d'Amara.org' on silent fake-mic recordings - expected, and useful as a searchable transcription word. Run pytest with EXPO_PUBLIC_BACKEND_URL exported, else test_audio_share_api.py errors at collection. TTS cache: identical text returns identical path instantly.",
+  "rca_of_issue": "Test-side issue worth recording: profile-remove appeared unclickable (pin-modal never opened) in 2 sessions. RCA: after saveRecording the notice toast ('Souvenir libre sauvegardé…') is absolutely positioned at the bottom with no auto-dismiss; it overlays profile-remove, so the first tap dismisses the toast instead of firing onPress. Not a functional bug - dismissing the notice first makes the PIN gate work 100%. Reported as UX issue (toast should auto-hide)."
+}

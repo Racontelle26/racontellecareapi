@@ -44,6 +44,10 @@ Clarifications utilisateur : offline-first avec stockage local (smartphones/tabl
 - **10 questions par jour** (au lieu de 3) : les questions déjà répondues par la personne sont mémorisées (`answered` dans l'état local) ; les questions passées ou non traitées sont reproposées lors des ateliers suivants. L'usager répond au nombre de questions qu'il souhaite.
 - **Transcription automatique** : chaque souvenir synchronisé est transcrit sans action après la sauvegarde ; les souvenirs sans transcription (échec, hors connexion) sont retranscrits automatiquement en arrière-plan à chaque ouverture (max 5 par passage), visibles dans l'espace de chaque résident avec mention « Transcription automatique en cours… ». Le bouton manuel « Retranscrire » reste disponible.
 - Tests itération 5 : 13/13 pytest backend + parcours frontend validés (fusion, carnet PDF, sélecteur de mode) ; correctif du crash archive (props non déstructurées) appliqué par le testing agent.
+- **Minutage réel** (it. 7-8) : chrono basé horloge avec pause/reprise, durée exacte figée à l'arrêt et sauvegardée, minutage précis dans l'espace pro ; réécoute avant sauvegarde corrigée (session audio iOS).
+- **Création de profil fiable** (it. 8) : bouton « Créer le profil » collé au clavier (KeyboardAwareScrollView + KeyboardStickyView), création via touche « done », message si prénom vide.
+- **Renommage** (it. 8) : profils (clic sur le nom, `PATCH /api/residents/{id}`) et souvenirs sur le vif (`PATCH /api/capsules/{id}`), avec rattachement d'un souvenir à un profil (`PATCH /api/capsules/{id}/assign`, modale edit-capsule).
+- **Archive « Mes souvenirs »** (it. 9) : la vue « Tous » masque les souvenirs libres déjà réattribués (visibles dans la fiche du membre et son filtre).
 - Flux complet : Accueil → création de profil (max 10, modal scrollable, bouton accessible clavier) → atelier libre ou 3 questions/jour → enregistrement audio → archive datée par profil.
 - Persistance locale JSON (profils + capsules), synchronisation serveur best-effort.
 - `testID` sur les éléments interactifs ; réponses HTTP `201` conformes.

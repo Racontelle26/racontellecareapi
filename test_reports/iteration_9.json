@@ -1,0 +1,47 @@
+{
+  "summary": "Iteration 9 - CORRECTIF VALIDÉ (13/13 checks frontend): les souvenirs libres réattribués n'apparaissent plus dans l'onglet Mes souvenirs vue « Tous ». Test end-to-end sur l'URL publique avec enregistrements réels via UI: (1) souvenir libre créé en mode spontané (sans résident) -> visible dans « Tous » avec tag « À classer »; (2) souvenir de question créé pour Claire -> visible dans « Tous » (tag Enfance); (3) réattribution du souvenir libre à Claire via capsule-edit -> edit-capsule-resident-<claire> -> edit-capsule-save -> notice « Souvenir mis à jour. »; (4) « Tous » n'affiche plus que le souvenir de question (le libre réattribué a DISPARU); (5) archive-filter-<claire> affiche les 2 souvenirs; (6) fiche de Claire affiche les 2 souvenirs. Régressions OK: recherche archive (« libre » -> « Aucun souvenir trouvé », le souvenir masqué ne refait pas surface; effacer la recherche restaure la liste), lecture/pause sur la capsule réattribuée, transcription automatique Whisper visible sur les 2 capsules (~quelques secondes). Note outillage: le tool browser_automation a renvoyé 3 fois des résultats périmés (sessions antérieures); tests exécutés via Playwright local (chromium + fake media flags), script conservé dans /app/tests/iter9_free_memory_filter.py. Nettoyage: 10 capsules de test supprimées via DELETE /api/capsules/{id}; serveur final = Jeanne + Claire actifs, 0 capsule de test.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Archive / Mes souvenirs",
+        "issues": [
+          "La notice flottante en bas d'écran (ex. « Souvenir mis à jour. ») recouvre transitoirement (6s) la rangée d'actions (Modifier/Écouter/Partager) de la dernière carte visible; le tap sur Modifier peut être intercepté par la notice tant qu'elle n'est pas masquée (la notice est masquable au tap). Impact mineur."
+        ]
+      }
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/tests/iter9_free_memory_filter.py",
+    "/app/test_reports/screens/iter9-tous-after-reassign.jpeg",
+    "/app/test_reports/screens/iter9-claire-filter.jpeg",
+    "/app/test_reports/screens/iter9-claire-fiche.jpeg"
+  ],
+  "action_items": [
+    "Optionnel (P3): décaler la notice au-dessus de la zone d'actions ou réduire sa durée pour éviter l'interception transitoire des taps sur la dernière carte de l'archive.",
+    "Dette technique connue (déjà au backlog PRD): app/index.tsx fait 1088 lignes (>700) et devrait être découpé en écrans/composants (HomeScreen, ArchiveScreen, WorkshopScreen, modales)."
+  ],
+  "critical_code_review_comments": [
+    "Filtre correctif vérifié (app/index.tsx:833-835): vue « Tous » = capsules sauf (mode === 'free' && resident_id non null); les filtres par résident et la recherche s'appliquent après, donc un souvenir libre réattribué reste introuvable dans « Tous » même via la recherche — comportement conforme à la demande.",
+    "Attention (comportement offline-first existant, hors scope du correctif): les capsules serveur ne sont jamais fusionnées dans l'état local (refresh ne merge que residents/questions; mergeCapsules existe mais n'est pas appelé). Les souvenirs libres déjà réattribués sur le serveur (ex. 3 capsules de Jeanne) ne sont donc visibles ni dans « Tous » ni dans la fiche d'un nouvel appareil. À considérer si la multi-tablette est un jour requise.",
+    "Avertissement console RN-web: '\"shadow*\" style props are deprecated. Use \"boxShadow\"' (styles.notice utilise shadowColor/shadowOpacity) — cosmétique, à migrer lors d'une passe de dette."
+  ],
+  "updated_files": [
+    "/app/tests/iter9_free_memory_filter.py"
+  ],
+  "success_rate": {
+    "backend": "N/A (frontend-only iteration; API utilisées: POST/PATCH/DELETE capsules OK)",
+    "frontend": "100% (13/13 checks)"
+  },
+  "seed_data_creation": "2 capsules de test créées par run via UI (5 runs, enregistrements réels ~3s chacun). TOUTES supprimées après test (10 DELETE /api/capsules/{id} confirmés {\"deleted\":true}). Résidents finaux: Jeanne + Claire uniquement. Aucune donnée de test résiduelle.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Le correctif archive « Tous » est validé et peut être considéré comme terminé. Le script /app/tests/iter9_free_memory_filter.py est réutilisable comme régression E2E (python3 local, chromium /root/bin/chromium, flags fake media pour le micro). Si le tool browser_automation renvoie des sorties périmées (runs antérieurs), basculer sur ce script local. Résidents de référence: Jeanne=90118d8e-f486-4641-b269-f4b59cd852b9, Claire=96539515-8cea-41ab-b588-8e5911700a85.",
+  "rca_of_issue": "Bug d'origine: la vue « Tous » de l'archive affichait toutes les capsules sans distinction, y compris les souvenirs libres déjà réattribués à un profil (doublon visuel avec la fiche du membre). Correctif (1 ligne, app/index.tsx visibleCapsules): exclusion des capsules mode 'free' avec resident_id non null quand aucun filtre résident n'est actif. Vérifié: disparition dans « Tous » après réattribution, persistance dans le filtre résident et la fiche, souvenirs de question et libres non attribués toujours visibles. Aucune régression détectée."
+}

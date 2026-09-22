@@ -64,6 +64,14 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ keep_id, merge_ids }),
     }),
+  tts: (text: string) =>
+    request<{ path: string }>("/tts", { method: "POST", body: JSON.stringify({ text }) }),
   deleteResident: (id: string) =>
     request<{ deleted: boolean }>(`/residents/${id}`, { method: "DELETE" }),
+  updateResident: (id: string, display_name: string) =>
+    request<Resident>(`/residents/${id}`, { method: "PATCH", body: JSON.stringify({ display_name }) }),
+  updateCapsule: (id: string, title: string) =>
+    request<Capsule>(`/capsules/${id}`, { method: "PATCH", body: JSON.stringify({ title }) }),
+  assignCapsule: (id: string, resident_id: string) =>
+    request<Capsule>(`/capsules/${id}/assign?resident_id=${encodeURIComponent(resident_id)}`, { method: "PATCH" }),
 };

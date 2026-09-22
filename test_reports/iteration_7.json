@@ -1,0 +1,46 @@
+{
+  "summary": "Iteration 7 validated the user-reported bug fix ('réponses aux questions ne s'enregistrent pas + réécoute avant sauvegarde') and did the general verification on the PUBLIC preview URL. Backend: 29/29 pytest pass (5 suites), POST /api/tts empty text now returns 400 (was 422). MAIN BUG FIX VALIDATED end-to-end: fiche Jeanne -> atelier -> Question guidée -> Écouter la question (POST /api/tts 200, label 'Lecture en cours…') -> record ~4s -> Terminer -> timer shows 00:04 (NOT 00:00 - chrono maison works) -> Réécouter (no error, no audio session blockage) -> Sauvegarder -> server capsule has duration_sec=4, theme 'Enfance', question title, auto-transcription arrived in seconds. Multi-question: after save, question 2/10 appears, 2nd record+save works, both capsules visible in profile with correct durations + theme tags. Réécouter -> Recommencer: timer resets to 00:00, new recording works. Full chain TTS -> record -> replay -> record with zero audio blockage (setAudioModeAsync fixes verified on web; iOS écouteur fix is code-verified, not device-verifiable here). Notice toast auto-dismisses after ~6s (was blocking bottom CTAs). Capsule action row flexWrap verified ('Partager à la famille' wraps to 2nd line at 390px). General verification all pass: home logo, mode spontané (save -> bascule questions du jour), profile creation WITH photo (file chooser -> preview), archive (search hit/miss/empty state, resident filter, play/pause aria-label switch, TTS Écouter, Retranscrire, Partager -> 'Lien de partage copié'), espace pro (PIN create 1234 -> stats, PIN unlock on 2nd gate), merge duplicates (2x TEST_Merge -> fusion -> group gone), remove profile (PIN gate -> export popup ZIP -> export-done -> confirm -> resident gone + notice). Zero console errors across 5 sessions. BONUS real-world confirmation: a real user recorded concurrently during testing (09:45:50, 24s question answer + 09:46 8s free mode, both with REAL French transcriptions and CORRECT durations) - the duration fix works in real usage, not just fake-mic tests.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/pytest/pytest_results_iter7.xml",
+    "/app/test_reports/screens/iter7-home.png",
+    "/app/test_reports/screens/iter7-recording.png",
+    "/app/test_reports/screens/iter7-after-save.png",
+    "/app/test_reports/screens/iter7-profile-capsules.png",
+    "/app/test_reports/screens/iter7-archive.png",
+    "/app/test_reports/screens/iter7-stats-merge.png",
+    "/app/test_reports/screens/iter7-remove-done.png"
+  ],
+  "action_items": [
+    "Optional (code health): /app/frontend/app/index.tsx is ~960 lines (>700 guideline) - consider splitting screens/modals into separate component files.",
+    "Optional: playingCapsuleId is derived by matching player source URI against capsule.audio_uri (index.tsx ~line 505) - works but fragile if two capsules share a URI; a dedicated playingId state would be cleaner.",
+    "No blocking issues. All 6 announced fixes verified working."
+  ],
+  "critical_code_review_comments": [
+    "Chrono fix (index.tsx lines 184-191): elapsedSec increments only while recorderStatus==='recording', durationSeconds = max(elapsedSec, durationMillis/1000) - correct fallback for web where durationMillis stays 0. Reset present in beginWorkshop (307), handleRecordPress (331), resetRecording (347). Verified live: 00:04 displayed and duration_sec=4 persisted server-side.",
+    "Audio session fix: setAudioModeAsync({allowsRecording:false, playsInSilentMode:true}) called before TTS playback (552), capsule player (569), and workshop replay (onPlay, 793); handleRecordPress re-enables allowsRecording:true (329). Chain TTS->record->replay->record tested in one session with no blockage. iOS écouteur behavior cannot be verified on Chromium - code is correct per expo-audio docs.",
+    "TTS 400 fix (server.py 688-704): min_length removed from TtsRequest, empty text now hits normalized-text check -> 400 'Texte vide'. Verified via curl AND test_empty_text_rejected.",
+    "Notice auto-dismiss (194-198): 6s timeout with cleanup. Verified: notice present right after save, gone after 6.5s.",
+    "flexWrap fix (129): capsuleActions now 'flexWrap: wrap, rowGap: 4' - screenshot confirms 'Partager à la famille' on 2nd row at 390px.",
+    "No deprecated Expo packages (expo-audio, expo-file-system/legacy, expo-image, expo-sharing, expo-clipboard all current). No red screens, zero console errors in 5 sessions.",
+    "Test-harness note (not app bugs): RNW bottom-sheet buttons (add-resident, merge, remove modals) fail Playwright native click with 'outside of viewport' - use evaluate(scrollIntoView + click). Export/carnet web popup (window.open to download URL) never fires load event - wait for export-done marker instead of popup load."
+  ],
+  "updated_files": [
+    "/app/test_reports/iteration_7.json"
+  ],
+  "success_rate": {"backend": "100% (29/29 pytest + TTS 400 curl check)", "frontend": "100% of tested flows (5 browser sessions, ~30 interactions)"},
+  "seed_data_creation": "Created and cleaned up: 2x TEST_Merge residents (merged then kept one soft-deleted via API), leftover TEST_7b1f8383 removed via the app's own remove flow (export+confirm), 4 fake-mic test capsules deleted (Amara-hallucination transcriptions). PRESERVED: real user capsules recorded during the test window (Jeanne 24s question answer 09:45:50, unclassified 8s free 09:46) and Jeanne's 2026-09-17 capsule. Final server state: 2 active residents (Jeanne, Claire).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All 6 fixes validated, bug is resolved. A REAL USER is actively testing the app on the public URL (saw live 24s + 8s recordings with real French speech at 09:45-09:46) - do NOT delete capsules with real transcriptions; only delete fake-mic ones (transcription = 'Sous-titres réalisés para la communauté d'Amara.org'). Run pytest with EXPO_PUBLIC_BACKEND_URL=https://ehpad-recall.preview.emergentagent.com exported. Fresh browser context = fresh PIN (create mode on first gate). Use js_click (evaluate scrollIntoView+click) for all modal buttons. For export/carnet popups, don't wait for popup load - wait for data-testid=export-done.",
+  "rca_of_issue": "Original user bug had 2 root causes, both confirmed fixed: (1) Durations saved as 00:00: expo-audio's recorderState.durationMillis stays 0 on web -> duration_sec=0 persisted (evidence: capsule 15c8f613 recorded 09:37 pre-fix has duration_sec=0; post-fix capsules at 09:43/09:45 have 4/3/3/24). Fixed by home-made elapsedSec chronometer. (2) Replay inaudible/blocked: after recording, the audio session stayed in play-and-record mode, so replay-before-save and fiche playback were broken (on iOS real device, sound routed to earpiece). Fixed by setAudioModeAsync({allowsRecording:false}) before every playback + re-enabling allowsRecording on record. Verified: TTS->record->replay->Recommencer->record chain works flawlessly; the 'sauvegarde' itself was already working on web."
+}

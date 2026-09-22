@@ -1,0 +1,51 @@
+{
+  "summary": "Iteration 8 validated all 4 user-reported bugs/demands on the PUBLIC preview URL. Backend: 39/39 pytest pass (6 suites) including 10 new tests for PATCH /api/residents/{id} (rename), PATCH /api/capsules/{id} (title), PATCH /api/capsules/{id}/assign (rattach) with create->GET persistence verification and 404/422 edge cases. Frontend (5 browser sessions, zero console errors): (1) PROFILE CREATION FIX VALIDATED - resident-create-button stays visible/clickable with the input focused (KeyboardStickyView present, button box y=760 h=52 fully in viewport), creation via keyboard 'done' (Enter -> onSubmitEditing) works, empty name -> notice 'Indiquez un prénom pour créer le profil.' shown. (2) PROFILE RENAME VALIDATED - profile-rename -> rename-modal (prefilled) -> rename-save -> name updated in fiche + home + server (GET /api/residents). (3) CAPSULE EDIT VALIDATED end-to-end in one session - capsule-edit-<id> -> edit-capsule-modal (title prefilled) -> title renamed (fiche + server) -> reattached TEST resident -> Claire: disappeared from old fiche ('Aucun souvenir'), appeared in Claire's fiche, server resident_id updated, duration_sec preserved. (4) CHRONO VALIDATED - timer advances in real time (00:00 -> 00:02 over 2s), frozen during pause ('En pause' label), resumes correctly (00:02 -> 00:04), frozen at stop, server duration_sec=5 matched displayed 00:05 exactly. Espace pro: precise format verified live - '1 min 02 s' global and per resident (formatHours code covers 'H h MM min'). Regressions pass: replay-before-save, free->question mode switch after save, archive empty/search-miss states, PIN create 1234 / wrong-PIN error / unlock re-entry. All test data cleaned (2 capsules deleted, TEST_Rnd1c041 + TEST_5c3aee51 + TestCreation soft-deleted; Jeanne + Claire preserved).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "PATCH /api/capsules/{id} & PATCH /api/residents/{id}", "issue": "Pydantic validates min_length=1 BEFORE the .strip() in the handler: a whitespace-only payload (' ') passes validation then is stripped to an empty string and saved. Frontend trims before calling so real-world impact is nil, but server should reject/strip-then-validate (e.g. field_validator)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/pytest/pytest_results_iter8.xml",
+    "/app/backend/tests/test_rename_assign_api.py",
+    "/app/test_reports/screens/iter8-profile-created.png",
+    "/app/test_reports/screens/iter8-renamed-fiche.png",
+    "/app/test_reports/screens/iter8-recording.png",
+    "/app/test_reports/screens/iter8-after-save.png",
+    "/app/test_reports/screens/iter8-capsule-renamed.png",
+    "/app/test_reports/screens/iter8-capsule-moved.png",
+    "/app/test_reports/screens/iter8-stats.png",
+    "/app/test_reports/screens/iter8-pin-flow.png"
+  ],
+  "action_items": [
+    "Optional: strip-then-validate whitespace-only strings server-side on PATCH residents/capsules (minor hardening).",
+    "Optional (already flagged iter7): /app/frontend/app/index.tsx is now 1084 lines (>700 guideline) - split screens/modals into src/components.",
+    "Watch item (non-reproduced): in ONE stats test session, a screenshot showed the PIN modal in unlock mode on top of the stats screen right after PIN creation; the dedicated PIN test (create -> close -> re-entry unlock -> wrong-code error -> correct-code unlock) passed cleanly, so likely a test artifact. No fix recommended unless users report it.",
+    "No blocking issues. All 4 announced fixes verified working."
+  ],
+  "critical_code_review_comments": [
+    "Keyboard fix (index.tsx 889-905): KeyboardAwareScrollView for content + KeyboardStickyView wrapping resident-create-button, returnKeyType='done' + onSubmitEditing -> addResident, empty-name guard with notice. Same pattern applied to rename-modal (947-953) and edit-capsule-modal (960-974). Verified: button visible with field focused, Enter creates the profile. Native keyboard behavior is not testable on Chromium desktop (noted by E1) - structure is correct per react-native-keyboard-controller docs.",
+    "Chrono (index.tsx 183-198, 321-367): elapsedBaseMs accumulates on pause, recordStartMs reset on resume, interval only ticks while status==='recording', stopRecording freezes finalDurationSec=max(1, round(base/1000)) without waiting for a tick. Verified live: real-time advance, pause freeze, resume, duration_sec=5 == displayed 00:05 server-side.",
+    "saveCapsuleEdit (706-726): local persist first, then PATCH title only if changed, PATCH assign only if resident changed; status recomputed assigned/unclassified. Verified: both server calls fired correctly, duration preserved, capsule moved between fiches.",
+    "formatHours (1048-1056): 'H h MM min' / 'M min SS s' / 'S s' - minute format verified live ('1 min 02 s'), hour format code-reviewed correct.",
+    "NOTE for next agent: capsules are LOCAL-only on load (refresh() merges only residents from server). A fresh browser context shows zero capsules in fiches/archive even though server has them - by design (offline-first). Capsule UI tests must record within the same browser session.",
+    "No deprecated Expo packages detected (expo-audio, expo-file-system/legacy, expo-image, react-native-keyboard-controller all current). Zero console errors in 5 sessions."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_rename_assign_api.py",
+    "/app/test_reports/iteration_8.json"
+  ],
+  "success_rate": {"backend": "100% (39/39 pytest, 6 suites)", "frontend": "100% of tested flows (5 browser sessions, ~45 interactions)"},
+  "seed_data_creation": "Created and cleaned up: residents TEST_Kb996959 (renamed to TEST_Rnd1c041 then soft-deleted) + 2x TEST_Rename_* pytest fixtures (auto-soft-deleted) + pre-existing leftovers TEST_5c3aee51 and TestCreation (soft-deleted per cleanup instruction); 2 fake-mic capsules (5s + 3s, Amara-hallucination transcriptions) deleted. Final server state: 2 active residents (Jeanne, Claire) - unchanged from iter7 baseline.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All 4 bugs/features validated, nothing blocking. Key gotchas: (1) fresh browser context = zero local capsules + fresh PIN create mode - record within the same session to test capsule UI; (2) use js_click (evaluate scrollIntoView+click) for RNW bottom-sheet buttons; (3) RNW Modal visibility cannot be checked via offsetParent - check for inner text instead; (4) Chromium fake-mic works with context.grant_permissions(['microphone']), Whisper transcribes the tone as 'Sous-titres réalisés para la communauté d'Amara.org' - only delete those, never real French transcriptions; (5) run pytest with EXPO_PUBLIC_BACKEND_URL=https://ehpad-recall.preview.emergentagent.com (tests run under pytest-xdist - keep tests order-independent).",
+  "rca_of_issue": ""
+}

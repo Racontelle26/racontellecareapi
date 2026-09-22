@@ -280,6 +280,24 @@ async def get_unclassified_capsules():
     ).sort("recorded_at", -1).to_list(1000)
 
 
+class CapsulePatch(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+
+
+@api_router.patch("/capsules/{capsule_id}", response_model=CapsuleOut)
+async def update_capsule(capsule_id: str, input: CapsulePatch):
+    """Renommage d'un souvenir sur le vif."""
+    doc = await db.capsules.find_one_and_update(
+        {"id": capsule_id},
+        {"$set": {"title": input.title.strip()}},
+        return_document=True,
+        projection={"_id": 0, "audio_base64": 0, "audio_uri": 0},
+    )
+    if not doc:
+        raise HTTPException(status_code=404, detail="Souvenir introuvable")
+    return doc
+
+
 @api_router.delete("/capsules/{capsule_id}")
 async def delete_capsule(capsule_id: str):
     result = await db.capsules.delete_one({"id": capsule_id})
@@ -682,6 +700,60 @@ async def carnet_pdf(resident_id: str):
         content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="racontelle-carnet-{safe_name}.pdf"'},
+    )
+
+
+class TtsRequest(BaseModel):
+    text: str = Field(max_length=4000)
+
+
+@api_router.post("/tts")
+async def text_to_speech(input: TtsRequest):
+    """Lecture vocale (TTS) : questions et transcriptions lues à voix haute.
+    Voix « coral », débit posé pour un public senior. Audio mis en cache dans
+    le stockage objet (clé = hash texte+voix+modèle+format)."""
+    from emergentintegrations.llm.openai import OpenAITextToSpeech
+    import hashlib
+
+    text = re.sub(r"https?://\S+", "", input.text)
+    text = re.sub(r"[*_#>~|`]", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Texte vide")
+    key = hashlib.sha256(f"{text}|coral|0.95|tts-1|mp3".encode()).hexdigest()
+    doc = await db.tts_cache.find_one({"key": key}, {"_id": 0})
+    if not doc:
+        try:
+            tts = OpenAITextToSpeech(api_key=EMERGENT_KEY)
+            audio = await tts.generate_speech(
+                text=text, model="tts-1", voice="coral", speed=0.95, response_format="mp3"
+            )
+        except Exception as exc:
+            logger.warning("tts failed: %s", exc)
+            raise HTTPException(status_code=502, detail="Lecture vocale momentanément indisponible")
+        path = f"{APP_NAME}/tts/{key}.mp3"
+        try:
+            await run_in_threadpool(put_object, path, audio, "audio/mpeg")
+        except Exception as exc:
+            logger.warning("tts storage failed: %s", exc)
+            raise HTTPException(status_code=502, detail="Stockage audio momentanément indisponible")
+        await db.tts_cache.insert_one({"key": key, "path": path, "created_at": now_iso()})
+    return {"path": f"/api/tts/{key}.mp3"}
+
+
+@api_router.get("/tts/{key}.mp3")
+async def get_tts(key: str):
+    doc = await db.tts_cache.find_one({"key": key}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Audio introuvable")
+    try:
+        data, _ = await run_in_threadpool(get_object, doc["path"])
+    except Exception:
+        raise HTTPException(status_code=404, detail="Audio introuvable")
+    return Response(
+        content=data,
+        media_type="audio/mpeg",
+        headers={"Cache-Control": "public, max-age=31536000"},
     )
 
 

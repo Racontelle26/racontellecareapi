@@ -43,4 +43,6 @@ export type LocalState = {
   /** Ids des questions déjà répondues, par profil ("none" pour le mode spontané).
    * Les questions non traitées sont reproposées lors des ateliers suivants. */
   answered: Record<string, string[]>;
+  /** Code professionnel à 4 chiffres (espace pro, fusion, retrait de profil). */
+  pin: string | null;
 };
