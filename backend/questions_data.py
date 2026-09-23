@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Editorial bank of 400 life-story questions for Racontelle Family.
+"""Editorial bank of 400 life-story questions for Racontelle.
 
 Format per line: NUMBER | THEME | TEXT | SENSITIVE(true/false)
 The two sensitive themes (Intimité corps & sexualité, Deuils séparations &

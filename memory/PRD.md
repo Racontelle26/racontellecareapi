@@ -1,4 +1,4 @@
-# Racontelle Family — PRD
+# Racontelle — PRD
 
 ## Problem statement (original, verbatim)
 « Créer une application mobile : enregistrement des souvenirs vocaux d'une famille dans le but de fabriquer un livre romancé avec les souvenirs collectés. Les membres de la famille en seraient alors les personnages principaux. »
@@ -120,6 +120,12 @@ Trois cahiers des charges fournis (Beta test, MVP technique chiffrable, V7 ritue
 - Le Base64 est écrit dans le cache scoped de l’expérience sous `racontelle-livre-<timestamp>.pdf`, puis vérifié avant `Sharing.shareAsync`.
 - Garde mémoire : refus au-delà de 40 Mio de Base64 avec message français explicite.
 - Régression web et contrôles statiques validés ; génération et feuille de partage confirmées par l’utilisateur sur Android Expo Go réel.
+
+## Marque Racontelle (2026-09, itération 17)
+- Nom visible unifié en « Racontelle » dans la configuration Expo, le splash, l’interface, les e-mails, l’API, les retours bêta et la couverture PDF.
+- Les identifiants techniques Android/iOS et l’URL d’aperçu restent inchangés pour préserver l’installation et le routage.
+- Recette : backend 8/8, frontend 100 % sur le périmètre, PDF et persistance de session validés.
+- La clé gérée utilisée par le stockage objet a été renouvelée après expiration ; démarrage backend confirmé avec « Object storage ready ».
 
 ## Backlog (prioritized)
 - P2 : Réponse texte/photo à une question ; carte postale souvenir PDF ; capsule temporelle.

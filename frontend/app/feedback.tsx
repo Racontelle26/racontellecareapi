@@ -50,7 +50,7 @@ export default function Feedback() {
       </View>
       <KeyboardAwareScrollView contentContainerStyle={styles.content} bottomOffset={20} showsVerticalScrollIndicator={false}>
         <Title style={styles.title}>Votre avis compte</Title>
-        <Body muted>Aidez-nous à améliorer Racontelle Family pendant la bêta.</Body>
+        <Body muted>Aidez-nous à améliorer Racontelle pendant la bêta.</Body>
 
         <Label style={styles.section}>DE QUOI S’AGIT-IL ?</Label>
         <View style={styles.cats}>

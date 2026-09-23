@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Racontelle Family",
+    "name": "Racontelle",
     "slug": "frontend",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -37,8 +37,8 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-image.png",
-          "imageWidth": 200,
+          "image": "./assets/images/racontelle-logo.png",
+          "imageWidth": 260,
           "resizeMode": "contain",
           "backgroundColor": "#FDFBF7"
         }

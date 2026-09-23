@@ -67,7 +67,7 @@ MAX_AUDIO_DURATION_SEC = 2 * 60 * 60
 # Email
 EMAIL_BASE_URL = "https://integrations.emergentagent.com"
 EMAIL_KEY = os.environ.get("EMERGENT_EMAIL_KEY")
-EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME", "Racontelle Family")
+EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME", "Racontelle")
 APP_PUBLIC_URL = os.environ.get("APP_PUBLIC_URL", "https://racontelle.family")
 
 TZ_PARIS_OFFSET = timedelta(hours=2)  # Europe/Paris (indicative for daily date)
@@ -338,10 +338,10 @@ def _invite_email_html(circle_name: str, inviter: str, code: str) -> str:
     return (
         f'<table role="presentation" width="100%" style="background:#FDFBF7">'
         f'<tr><td style="padding:32px;font-family:Georgia,serif;color:#3A332C">'
-        f'<h1 style="color:#B57477;font-weight:500;font-size:26px;margin:0 0 8px">Racontelle Family</h1>'
+        f'<h1 style="color:#B57477;font-weight:500;font-size:26px;margin:0 0 8px">Racontelle</h1>'
         f'<p style="font-size:16px">{escape(inviter)} vous invite à rejoindre le cercle '
         f'<strong>{escape(circle_name)}</strong> pour enregistrer et préserver vos souvenirs de famille.</p>'
-        f'<p style="font-size:15px">Ouvrez l’application Racontelle Family, créez votre compte, puis '
+        f'<p style="font-size:15px">Ouvrez l’application Racontelle, créez votre compte, puis '
         f'choisissez <strong>« Rejoindre une famille »</strong> et saisissez ce code d’invitation :</p>'
         f'<p style="font-size:30px;letter-spacing:6px;color:#B57477;font-weight:600;text-align:center;'
         f'background:#F2DADA;border-radius:16px;padding:18px;margin:20px 0">{escape(code)}</p>'
@@ -361,7 +361,7 @@ def _daily_email_html(name: str, question: str) -> str:
         f'<h1 style="color:#B57477;font-weight:500;font-size:24px;margin:0 0 12px">Votre question du jour</h1>'
         f'<p style="font-size:16px">Bonjour {escape(name)},</p>'
         f'<p style="font-size:20px;font-style:italic;color:#3A332C;line-height:1.5">« {escape(question)} »</p>'
-        f'<p style="font-size:15px;color:#5C5249">Ouvrez Racontelle Family pour répondre avec votre voix. '
+        f'<p style="font-size:15px;color:#5C5249">Ouvrez Racontelle pour répondre avec votre voix. '
         f'Chaque souvenir enregistré fait grandir votre arbre de famille.</p>'
         f'<p style="font-size:12px;color:#8A8177;margin-top:24px">Envoyé par {b}. '
         f'Vous pouvez désactiver ces rappels dans votre profil.</p>'
@@ -389,7 +389,7 @@ def clean(doc: dict) -> dict:
 # ---------------------------------------------------------------------------
 # App + auth dependency
 # ---------------------------------------------------------------------------
-app = FastAPI(title="Racontelle Family API")
+app = FastAPI(title="Racontelle API")
 api = APIRouter(prefix="/api")
 
 
@@ -530,7 +530,7 @@ AVATAR_COLORS = ["#C98B8B", "#738A70", "#D1A054", "#8A9691", "#B57477", "#A38160
 # ---------------------------------------------------------------------------
 @api.get("/")
 async def root():
-    return {"message": "Racontelle Family API", "status": "ok"}
+    return {"message": "Racontelle API", "status": "ok"}
 
 
 @api.post("/auth/register")
@@ -583,7 +583,7 @@ async def request_reset(body: ResetReqIn):
             f'<table role="presentation" width="100%" style="background:#FDFBF7"><tr>'
             f'<td style="padding:32px;font-family:Georgia,serif;color:#3A332C">'
             f'<h1 style="color:#B57477;font-weight:500">Réinitialisation</h1>'
-            f'<p>Votre code de réinitialisation Racontelle Family :</p>'
+            f'<p>Votre code de réinitialisation Racontelle :</p>'
             f'<p style="font-size:28px;letter-spacing:5px;color:#B57477;font-weight:600">{escape(code)}</p>'
             f'<p style="font-size:12px;color:#8A8177">Ce code expire dans 30 minutes. '
             f'Envoyé par {escape(EMAIL_FROM_NAME)}.</p></td></tr></table>'
@@ -776,7 +776,7 @@ async def create_invitation(body: InviteIn, user=Depends(get_current_user)):
               "token_hash": sha(code), "code": code, "status": "sent",
               "expires_at": (now() + timedelta(days=7)).isoformat(), "sent_at": now().isoformat(), "accepted_at": None}
     await db.invitations.insert_one(invite)
-    await send_email(to=str(body.email).lower(), subject=f"{user['display_name']} vous invite sur Racontelle Family",
+    await send_email(to=str(body.email).lower(), subject=f"{user['display_name']} vous invite sur Racontelle",
                      html=_invite_email_html(circle["name"], user["display_name"], code))
     await db.events.insert_one({"id": oid(), "event_type": "invite_sent", "circle_id": circle_id, "member_id": new_member["id"], "occurred_at": now().isoformat()})
     return {"member": clean(new_member), "invitation": clean(invite), "code": code}
@@ -800,7 +800,7 @@ async def resend_invitation(invite_id: str, user=Depends(get_current_user)):
     if not invite:
         raise HTTPException(404, "Invitation introuvable")
     circle = await db.circles.find_one({"id": member["circle_id"]})
-    await send_email(to=invite["email"], subject=f"Rappel : invitation Racontelle Family",
+    await send_email(to=invite["email"], subject=f"Rappel : invitation Racontelle",
                      html=_invite_email_html(circle["name"], user["display_name"], invite["code"]))
     return {"ok": True, "code": invite["code"]}
 

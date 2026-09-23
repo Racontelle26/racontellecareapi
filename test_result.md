@@ -409,3 +409,24 @@
 ##     message: "Itération 16: aucune copie/cache Print résiduelle; chaîne base64 -> cache scoped -> getInfo -> Sharing validée; web 2 histoires, lint et tsc passent. Pas d'appareil/adb dans le conteneur: feuille Android Expo Go encore à confirmer par l'utilisateur."
 ##   - agent: "user"
 ##     message: "Validation sur Android Expo Go réel : la génération du PDF et l'ouverture du partage fonctionnent."
+
+## user_problem_statement_10: "Changer le nom Family Stories par Racontelle partout."
+## fullstack_10:
+##   - task: "Renommage visible complet en Racontelle"
+##     implemented: true
+##     working: true
+##     files: ["/app/frontend/app.json", "/app/frontend/src/book/book-pdf.ts", "/app/frontend/app/feedback.tsx", "/app/backend/server.py", "/app/backend/.env"]
+##     priority: "high"
+##     needs_retesting: false
+## metadata_10:
+##   created_by: "main_agent"
+##   version: "2.0"
+##   test_sequence: 17
+##   run_ui: true
+## agent_communication_10:
+##   - agent: "main"
+##     message: "Nom Expo = Racontelle; splash = logo Racontelle; PDF = RACONTELLE; feedback/e-mails/sujets/API = Racontelle; EMAIL_FROM_NAME mis à jour. Identifiants package/bundle conservés. Recherche visible sans ancienne mention; config Expo, lint, Python et tsc OK."
+##   - agent: "testing"
+##     message: "Itération 17: renommage visible, config Expo, splash, UI, PDF, backend et régressions validés; backend 8/8 et frontend 100%."
+##   - agent: "main"
+##     message: "Avertissement stockage détecté au redémarrage: clé gérée expirée, renouvelée sans changement de code. Backend confirme Object storage ready."

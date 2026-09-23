@@ -1,0 +1,62 @@
+{
+  "summary": "Renommage Racontelle validé en backend+frontend sur URL publique: config Expo, écrans visibles, PDF web, auth/session et routes API critiques. Aucun affichage visible de l’ancienne marque durant les parcours testés.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "/api/openapi.json",
+        "issue": "Retourne 404 via ingress public; vérification du titre FastAPI faite via code source (FastAPI title = Racontelle API)."
+      },
+      {
+        "endpoint": "Python lint (backend)",
+        "issue": "`ruff check /app/backend` échoue avec de multiples règles de style/typing (non bloquant fonctionnellement; py_compile OK)."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {
+        "component": "Runtime web Expo",
+        "issue": "Avertissement console non bloquant: props.pointerEvents is deprecated. Use style.pointerEvents"
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration17_branding_and_regression.py",
+    "/app/test_reports/pytest/pytest_iteration17_branding.xml",
+    "/app/test_reports/artifacts_iter17/home_load_iter17.jpeg",
+    "/app/test_reports/artifacts_iter17/home_after_login_iter17.jpeg",
+    "/app/test_reports/artifacts_iter17/book_iter17.jpeg",
+    "/app/test_reports/artifacts_iter17/book_export_retest_iter17.jpeg",
+    "/root/.emergent/automation_output/20260923_144435/console_20260923_144435.log",
+    "/root/.emergent/automation_output/20260923_144459/console_20260923_144459.log"
+  ],
+  "action_items": [
+    "Optionnel: exposer OpenAPI publiquement sous une route attendue si requis pour monitoring/outillage.",
+    "Optionnel: corriger l’avertissement pointerEvents côté runtime/composants pour réduire le bruit console.",
+    "Surveiller l’intégration object storage: backend logs montrent des warning 401 sur init_storage au startup."
+  ],
+  "critical_code_review_comments": [
+    "frontend/app.json conforme: name=Racontelle, splash image=assets/images/racontelle-logo.png, bundleIdentifier/package inchangés (com.emergent.familystories.ubz2aq).",
+    "Aucune occurrence de 'Family Stories' ou 'Racontelle Family' trouvée dans frontend (app/src/app.json scope demandé) ni backend server/.env; seule une occurrence reste dans un commentaire de test backend.",
+    "PDF web branding conforme dans src/book/book-pdf.ts: couverture affiche 'RACONTELLE' (pas RACONTELLE FAMILY).",
+    "Backend branding conforme: /api renvoie 'Racontelle API'; FastAPI title='Racontelle API'; templates invitation/rappel/reset et EMAIL_FROM_NAME utilisent Racontelle.",
+    "Flux login/session, routes /questions, /capsules, /book/chapters et export PDF web ('PDF prêt : 2 histoires incluses.') validés en exécution réelle."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration17_branding_and_regression.py",
+    "/app/test_reports/iteration_17.json"
+  ],
+  "success_rate": {
+    "backend": "100% (8/8)",
+    "frontend": "100% sur le périmètre testé"
+  },
+  "seed_data_creation": "Aucune",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Credentials lus depuis /app/memory/test_credentials.md avant auth. Tests exécutés sur https://family-stories-34.preview.emergentagent.com. Pytest branding/regression 8/8 pass. UI mobile (375x667): welcome/login/home/about/feedback/book export validés, aucun ancien branding visible.",
+  "rca_of_issue": "Le seul écart API observé est /api/openapi.json en 404 sur l’URL publique. Cause probable: routage ingress n’exposant pas ce endpoint FastAPI sous /api. Le titre FastAPI est toutefois correct dans server.py et /api/ retourne bien 'Racontelle API'."
+}

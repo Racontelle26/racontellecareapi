@@ -1,4 +1,4 @@
-// Design tokens for Racontelle Family. Light theme only.
+// Design tokens for Racontelle. Light theme only.
 // Keys mirror the "color" block of /app/design_guidelines.json.
 // Use makeStyles() for stylesheets and useTheme().colors for color props.
 
