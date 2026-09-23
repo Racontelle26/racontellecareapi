@@ -1,4 +1,5 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+import hashlib
 import logging
 import os
 from pathlib import Path
@@ -8,18 +9,29 @@ import uuid
 
 import requests
 from dotenv import load_dotenv
-from fastapi import APIRouter, FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.responses import HTMLResponse, Response
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 from starlette.middleware.cors import CORSMiddleware
 
+from security import (
+    AuthUser,
+    auth_router,
+    configure_security,
+    consume_quota,
+    current_user,
+    ensure_security_indexes,
+    require_admin,
+)
+
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
 client = AsyncIOMotorClient(os.environ["MONGO_URL"])
 db = client[os.environ["DB_NAME"]]
+configure_security(db)
 app = FastAPI(title="Racontelle Care API")
 api_router = APIRouter(prefix="/api")
 
@@ -27,9 +39,9 @@ api_router = APIRouter(prefix="/api")
 # Emergent Object Storage : conservation précieuse des fichiers audio.
 # L'app ne contacte jamais le stockage directement ; tout passe par ici.
 # ---------------------------------------------------------------------------
-STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
+STORAGE_BASE = os.environ["INTEGRATION_PROXY_URL"].strip()
 STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
-EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
+EMERGENT_KEY = os.environ["EMERGENT_LLM_KEY"]
 APP_NAME = "racontelle-care"
 storage_key: Optional[str] = None
 MAX_AUDIO_BYTES = 25 * 1024 * 1024
@@ -131,6 +143,8 @@ class CapsuleOut(BaseModel):
     status: str
     synced: bool = True
     transcription: Optional[str] = None
+    share_id: Optional[str] = None
+    share_expires_at: Optional[str] = None
 
 
 QUESTIONS = [
@@ -178,6 +192,7 @@ async def ensure_questions() -> None:
 
 @app.on_event("startup")
 async def startup_seed() -> None:
+    await ensure_security_indexes()
     await ensure_questions()
     try:
         await run_in_threadpool(init_storage)
@@ -191,26 +206,28 @@ async def root():
 
 
 @api_router.post("/status", response_model=StatusCheck)
-async def create_status_check(input: StatusCheckCreate):
+async def create_status_check(input: StatusCheckCreate, user: AuthUser = Depends(current_user)):
     status_obj = StatusCheck(**input.model_dump())
-    await db.status_checks.insert_one(status_obj.model_dump())
+    await db.status_checks.insert_one({**status_obj.model_dump(), "tenant_id": user.tenant_id})
     return status_obj
 
 
 @api_router.get("/status", response_model=List[StatusCheck])
-async def get_status_checks():
-    docs = await db.status_checks.find({}, {"_id": 0}).to_list(1000)
+async def get_status_checks(user: AuthUser = Depends(current_user)):
+    docs = await db.status_checks.find({"tenant_id": user.tenant_id}, {"_id": 0}).to_list(1000)
     return [StatusCheck(**doc) for doc in docs]
 
 
 @api_router.get("/residents", response_model=List[ResidentOut])
-async def get_residents():
-    return await db.residents.find({"active": True}, {"_id": 0}).sort("created_at", 1).to_list(10)
+async def get_residents(user: AuthUser = Depends(current_user)):
+    return await db.residents.find(
+        {"tenant_id": user.tenant_id, "active": True}, {"_id": 0}
+    ).sort("created_at", 1).to_list(10)
 
 
 @api_router.post("/residents", response_model=ResidentOut, status_code=201)
-async def create_resident(input: ResidentCreate):
-    if await db.residents.count_documents({"active": True}) >= 10:
+async def create_resident(input: ResidentCreate, user: AuthUser = Depends(current_user)):
+    if await db.residents.count_documents({"tenant_id": user.tenant_id, "active": True}) >= 10:
         raise HTTPException(status_code=400, detail="Limite de 10 profils atteinte")
     resident = {
         "id": str(uuid.uuid4()),
@@ -218,18 +235,25 @@ async def create_resident(input: ResidentCreate):
         "consent_status": input.consent_status,
         "active": True,
         "created_at": now_iso(),
+        "tenant_id": user.tenant_id,
+        "created_by": user.id,
     }
     await db.residents.insert_one(resident)
     return resident
 
 
 @api_router.patch("/residents/{resident_id}", response_model=ResidentOut)
-async def update_resident(resident_id: str, input: ResidentPatch):
+async def update_resident(
+    resident_id: str, input: ResidentPatch, user: AuthUser = Depends(current_user)
+):
     changes = input.model_dump(exclude_none=True)
     if "display_name" in changes:
         changes["display_name"] = changes["display_name"].strip()
     doc = await db.residents.find_one_and_update(
-        {"id": resident_id}, {"$set": changes}, return_document=True, projection={"_id": 0}
+        {"id": resident_id, "tenant_id": user.tenant_id},
+        {"$set": changes},
+        return_document=True,
+        projection={"_id": 0},
     )
     if not doc:
         raise HTTPException(status_code=404, detail="Profil introuvable")
@@ -237,7 +261,11 @@ async def update_resident(resident_id: str, input: ResidentPatch):
 
 
 @api_router.get("/questions", response_model=List[QuestionOut])
-async def get_questions(theme: Optional[str] = Query(default=None), limit: int = Query(default=30, le=100)):
+async def get_questions(
+    theme: Optional[str] = Query(default=None),
+    limit: int = Query(default=30, le=100),
+    user: AuthUser = Depends(current_user),
+):
     query = {"sensitive": False}
     if theme and theme != "Tous":
         query["theme"] = theme
@@ -245,9 +273,11 @@ async def get_questions(theme: Optional[str] = Query(default=None), limit: int =
 
 
 @api_router.post("/capsules", response_model=CapsuleOut, status_code=201)
-async def create_capsule(input: CapsuleCreate):
+async def create_capsule(input: CapsuleCreate, user: AuthUser = Depends(current_user)):
     if input.resident_id:
-        resident = await db.residents.find_one({"id": input.resident_id}, {"_id": 0})
+        resident = await db.residents.find_one(
+            {"id": input.resident_id, "tenant_id": user.tenant_id}, {"_id": 0}
+        )
         if not resident:
             raise HTTPException(status_code=404, detail="Profil introuvable")
         if resident.get("consent_status") != "obtained":
@@ -258,6 +288,8 @@ async def create_capsule(input: CapsuleCreate):
         "status": "assigned" if input.resident_id else "unclassified",
         "synced": True,
         "created_at": now_iso(),
+        "tenant_id": user.tenant_id,
+        "created_by": user.id,
     }
     await db.capsules.insert_one(capsule)
     capsule.pop("_id", None)
@@ -266,17 +298,56 @@ async def create_capsule(input: CapsuleCreate):
     return capsule
 
 
-@api_router.get("/residents/{resident_id}/capsules", response_model=List[CapsuleOut])
-async def get_resident_capsules(resident_id: str):
-    return await db.capsules.find(
-        {"resident_id": resident_id}, {"_id": 0, "audio_base64": 0, "audio_uri": 0}
+@api_router.get("/capsules", response_model=List[CapsuleOut])
+async def get_capsules(user: AuthUser = Depends(current_user)):
+    capsules = await db.capsules.find(
+        {"tenant_id": user.tenant_id}, {"_id": 0, "audio_base64": 0, "audio_uri": 0}
     ).sort("recorded_at", -1).to_list(1000)
+    return await attach_active_shares(capsules, user.tenant_id)
+
+
+async def attach_active_shares(capsules: list[dict], tenant_id: str) -> list[dict]:
+    capsule_ids = [capsule["id"] for capsule in capsules]
+    if not capsule_ids:
+        return capsules
+    shares = await db.share_tokens.find(
+        {
+            "tenant_id": tenant_id,
+            "capsule_id": {"$in": capsule_ids},
+            "revoked_at": None,
+            "expires_at": {"$gt": datetime.now(timezone.utc)},
+        },
+        {"_id": 0, "id": 1, "capsule_id": 1, "expires_at": 1},
+    ).sort("created_at", -1).to_list(1000)
+    by_capsule = {}
+    for share in shares:
+        by_capsule.setdefault(share["capsule_id"], share)
+    for capsule in capsules:
+        share = by_capsule.get(capsule["id"])
+        if share:
+            capsule["share_id"] = share["id"]
+            capsule["share_expires_at"] = share["expires_at"].isoformat()
+    return capsules
+
+
+@api_router.get("/residents/{resident_id}/capsules", response_model=List[CapsuleOut])
+async def get_resident_capsules(resident_id: str, user: AuthUser = Depends(current_user)):
+    if not await db.residents.find_one(
+        {"id": resident_id, "tenant_id": user.tenant_id}, {"_id": 0, "id": 1}
+    ):
+        raise HTTPException(status_code=404, detail="Profil introuvable")
+    capsules = await db.capsules.find(
+        {"resident_id": resident_id, "tenant_id": user.tenant_id},
+        {"_id": 0, "audio_base64": 0, "audio_uri": 0},
+    ).sort("recorded_at", -1).to_list(1000)
+    return await attach_active_shares(capsules, user.tenant_id)
 
 
 @api_router.get("/capsules/unclassified", response_model=List[CapsuleOut])
-async def get_unclassified_capsules():
+async def get_unclassified_capsules(user: AuthUser = Depends(current_user)):
     return await db.capsules.find(
-        {"status": "unclassified"}, {"_id": 0, "audio_base64": 0, "audio_uri": 0}
+        {"status": "unclassified", "tenant_id": user.tenant_id},
+        {"_id": 0, "audio_base64": 0, "audio_uri": 0},
     ).sort("recorded_at", -1).to_list(1000)
 
 
@@ -285,10 +356,12 @@ class CapsulePatch(BaseModel):
 
 
 @api_router.patch("/capsules/{capsule_id}", response_model=CapsuleOut)
-async def update_capsule(capsule_id: str, input: CapsulePatch):
+async def update_capsule(
+    capsule_id: str, input: CapsulePatch, user: AuthUser = Depends(current_user)
+):
     """Renommage d'un souvenir sur le vif."""
     doc = await db.capsules.find_one_and_update(
-        {"id": capsule_id},
+        {"id": capsule_id, "tenant_id": user.tenant_id},
         {"$set": {"title": input.title.strip()}},
         return_document=True,
         projection={"_id": 0, "audio_base64": 0, "audio_uri": 0},
@@ -299,19 +372,23 @@ async def update_capsule(capsule_id: str, input: CapsulePatch):
 
 
 @api_router.delete("/capsules/{capsule_id}")
-async def delete_capsule(capsule_id: str):
-    result = await db.capsules.delete_one({"id": capsule_id})
+async def delete_capsule(capsule_id: str, admin: AuthUser = Depends(require_admin)):
+    result = await db.capsules.delete_one({"id": capsule_id, "tenant_id": admin.tenant_id})
     if not result.deleted_count:
         raise HTTPException(status_code=404, detail="Souvenir introuvable")
     return {"deleted": True}
 
 
 @api_router.patch("/capsules/{capsule_id}/assign", response_model=CapsuleOut)
-async def assign_capsule(capsule_id: str, resident_id: str):
-    if not await db.residents.find_one({"id": resident_id}, {"_id": 0}):
+async def assign_capsule(
+    capsule_id: str, resident_id: str, user: AuthUser = Depends(current_user)
+):
+    if not await db.residents.find_one(
+        {"id": resident_id, "tenant_id": user.tenant_id}, {"_id": 0}
+    ):
         raise HTTPException(status_code=404, detail="Profil introuvable")
     doc = await db.capsules.find_one_and_update(
-        {"id": capsule_id},
+        {"id": capsule_id, "tenant_id": user.tenant_id},
         {"$set": {"resident_id": resident_id, "status": "assigned", "classified_at": now_iso()}},
         return_document=True,
         projection={"_id": 0, "audio_base64": 0, "audio_uri": 0},
@@ -331,34 +408,60 @@ async def read_audio_upload(file: UploadFile) -> bytes:
 
 
 @api_router.post("/capsules/{capsule_id}/audio")
-async def upload_capsule_audio(capsule_id: str, file: UploadFile = File(...)):
+async def upload_capsule_audio(
+    capsule_id: str,
+    file: UploadFile = File(...),
+    user: AuthUser = Depends(current_user),
+):
     """Conserve précieusement l'audio d'une capsule dans le stockage objet."""
-    doc = await db.capsules.find_one({"id": capsule_id}, {"_id": 0})
+    doc = await db.capsules.find_one(
+        {"id": capsule_id, "tenant_id": user.tenant_id}, {"_id": 0}
+    )
     if not doc:
         raise HTTPException(status_code=404, detail="Souvenir introuvable")
+    if doc.get("resident_id"):
+        resident = await db.residents.find_one(
+            {"id": doc["resident_id"], "tenant_id": user.tenant_id}, {"_id": 0}
+        )
+        if not resident or resident.get("consent_status") != "obtained":
+            raise HTTPException(status_code=403, detail="Consentement requis")
     data = await read_audio_upload(file)
+    remaining = await consume_quota(user, "upload")
     content_type = (file.content_type or "audio/m4a").lower()
-    path = f"{APP_NAME}/audio/{capsule_id}.m4a"
+    path = f"{APP_NAME}/{user.tenant_id}/audio/{capsule_id}.m4a"
     try:
         await run_in_threadpool(put_object, path, data, content_type)
     except Exception as exc:
         logger.warning("audio upload failed: %s", exc)
         raise HTTPException(status_code=502, detail="Stockage audio momentanément indisponible")
     await db.capsules.update_one(
-        {"id": capsule_id},
+        {"id": capsule_id, "tenant_id": user.tenant_id},
         {"$set": {"storage_path": path, "audio_content_type": content_type}},
     )
-    return {"uploaded": True, "path": path}
+    return {"uploaded": True, "path": path, "remaining": remaining}
 
 
 @api_router.post("/capsules/{capsule_id}/transcribe")
-async def transcribe_capsule(capsule_id: str, file: UploadFile = File(...)):
-    doc = await db.capsules.find_one({"id": capsule_id}, {"_id": 0})
+async def transcribe_capsule(
+    capsule_id: str,
+    file: UploadFile = File(...),
+    user: AuthUser = Depends(current_user),
+):
+    doc = await db.capsules.find_one(
+        {"id": capsule_id, "tenant_id": user.tenant_id}, {"_id": 0}
+    )
     if not doc:
         raise HTTPException(status_code=404, detail="Souvenir introuvable")
     if doc.get("transcription"):
         return {"transcription": doc["transcription"]}
+    if doc.get("resident_id"):
+        resident = await db.residents.find_one(
+            {"id": doc["resident_id"], "tenant_id": user.tenant_id}, {"_id": 0}
+        )
+        if not resident or resident.get("consent_status") != "obtained":
+            raise HTTPException(status_code=403, detail="Consentement requis")
     data = await read_audio_upload(file)
+    await consume_quota(user, "stt")
     from emergentintegrations.llm.openai.speech_to_text import OpenAISpeechToText
 
     suffix = ".webm" if "webm" in (file.content_type or "") else ".m4a"
@@ -383,22 +486,83 @@ async def transcribe_capsule(capsule_id: str, file: UploadFile = File(...)):
     finally:
         os.unlink(tmp_path)
     await db.capsules.update_one(
-        {"id": capsule_id},
+        {"id": capsule_id, "tenant_id": user.tenant_id},
         {"$set": {"transcription": text, "transcribed_at": now_iso()}},
     )
     return {"transcription": text}
 
 
 @api_router.post("/capsules/{capsule_id}/share")
-async def share_capsule(capsule_id: str):
-    doc = await db.capsules.find_one({"id": capsule_id}, {"_id": 0})
+async def share_capsule(capsule_id: str, user: AuthUser = Depends(current_user)):
+    doc = await db.capsules.find_one(
+        {"id": capsule_id, "tenant_id": user.tenant_id}, {"_id": 0}
+    )
     if not doc:
         raise HTTPException(status_code=404, detail="Souvenir introuvable")
     if not doc.get("storage_path"):
         raise HTTPException(status_code=400, detail="Audio pas encore conservé sur le serveur")
-    token = uuid.uuid4().hex
-    await db.share_tokens.insert_one({"token": token, "capsule_id": capsule_id, "created_at": now_iso()})
-    return {"token": token, "path": f"/api/share/{token}"}
+    token = uuid.uuid4().hex + uuid.uuid4().hex
+    share_id = str(uuid.uuid4())
+    expires_at = datetime.now(timezone.utc) + timedelta(days=30)
+    await db.share_tokens.update_many(
+        {
+            "capsule_id": capsule_id,
+            "tenant_id": user.tenant_id,
+            "revoked_at": None,
+        },
+        {"$set": {"revoked_at": datetime.now(timezone.utc), "revoked_by": user.id}},
+    )
+    await db.share_tokens.insert_one(
+        {
+            "id": share_id,
+            "token_hash": hashlib.sha256(token.encode()).hexdigest(),
+            "tenant_id": user.tenant_id,
+            "capsule_id": capsule_id,
+            "created_by": user.id,
+            "created_at": datetime.now(timezone.utc),
+            "expires_at": expires_at,
+            "revoked_at": None,
+        }
+    )
+    return {
+        "token": token,
+        "share_id": share_id,
+        "path": f"/api/share/{token}",
+        "expires_at": expires_at.isoformat(),
+    }
+
+
+@api_router.get("/capsules/{capsule_id}/shares")
+async def list_capsule_shares(capsule_id: str, admin: AuthUser = Depends(require_admin)):
+    if not await db.capsules.find_one(
+        {"id": capsule_id, "tenant_id": admin.tenant_id}, {"_id": 0, "id": 1}
+    ):
+        raise HTTPException(status_code=404, detail="Souvenir introuvable")
+    docs = await db.share_tokens.find(
+        {
+            "capsule_id": capsule_id,
+            "tenant_id": admin.tenant_id,
+            "revoked_at": None,
+            "expires_at": {"$gt": datetime.now(timezone.utc)},
+        },
+        {"_id": 0, "token_hash": 0},
+    ).to_list(100)
+    for doc in docs:
+        for key in ("created_at", "expires_at"):
+            if isinstance(doc.get(key), datetime):
+                doc[key] = doc[key].isoformat()
+    return docs
+
+
+@api_router.delete("/shares/{share_id}")
+async def revoke_share(share_id: str, admin: AuthUser = Depends(require_admin)):
+    result = await db.share_tokens.update_one(
+        {"id": share_id, "tenant_id": admin.tenant_id, "revoked_at": None},
+        {"$set": {"revoked_at": datetime.now(timezone.utc), "revoked_by": admin.id}},
+    )
+    if not result.matched_count:
+        raise HTTPException(status_code=404, detail="Lien introuvable")
+    return {"revoked": True}
 
 
 import html as _html
@@ -434,15 +598,26 @@ SHARE_PAGE = """<!doctype html>
 
 @api_router.get("/share/{token}", response_class=HTMLResponse)
 async def share_page(token: str):
-    share = await db.share_tokens.find_one({"token": token}, {"_id": 0})
+    share = await db.share_tokens.find_one(
+        {
+            "token_hash": hashlib.sha256(token.encode()).hexdigest(),
+            "revoked_at": None,
+            "expires_at": {"$gt": datetime.now(timezone.utc)},
+        },
+        {"_id": 0},
+    )
     if not share:
         raise HTTPException(status_code=404, detail="Lien invalide ou expiré")
-    doc = await db.capsules.find_one({"id": share["capsule_id"]}, {"_id": 0})
+    doc = await db.capsules.find_one(
+        {"id": share["capsule_id"], "tenant_id": share["tenant_id"]}, {"_id": 0}
+    )
     if not doc:
         raise HTTPException(status_code=404, detail="Souvenir introuvable")
     resident = None
     if doc.get("resident_id"):
-        resident = await db.residents.find_one({"id": doc["resident_id"]}, {"_id": 0})
+        resident = await db.residents.find_one(
+            {"id": doc["resident_id"], "tenant_id": share["tenant_id"]}, {"_id": 0}
+        )
     title = _html.escape(doc.get("title") or "Souvenir vocal")
     who = f"raconté par {resident['display_name']}" if resident else "souvenir de l'atelier mémoire"
     date_label = datetime.fromisoformat(doc["recorded_at"].replace("Z", "+00:00")).strftime("%d/%m/%Y")
@@ -457,10 +632,19 @@ async def share_page(token: str):
 
 @api_router.get("/share/{token}/audio")
 async def share_audio(token: str):
-    share = await db.share_tokens.find_one({"token": token}, {"_id": 0})
+    share = await db.share_tokens.find_one(
+        {
+            "token_hash": hashlib.sha256(token.encode()).hexdigest(),
+            "revoked_at": None,
+            "expires_at": {"$gt": datetime.now(timezone.utc)},
+        },
+        {"_id": 0},
+    )
     if not share:
         raise HTTPException(status_code=404, detail="Lien invalide ou expiré")
-    doc = await db.capsules.find_one({"id": share["capsule_id"]}, {"_id": 0})
+    doc = await db.capsules.find_one(
+        {"id": share["capsule_id"], "tenant_id": share["tenant_id"]}, {"_id": 0}
+    )
     if not doc or not doc.get("storage_path"):
         raise HTTPException(status_code=404, detail="Audio introuvable")
     try:
@@ -476,13 +660,17 @@ import zipfile
 
 
 @api_router.get("/residents/{resident_id}/export")
-async def export_resident(resident_id: str):
+async def export_resident(resident_id: str, admin: AuthUser = Depends(require_admin)):
     """Export équipe soignante : un ZIP regroupant les audios conservés et les
     transcriptions du résident, pour les transmissions du service."""
-    resident = await db.residents.find_one({"id": resident_id}, {"_id": 0})
+    resident = await db.residents.find_one(
+        {"id": resident_id, "tenant_id": admin.tenant_id}, {"_id": 0}
+    )
     if not resident:
         raise HTTPException(status_code=404, detail="Profil introuvable")
-    capsules = await db.capsules.find({"resident_id": resident_id}, {"_id": 0}).sort("recorded_at", 1).to_list(1000)
+    capsules = await db.capsules.find(
+        {"resident_id": resident_id, "tenant_id": admin.tenant_id}, {"_id": 0}
+    ).sort("recorded_at", 1).to_list(1000)
     buffer = io.BytesIO()
     lines = [
         f"Souvenirs de {resident['display_name']}",
@@ -517,11 +705,12 @@ async def export_resident(resident_id: str):
 
 
 @api_router.delete("/residents/{resident_id}")
-async def delete_resident(resident_id: str):
+async def delete_resident(resident_id: str, admin: AuthUser = Depends(require_admin)):
     """Retrait du profil (départ de l'établissement). Suppression douce : les
     capsules restent conservées côté serveur, le profil est désactivé."""
     result = await db.residents.update_one(
-        {"id": resident_id}, {"$set": {"active": False, "removed_at": now_iso()}}
+        {"id": resident_id, "tenant_id": admin.tenant_id},
+        {"$set": {"active": False, "removed_at": now_iso(), "removed_by": admin.id}},
     )
     if not result.matched_count:
         raise HTTPException(status_code=404, detail="Profil introuvable")
@@ -534,24 +723,38 @@ class MergeRequest(BaseModel):
 
 
 @api_router.post("/residents/merge")
-async def merge_residents(input: MergeRequest):
+async def merge_residents(input: MergeRequest, admin: AuthUser = Depends(require_admin)):
     """Fusionne des profils en doublon : les souvenirs des fiches fusionnées
     sont rattachés à la fiche conservée, les doublons sont désactivés."""
-    keep = await db.residents.find_one({"id": input.keep_id, "active": True}, {"_id": 0})
+    keep = await db.residents.find_one(
+        {"id": input.keep_id, "tenant_id": admin.tenant_id, "active": True}, {"_id": 0}
+    )
     if not keep:
         raise HTTPException(status_code=404, detail="Fiche à conserver introuvable")
     merge_ids = [mid for mid in input.merge_ids if mid != input.keep_id]
     if not merge_ids:
         raise HTTPException(status_code=400, detail="Aucun doublon à fusionner")
+    merge_count = await db.residents.count_documents(
+        {"id": {"$in": merge_ids}, "tenant_id": admin.tenant_id, "active": True}
+    )
+    if merge_count != len(set(merge_ids)):
+        raise HTTPException(status_code=404, detail="Un profil à fusionner est introuvable")
     await db.capsules.update_many(
-        {"resident_id": {"$in": merge_ids}},
+        {"resident_id": {"$in": merge_ids}, "tenant_id": admin.tenant_id},
         {"$set": {"resident_id": input.keep_id}},
     )
     await db.residents.update_many(
-        {"id": {"$in": merge_ids}},
-        {"$set": {"active": False, "merged_into": input.keep_id, "removed_at": now_iso()}},
+        {"id": {"$in": merge_ids}, "tenant_id": admin.tenant_id},
+        {
+            "$set": {
+                "active": False,
+                "merged_into": input.keep_id,
+                "removed_at": now_iso(),
+                "removed_by": admin.id,
+            }
+        },
     )
-    return {"merged": len(merge_ids)}
+    return {"merged": merge_count}
 
 
 def _register_pdf_fonts():
@@ -577,13 +780,17 @@ def _register_pdf_fonts():
 
 
 @api_router.get("/residents/{resident_id}/carnet")
-async def carnet_pdf(resident_id: str):
+async def carnet_pdf(resident_id: str, admin: AuthUser = Depends(require_admin)):
     """Impression du carnet : un PDF élégant des transcriptions du résident,
     prêt à offrir à la famille."""
-    resident = await db.residents.find_one({"id": resident_id}, {"_id": 0})
+    resident = await db.residents.find_one(
+        {"id": resident_id, "tenant_id": admin.tenant_id}, {"_id": 0}
+    )
     if not resident:
         raise HTTPException(status_code=404, detail="Profil introuvable")
-    capsules = await db.capsules.find({"resident_id": resident_id}, {"_id": 0}).sort("recorded_at", 1).to_list(1000)
+    capsules = await db.capsules.find(
+        {"resident_id": resident_id, "tenant_id": admin.tenant_id}, {"_id": 0}
+    ).sort("recorded_at", 1).to_list(1000)
 
     from reportlab.lib.colors import HexColor
     from reportlab.lib.pagesizes import A4
@@ -708,18 +915,17 @@ class TtsRequest(BaseModel):
 
 
 @api_router.post("/tts")
-async def text_to_speech(input: TtsRequest):
+async def text_to_speech(input: TtsRequest, user: AuthUser = Depends(current_user)):
     """Lecture vocale (TTS) : questions et transcriptions lues à voix haute.
     Voix « coral », débit posé pour un public senior. Audio mis en cache dans
     le stockage objet (clé = hash texte+voix+modèle+format)."""
     from emergentintegrations.llm.openai import OpenAITextToSpeech
-    import hashlib
-
     text = re.sub(r"https?://\S+", "", input.text)
     text = re.sub(r"[*_#>~|`]", "", text)
     text = re.sub(r"\s+", " ", text).strip()
     if not text:
         raise HTTPException(status_code=400, detail="Texte vide")
+    await consume_quota(user, "tts")
     key = hashlib.sha256(f"{text}|coral|0.95|tts-1|mp3".encode()).hexdigest()
     doc = await db.tts_cache.find_one({"key": key}, {"_id": 0})
     if not doc:
@@ -742,7 +948,7 @@ async def text_to_speech(input: TtsRequest):
 
 
 @api_router.get("/tts/{key}.mp3")
-async def get_tts(key: str):
+async def get_tts(key: str, user: AuthUser = Depends(current_user)):
     doc = await db.tts_cache.find_one({"key": key}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Audio introuvable")
@@ -757,14 +963,40 @@ async def get_tts(key: str):
     )
 
 
+app.include_router(auth_router)
 app.include_router(api_router)
+cors_origins = [
+    origin.strip()
+    for origin in os.environ["CORS_ORIGINS"].split(",")
+    if origin.strip()
+]
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=cors_origins,
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Client-Platform"],
+    max_age=600,
 )
+
+
+@app.middleware("http")
+async def normalize_proxy_cors_origin(request, call_next):
+    """Le proxy preview remplace l'Origin public par son domaine interne.
+    On conserve une allowlist exacte côté API puis on restitue l'origine que le
+    navigateur connaît, sans jamais autoriser une origine inconnue.
+    """
+    response = await call_next(request)
+    proxy_origin = os.environ.get("CORS_PROXY_ORIGIN", "")
+    public_origin = os.environ.get("CORS_PUBLIC_ORIGIN", "")
+    if (
+        request.headers.get("origin") == proxy_origin
+        and response.headers.get("access-control-allow-origin") == proxy_origin
+        and public_origin
+    ):
+        response.headers["access-control-allow-origin"] = public_origin
+    return response
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 

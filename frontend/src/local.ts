@@ -2,24 +2,38 @@ import { storage } from "@/src/utils/storage";
 
 import type { Capsule, LocalState, Resident } from "./types";
 
-const KEY = "racontelle.local.v1";
-const DEFAULT_STATE: LocalState = { residents: [], capsules: [], usage: { total_sec: 0, by_resident: {} }, exports: {}, answered: {}, pin: null };
+let scope = "guest";
+const DEFAULT_STATE: LocalState = { residents: [], capsules: [], usage: { total_ms: 0, by_resident_ms: {} }, exports: {}, answered: {} };
+
+function key() {
+  return `racontelle.local.v2.${scope}`;
+}
+
+export function setLocalScope(tenantId: string | null) {
+  scope = tenantId ?? "guest";
+}
 
 export async function readLocalState(): Promise<LocalState> {
-  const stored = await storage.getItem<LocalState>(KEY, DEFAULT_STATE);
+  const stored = await storage.getItem<LocalState>(key(), DEFAULT_STATE);
+  const legacyUsage = stored?.usage;
+  const byResidentMs = legacyUsage?.by_resident_ms ?? Object.fromEntries(
+    Object.entries(legacyUsage?.by_resident ?? {}).map(([id, seconds]) => [id, seconds * 1000]),
+  );
   // Les états enregistrés avant l'espace professionnel n'ont pas de compteur.
   return {
     ...DEFAULT_STATE,
     ...stored,
-    usage: stored?.usage ?? DEFAULT_STATE.usage,
+    usage: {
+      total_ms: legacyUsage?.total_ms ?? (legacyUsage?.total_sec ?? 0) * 1000,
+      by_resident_ms: byResidentMs,
+    },
     exports: stored?.exports ?? DEFAULT_STATE.exports,
     answered: stored?.answered ?? DEFAULT_STATE.answered,
-    pin: stored?.pin ?? DEFAULT_STATE.pin,
   };
 }
 
 export async function writeLocalState(state: LocalState): Promise<boolean> {
-  return storage.setItem(KEY, state);
+  return storage.setItem(key(), state);
 }
 
 export function mergeResidents(local: Resident[], remote: Resident[]): Resident[] {

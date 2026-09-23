@@ -27,11 +27,33 @@ export type Capsule = {
   synced: boolean;
   audio_uri?: string | null;
   transcription?: string | null;
+  share_id?: string | null;
+  share_expires_at?: string | null;
+};
+
+export type AuthUser = {
+  id: string;
+  tenant_id: string;
+  email: string;
+  full_name: string;
+  role: "admin" | "member";
+  establishment_name: string;
+};
+
+export type AuthSession = {
+  access_token: string;
+  refresh_token?: string | null;
+  token_type: "bearer";
+  user: AuthUser;
 };
 
 export type UsageState = {
-  total_sec: number;
-  by_resident: Record<string, number>;
+  /** Durée active réelle, conservée à la milliseconde pour éviter tout arrondi. */
+  total_ms: number;
+  by_resident_ms: Record<string, number>;
+  /** Anciens champs lus uniquement pendant la migration locale. */
+  total_sec?: number;
+  by_resident?: Record<string, number>;
 };
 
 export type LocalState = {
@@ -43,6 +65,4 @@ export type LocalState = {
   /** Ids des questions déjà répondues, par profil ("none" pour le mode spontané).
    * Les questions non traitées sont reproposées lors des ateliers suivants. */
   answered: Record<string, string[]>;
-  /** Code professionnel à 4 chiffres (espace pro, fusion, retrait de profil). */
-  pin: string | null;
 };

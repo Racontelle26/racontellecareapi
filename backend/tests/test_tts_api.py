@@ -10,9 +10,7 @@ import re
 import pytest
 import requests
 
-BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "").rstrip("/")
-if not BASE_URL:
-    pytest.skip("EXPO_PUBLIC_BACKEND_URL manquant", allow_module_level=True)
+BASE_URL = os.environ["EXPO_PUBLIC_BACKEND_URL"].rstrip("/")
 
 TTS_TEXT = "TEST_TTS Quel est votre tout premier souvenir ?"
 

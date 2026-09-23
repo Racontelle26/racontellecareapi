@@ -1,0 +1,53 @@
+{
+  "summary": "Backend security regression mostly passes (45/45 core + 6/7 matrix). Frontend mobile auth/local/admin/member flows pass, with one transient public 502 observed. One backend security requirement still failing: allowed CORS origin is rejected.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "OPTIONS /api/residents",
+        "issue": "CORS preflight from allowed origin https://ehpad-recall.preview.emergentagent.com returns 400 'Disallowed CORS origin' and no access-control-allow-origin header.",
+        "priority": "CRITICAL"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Public mobile web access",
+        "issue": "Transient Cloudflare 502 Host Error encountered once during Playwright run, then recovered.",
+        "affected_testIDs": []
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_security_auth.py",
+    "/app/backend/tests/test_security_matrix_iter11.py",
+    "/app/test_reports/pytest/pytest_results_iter11_security.xml",
+    "/app/test_reports/pytest/pytest_results_iter11_full.xml",
+    "/app/test_reports/pytest/pytest_results_iter11_matrix.xml"
+  ],
+  "action_items": [
+    "Fix CORS allowlist behavior so allowed origin returns ACAO and successful preflight.",
+    "Re-run /app/backend/tests/test_security_matrix_iter11.py after CORS fix.",
+    "Investigate transient 502 on public preview host stability."
+  ],
+  "critical_code_review_comments": [
+    "Tests in /app/backend/tests/conftest.py and /app/backend/tests/test_security_auth.py still use localhost fallback defaults; this weakens env-driven fail-fast requirements."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_security_matrix_iter11.py",
+    "/app/test_reports/iteration_11.json"
+  ],
+  "success_rate": {
+    "backend": "97%",
+    "frontend": "85%"
+  },
+  "seed_data_creation": "Created TEST_* residents/capsules during matrix tests; cleanup attempted in tests. Persisted fixture accounts unchanged.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Use public URL only. Reproduce CORS failure with: OPTIONS /api/residents Origin=https://ehpad-recall.preview.emergentagent.com and Access-Control-Request-Method: GET. Expect currently 400 Disallowed CORS origin.",
+  "rca_of_issue": "RCA (CORS): app middleware is configured with allow_origins from CORS_ORIGINS, but runtime behavior at public endpoint rejects even configured origin. Repro: curl OPTIONS to /api/residents with allowed Origin + preflight headers -> 400 + no ACAO. Unknown origin also has no ACAO (expected). Likely mismatch at origin parsing/ingress layering or origin value normalization in deployed runtime path."
+}

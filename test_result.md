@@ -129,8 +129,100 @@
 ##   stuck_tasks: []
 ##   test_all: false
 ##   test_priority: "high_first"
+
+## user_problem_statement_session: "Ouverture automatique : la session reste mémorisée et l’application s’ouvre directement, sans aucune vérification. Permettre d'afficher le mot de passe lorsqu'il doit être utilisé lorsque la session expire."
+## frontend_session:
+##   - task: "Ouverture locale immédiate et mot de passe affichable"
+##     implemented: true
+##     working: true
+##     files: "/app/frontend/src/api.ts, /app/frontend/src/components/auth-screen.tsx, /app/frontend/app/index.tsx"
+##     stuck_count: 0
+##     priority: "high"
+##     needs_retesting: false
+##     status_history:
+##       - working: "NA"
+##         agent: "main"
+##         comment: "Le lancement lit uniquement l'identité et les données locales; aucun refresh ou appel API automatique. La première action serveur valide ensuite la session. L'œil du mot de passe fonctionne et une reconnexion admin complète a été validée."
+##       - working: true
+##         agent: "testing"
+##         comment: "Itération 13 : reload directement sur l'accueil du bon établissement sans aucun appel /api au lancement; œil validé en connexion et inscription; logout efface bien l'identité."
+##       - working: true
+##         agent: "main"
+##         comment: "Expiration reproduite par 401 contrôlés sur action serveur + refresh : message explicite, email prérempli, mot de passe vide, œil fonctionnel et reconnexion réussie."
+## test_plan_session:
+##   current_focus:
+##     - "Après connexion puis relance, l'accueil s'ouvre directement sans écran de connexion"
+##     - "Aucune requête /api n'est émise automatiquement lors de cette relance"
+##     - "Après expiration, l'écran de reconnexion préremplit l'email mais jamais le mot de passe"
+##     - "Le bouton œil affiche et masque réellement le mot de passe"
+##     - "Une action serveur ultérieure déclenche alors seulement la validation/rotation"
+##   test_all: false
+##   test_priority: "high_first"
 ## agent_communication:
 ##   - agent: "main"
 ##     message: "Tester le parcours profil → atelier → question guidée → enregistrement → sauvegarde → retour fiche, puis vérifier question, audio et transcription dans la section dédiée."
 ##   - agent: "testing"
 ##     message: "Validation frontend réussie à 100 %, aucun problème bloquant. Rapport : /app/test_reports/iteration_10.json."
+
+## user_problem_statement_security: "Ajouter authentification serveur, isolation par établissement, autorisations, quotas, liens expirables/révocables, PIN sécurisé et CORS strict."
+## security:
+##   - task: "Sécurisation complète multi-établissements"
+##     implemented: true
+##     working: true
+##     files: "/app/backend/security.py, /app/backend/server.py, /app/frontend/src/api.ts, /app/frontend/app/index.tsx"
+##     stuck_count: 0
+##     priority: "critical"
+##     needs_retesting: false
+##     status_history:
+##       - working: "NA"
+##         agent: "main"
+##         comment: "JWT/refresh rotation, Argon2id, tenant_id systématique, rôles admin/member, quotas 30/100/100, partages 30 jours révocables, SecureStore PIN/tokens et CORS strict implémentés. 45 tests backend passent et l'UI login a été vérifiée."
+##       - working: false
+##         agent: "testing"
+##         comment: "Itération 11 : origine CORS publique rejetée car le proxy la réécrivait vers ehpad-recall.cluster-2.preview.emergentcf.cloud."
+##       - working: true
+##         agent: "main"
+##         comment: "Allowlist exacte complétée avec l'origine proxy et réécriture ACAO vers l'origine navigateur. Origine autorisée=200 avec ACAO public, origine inconnue=400 sans ACAO. Les connexions réussies ne consomment plus la limite anti-bruteforce. Matrice 7/7 et suite complète 52/52." 
+## test_plan_security:
+##   current_focus:
+##     - "Inscription créant un établissement et un administrateur"
+##     - "Connexion, restauration et déconnexion"
+##     - "Isolation stricte entre deux établissements"
+##     - "Membre bloqué sur suppressions, fusion, exports et carnets"
+##     - "Partage familial expirant et révocable"
+##     - "Quotas 30 STT, 100 TTS, 100 uploads et CORS strict"
+##   test_all: true
+##   test_priority: "critical_first"
+## agent_communication_security:
+##   - agent: "main"
+##     message: "Utiliser les comptes documentés dans /app/memory/test_credentials.md. Vérifier backend et frontend mobile, puis signaler toute fuite inter-tenant ou action admin accessible à un membre."
+##   - agent: "main"
+##     message: "Correctif CORS appliqué après itération 11. Contre-vérifier OPTIONS autorisé/inconnu, puis accès mobile et stabilité publique."
+##   - agent: "testing"
+##     message: "Itération 12 validée : sécurité 100 %, matrice 7/7, suite complète 52/52, CORS et stabilité publics conformes."
+
+## user_problem_statement_timing: "Le temps d'utilisation par résidents et globale est toujours erroné. Mettre un vrai chronométrage du temps d'utilisation par résident et temps total d'utilisation sous le profil espace professionnel."
+## frontend_timing:
+##   - task: "Chronométrage réel global et par résident"
+##     implemented: true
+##     working: "NA"
+##     files: "/app/frontend/app/index.tsx, /app/frontend/src/local.ts, /app/frontend/src/types.ts"
+##     stuck_count: 0
+##     priority: "high"
+##     needs_retesting: true
+##     status_history:
+##       - working: false
+##         agent: "main"
+##         comment: "Cause confirmée : les segments inférieurs à 3 secondes étaient supprimés, les secondes arrondies et l'écran professionnel n'était pas actualisé en direct."
+##       - working: "NA"
+##         agent: "main"
+##         comment: "Comptage en millisecondes avec horloge monotone, premier plan uniquement, attribution fiche+atelier, rafraîchissement 1 s, persistance 10 s et migration des anciens compteurs. Test manuel : profil 5 s, total 6→7 s en direct, résident stable hors fiche, second passage 5→7 s."
+## test_plan_timing:
+##   current_focus:
+##     - "Le total avance chaque seconde dans Espace professionnel"
+##     - "Le compteur résident avance uniquement sur sa fiche ou son atelier"
+##     - "Aucune période courte n'est ignorée"
+##     - "Le temps en arrière-plan n'est pas compté"
+##     - "Les valeurs survivent au rechargement et migrent depuis l'ancien format"
+##   test_all: false
+##   test_priority: "high_first"

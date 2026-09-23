@@ -1,0 +1,52 @@
+{
+  "summary": "Tests frontend mobile (390x844) exécutés sur https://ehpad-recall.preview.emergentagent.com: connexion admin OK, ouverture directe post-reload sans appels /api au démarrage OK, identité/tenant affichés correctement, œil mot de passe login+inscription OK, logout explicite + relaunch reste sur login et identité supprimée localement. La validation complète du flux 'expiration serveur puis reconnexion forcée' n'a pas pu être confirmée de façon déterministe.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Simulation expiration session serveur pendant action réseau",
+        "issue": "Après suppression cookies web + action de création profil, bascule vers écran de reconnexion non reproductible de manière fiable dans cet environnement public (3 tentatives: 2 blocages d'interaction modal, 1 action acceptée sans retour auth). Le scénario d'expiration/refresh KO reste à revalider avec un mécanisme d'expiration forcée contrôlé.",
+        "affected_testIDs": [
+          "home-add-profile",
+          "resident-name-input",
+          "resident-create-button",
+          "auth-screen"
+        ]
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/screens/iter13/step_home_after_login.jpeg",
+    "/app/test_reports/screens/iter13/step_home_login_ok.jpeg",
+    "/app/test_reports/screens/iter13/step_home_after_reconnect.jpeg",
+    "/root/.emergent/automation_output/20260923_140206/console_20260923_140206.log",
+    "/root/.emergent/automation_output/20260923_140404/console_20260923_140404.log"
+  ],
+  "action_items": [
+    "Ajouter un levier de test déterministe pour forcer l'expiration d'access token côté frontend/public preview (ou endpoint test-only) puis rejouer: action réseau -> 401 -> refresh KO -> auth-screen avec message expiré.",
+    "Revalider spécifiquement post-expiration: email admin prérempli + mot de passe vide + reconnexion retour home.",
+    "Conserver le comportement validé: aucun appel /api au lancement après reload (startup local identity only)."
+  ],
+  "critical_code_review_comments": [
+    "frontend/app/index.tsx fait 1300+ lignes (>700 recommandé): dette de modularité et testabilité.",
+    "Le warning console \"shadow* style props are deprecated. Use boxShadow\" apparaît au chargement (non bloquant, mais dette UI web à traiter)."
+  ],
+  "updated_files": [
+    "/app/test_reports/iteration_13.json"
+  ],
+  "success_rate": {
+    "backend": "NA (skipped frontend-only)",
+    "frontend": "78%"
+  },
+  "seed_data_creation": "Création tentative de profils TEST_SESSION_EXPIRE* durant tests UI; aucun flux MOCKED.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Crédentials lues depuis /app/memory/test_credentials.md. Éviter de répéter le même sélecteur resident-create-button en modal mobile sans workaround clavier/scroll. Prioriser une expiration token forcée pour valider le scénario session-expired.",
+  "rca_of_issue": "RCA probable du blocage de test d'expiration: clear_cookies() n'invalide pas forcément l'access token en mémoire dans la session web courante; l'action réseau peut donc réussir sans provoquer 401. Reproduction testée: (1) clear cookies + submit modal via bouton (timeouts viewport/interactions), (2) clear cookies + submit clavier (pas de redirection auth sous 12s). Mitigation: injecter une invalidation explicite du token d'accès côté app de test ou endpoint serveur de révocation pour rendre le test déterministe."
+}

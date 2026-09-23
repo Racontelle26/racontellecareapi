@@ -49,6 +49,17 @@ Clarifications utilisateur : offline-first avec stockage local (smartphones/tabl
 - **Renommage** (it. 8) : profils (clic sur le nom, `PATCH /api/residents/{id}`) et souvenirs sur le vif (`PATCH /api/capsules/{id}`), avec rattachement d'un souvenir à un profil (`PATCH /api/capsules/{id}/assign`, modale edit-capsule).
 - **Archive « Mes souvenirs »** (it. 9) : la vue « Tous » masque les souvenirs libres déjà réattribués (visibles dans la fiche du membre et son filtre).
 - **Réponses guidées par profil** : la fiche de chaque personne distingue désormais clairement toutes ses réponses aux questions de ses souvenirs libres ; la question, l'audio et la transcription restent réunis dans la même carte.
+- **Sécurité multi-établissements** : authentification professionnelle email/mot de passe, mots de passe Argon2id, access JWT de 15 minutes et refresh token rotatif/révocable de 30 jours. Chaque inscription crée un établissement isolé et un compte Administrateur.
+- **Rôles Administrateur / Membre** : les membres peuvent mener les ateliers et consulter les données de leur établissement ; suppressions, fusion, exports, carnets PDF, révocation des partages et création de membres sont réservés aux administrateurs.
+- **Isolation stricte** : toutes les requêtes MongoDB résidents, capsules, exports, carnets, audios et partages sont filtrées côté serveur par `tenant_id`. Les données historiques sans établissement sont placées en quarantaine et ne sont exposées à aucun nouveau compte.
+- **Sessions mobiles sécurisées** : jetons et PIN professionnel utilisent SecureStore sur iOS/Android. Sur le web, le refresh token reste dans un cookie HttpOnly/Secure/SameSite et les secrets d'interface restent uniquement en mémoire.
+- **Partages familiaux contrôlés** : liens aléatoires valables 30 jours, un seul lien actif par capsule, expiration MongoDB TTL et révocation immédiate par un administrateur.
+- **Quotas anti-abus** : limites atomiques quotidiennes par utilisateur de 30 transcriptions, 100 lectures TTS et 100 envois audio, avec réponses HTTP 429 et messages locaux préservant toujours l'enregistrement.
+- **CORS strict** : seule l'origine déclarée dans `CORS_ORIGINS` est autorisée ; les origines inconnues ne reçoivent aucun en-tête d'autorisation CORS.
+- Tests sécurité et régression backend : **45/45 tests réussis**, dont accès anonyme refusé, étanchéité entre deux établissements, permissions membre, rotation refresh, quotas et révocation de partage.
+- **Chronométrage d'utilisation réel** : le temps total compte chaque milliseconde où l'application est au premier plan. Le temps par résident compte uniquement la fiche et l'atelier de cette personne. Aucun seuil de 3 secondes ni arrondi n'est appliqué ; l'affichage avance en direct chaque seconde et les compteurs sont persistés toutes les 10 secondes. L'horloge monotone évite les erreurs liées au changement d'heure du téléphone et les anciennes durées en secondes sont migrées sans perte.
+- **Ouverture automatique mémorisée** : après une première connexion, l'identité non sensible de l'établissement est mémorisée. Les lancements suivants ouvrent directement les données locales du bon établissement sans requête, refresh ou validation serveur au démarrage. Les jetons restent dans SecureStore sur mobile et ne sont jamais persistés sur le web ; la validation serveur intervient uniquement lors d'une action nécessitant le réseau.
+- **Reconnexion lisible** : lorsque la session expire pendant une action serveur, l'adresse email reste préremplie et le champ mot de passe propose un bouton œil accessible pour afficher ou masquer la saisie. Le mot de passe n'est jamais mémorisé.
 - Flux complet : Accueil → création de profil (max 10, modal scrollable, bouton accessible clavier) → atelier libre ou 3 questions/jour → enregistrement audio → archive datée par profil.
 - Persistance locale JSON (profils + capsules), synchronisation serveur best-effort.
 - `testID` sur les éléments interactifs ; réponses HTTP `201` conformes.
@@ -59,10 +70,9 @@ Clarifications utilisateur : offline-first avec stockage local (smartphones/tabl
 - **P1** : Partage privé de capsules aux familles.
 - **P1** : Refactor `app/index.tsx` (~380 lignes) en écrans/composants séparés (`src/components`).
 - **P2** : Segmentation des longs récits en chapitres.
-- **P2** : Persistance serveur MongoDB complète (remplacer le stockage mémoire du MVP).
-- **P2** : Architecture multi-établissements (multi-tenant).
+- **P2** : Invitation par email et réinitialisation autonome du mot de passe.
 
 ## Prochaines tâches
 1. Refactorer les écrans frontend en composants modulaires.
-2. Brancher la transcription Whisper sur les capsules existantes.
-3. Concevoir le flux de partage privé (lien sécurisé par capsule).
+2. Ajouter l'invitation par email et la récupération de mot de passe.
+3. Concevoir un journal d'audit administrateur des opérations sensibles.

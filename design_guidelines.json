@@ -1,7 +1,7 @@
 {
   "app_name": "Racontelle EHPAD",
-  "personality": "8 Hand-Drawn / Journal LIGHT (adapted for professional workshop high-contrast accessibility)",
-  "personality_one_liner": "Un carnet de mémoire chaleureux, simple et respectueux pour les ateliers en EHPAD, conçu pour capturer des souvenirs précieux en toute sérénité.",
+  "personality": "Hand-Drawn / Journal LIGHT (adapted for professional workshop high-contrast accessibility)",
+  "personality_one_liner": "Un carnet de mémoire chaleureux, simple et respectueux pour les ateliers en EHPAD, avec authentification sécurisée et isolation stricte par établissement.",
   "color": {
     "surface": "#FFFFFF",
     "onSurface": "#2F3E52",
@@ -37,15 +37,17 @@
     "textFontFamily": "Cormorant Garamond",
     "uiFontFamily": "Montserrat",
     "scale": {
+      "xs": 11,
       "sm": 12,
       "base": 14,
       "lg": 16,
       "xl": 20,
-      "2xl": 24
+      "2xl": 24,
+      "3xl": 30
     }
   },
   "spacing": {
-    "rule": "Generous touch-friendly padding designed for seniors and busy workshop professionals, minimum touch targets 48x48pt.",
+    "rule": "Boutons tactiles min 48x48pt, espacement généreux adapté aux professionnels en atelier EHPAD.",
     "xs": 4,
     "sm": 8,
     "md": 12,
@@ -66,11 +68,11 @@
   "glassmorphism": {
     "enabled": false,
     "do's": [
-      "Use solid, high-contrast warm paper surfaces for optimal senior readability.",
-      "Ensure all touch targets are ≥48x48pt."
+      "Utiliser des fonds papier chaud solides et contrastés (#FFFFFF, #F7F3EE) pour garantir la lisibilité en atelier.",
+      "Cibles tactiles toujours supérieures ou égales à 48x48pt."
     ],
     "dont's": [
-      "Do not use low-contrast or semi-transparent overlays that hinder readability in bright rooms."
+      "Éviter les superpositions semi-transparentes floues qui diminuent le contraste."
     ]
   },
   "platform_libraries": {
@@ -83,50 +85,141 @@
     "blur": "expo-blur",
     "bottom_sheet": "@gorhom/bottom-sheet",
     "animation": "react-native-reanimated",
-    "gesture": "react-native-gesture-handler"
+    "gesture": "react-native-gesture-handler",
+    "secure_storage": "expo-secure-store"
+  },
+  "authentication_and_onboarding": {
+    "auth_flow_strategy": "Authentification JWT email/mot de passe pour les professionnels. À la création de compte, chaque utilisateur crée automatiquement son établissement et devient Administrateur. Possibilité de basculer en mode Membre ou Administrateur. Restauration automatique de session via SecureStore et déconnexion sécurisée.",
+    "roles": [
+      {
+        "role": "Administrateur",
+        "badge_label": "Administrateur EHPAD",
+        "badge_color": "#2F3E52",
+        "badge_text_color": "#FFFFFF",
+        "permissions": "Accès complet : création/modification/suppression/fusion de profils, exports, carnets PDF, gestion des quotas de l'établissement et révocation des liens familiaux."
+      },
+      {
+        "role": "Membre",
+        "badge_label": "Membre de l'équipe",
+        "badge_color": "#B9C5B3",
+        "badge_text_color": "#2F3E52",
+        "permissions": "Atelier de mémoire, enregistrement vocal, consultation des profils de l'établissement. Opérations destructives et exports soumis au rôle Administrateur."
+      }
+    ],
+    "quota_limits": {
+      "transcriptions_per_day": 30,
+      "tts_reads_per_day": 100,
+      "audio_uploads_per_day": 100,
+      "family_link_expiry_days": 30
+    },
+    "offline_behavior": "Enregistrement audio local autorisé hors-connexion ou déconnecté. Si déconnecté, la synchronisation serveur, la retranscription Whisper (STT), la lecture synthèse vocal (TTS) et l'export sont désactivés avec un message explicatif clair.",
+    "exact_french_labels": {
+      "login_title": "Connexion Professionnelle",
+      "login_subtitle": "Accédez à votre espace EHPAD et synchronisez les ateliers de mémoire.",
+      "register_title": "Créer un Compte & Établissement",
+      "register_subtitle": "Rejoignez Racontelle et enregistrez votre établissement de santé.",
+      "email_label": "Adresse email professionnelle",
+      "email_placeholder": "soignant@ehpad-exemple.fr",
+      "password_label": "Mot de passe",
+      "password_placeholder": "••••••••",
+      "facility_name_label": "Nom de l'établissement (EHPAD / Résidence)",
+      "facility_name_placeholder": "EHPAD Les Glycines",
+      "facility_code_label": "Code FINESS / SIRET (Optionnel)",
+      "facility_code_placeholder": "750000000",
+      "submit_login": "Se connecter",
+      "submit_register": "Créer l'établissement et mon compte",
+      "toggle_to_register": "Pas encore de compte ? Créer un établissement",
+      "toggle_to_login": "Déjà inscrit ? Connexion professionnelle",
+      "logout_button": "Se déconnecter",
+      "logout_confirm_title": "Déconnexion",
+      "logout_confirm_message": "Vos enregistrements locaux seront conservés sur cet appareil, mais la synchronisation serveur sera suspendue jusqu'à votre prochaine connexion.",
+      "session_expired_title": "Session expirée",
+      "session_expired_message": "Votre session de connexion a expiré par sécurité. Veuillez vous re-connecter pour synchroniser les données de l'établissement.",
+      "quota_exceeded_title": "Quota quotidien atteint",
+      "quota_exceeded_stt_message": "Le quota journalier de transcriptions automatiques (30/jour) a été atteint pour votre établissement. Vos enregistrements restent sauvegardés localement.",
+      "quota_exceeded_tts_message": "Le quota journalier de lecture vocale (100/jour) a été atteint.",
+      "quota_exceeded_upload_message": "Le quota journalier d'envois audio (100/jour) a été atteint.",
+      "offline_banner_text": "Mode local hors-ligne : enregistrements vocaux actifs. Connectez-vous pour synchroniser avec l'établissement.",
+      "family_link_expirable_note": "Lien de partage familial sécurisé (valide 30 jours, révocable à tout moment)."
+    }
   },
   "screens": [
     {
-      "name": "Home / Atelier Mode",
-      "purpose": "Dashboard central de l'atelier de mémoire en EHPAD avec sélection rapide du profil résident, indicateur de mode hors-ligne et accès direct aux 10 profils.",
+      "name": "AuthLoginScreen",
+      "purpose": "Écran de connexion sécurisée par email / mot de passe JWT pour les soignants et animateurs d'EHPAD.",
       "states": {
-        "loading": "Chargement des profils locaux...', animation de carnet chaleureux",
-        "empty": "Aucun profil créé. Appuyez sur 'Ajouter un résident' pour commencer l'atelier.",
-        "error": "Impossible de synchroniser avec le serveur temporaire. Mode local actif."
+        "loading": "Vérification des identifiants...",
+        "empty": "Veuillez saisir votre email et votre mot de passe.",
+        "error": "Identifiants incorrects ou établissement introuvable.",
+        "session_expired": "Votre session a expiré. Connectez-vous à nouveau."
       },
-      "layout": "En-tête chaleureux avec titre éditorial et indicateur d'état de connexion ('Mode Hors-Ligne Actif'), grille fluide des 10 profils avec photos réelles ou initiales, bouton principal sticky en bas 'Nouveau Résident' ou 'Démarrer l'atelier'."
+      "layout": "En-tête épuré avec logo Racontelle Care, formulaire vertical aéré (email, mot de passe), bouton principal 'Se connecter', lien d'orientation 'Créer un établissement', et bandeau explicatif sur le mode enregistrement local disponible hors-ligne.",
+      "test_ids": {
+        "email_input": "auth-login-email-input",
+        "password_input": "auth-login-password-input",
+        "submit_button": "auth-login-submit-button",
+        "switch_to_register_button": "auth-login-switch-register-button",
+        "error_banner": "auth-login-error-banner"
+      }
     },
     {
-      "name": "Profile Setup / Gestion des 10 Profils",
-      "purpose": "Création et gestion ultra-simplifiée des 10 profils de résidents avec prénom, date de naissance/chambre et historique des souvenirs enregistrés.",
+      "name": "AuthRegisterScreen",
+      "purpose": "Écran d'inscription professionnelle créant automatiquement le profil Administrateur et l'établissement rattaché.",
       "states": {
-        "loading": "Chargement du profil...",
-        "empty": "Ce résident n'a pas encore de souvenirs enregistrés.",
-        "error": "Erreur lors de l'enregistrement du profil."
+        "loading": "Création de l'établissement et de votre compte...",
+        "empty": "Renseignez le nom de votre établissement et vos identifiants.",
+        "error": "Impossible de créer l'établissement. Cet email est peut-être déjà utilisé."
       },
-      "layout": "Fiche résident épurée avec grand avatar, prénom en grand, liste chronologique des enregistrements vocaux passés (libres et questions) avec durée, date et bouton d'écoute immédiate."
+      "layout": "En-tête d'accueil chaleureux, champs 'Nom de l'établissement', 'Nom du soignant', 'Email', 'Mot de passe', badge 'Créateur = Administrateur', bouton d'action principal 'Créer l'établissement et mon compte'.",
+      "test_ids": {
+        "facility_name_input": "auth-register-facility-input",
+        "full_name_input": "auth-register-name-input",
+        "email_input": "auth-register-email-input",
+        "password_input": "auth-register-password-input",
+        "submit_button": "auth-register-submit-button",
+        "switch_to_login_button": "auth-register-switch-login-button"
+      }
     },
     {
-      "name": "Recording & Questions Workshop (L'Atelier)",
-      "purpose": "Interface immersive d'enregistrement vocal (libre + parcours guidé de 3 questions du jour) avec options de réponse, de passage de question et indicateur visuel d'onde.",
+      "name": "EstablishmentHeaderBar",
+      "purpose": "Barre d'en-tête présente sur l'Atelier / Accueil affichant l'établissement actif, le nom de l'utilisateur connecté, son rôle (Administrateur / Membre) et le bouton de déconnexion sécurisée.",
       "states": {
-        "loading": "Préparation de l'atelier vocal...",
-        "empty": "Aucune question disponible pour aujourd'hui.",
-        "error": "Erreur d'accès au microphone. Veuillez vérifier les autorisations."
+        "logged_in": "Connecté à [Nom Établissement] en tant que [Rôle]",
+        "logged_out": "Mode local (Non connecté) - Enregistrement disponible"
       },
-      "layout": "Mode immersif par étapes : 1) Enregistrement libre (grand bouton rouge/bordeaux d'enregistrement, chronomètre clair, waveform animée). 2) Parcours des 3 questions du jour affichées une par une avec boutons larges 'Enregistrer la réponse' et 'Passer la question'."
+      "layout": "Bandeau supérieur avec fond #F7F3EE, nom de l'établissement avec icône Phosphor House/Buildings, pilule de rôle (#2F3E52 pour Admin, #B9C5B3 pour Membre), nom du soignant et bouton 'Se déconnecter' (ou 'Se connecter' si déconnecté).",
+      "test_ids": {
+        "facility_title": "header-facility-title",
+        "user_role_badge": "header-user-role-badge",
+        "user_name_text": "header-user-name-text",
+        "auth_action_button": "header-auth-action-button"
+      }
     },
     {
-      "name": "History & Archive (Historique Local)",
-      "purpose": "Consultation sécurisée de tous les souvenirs vocaux enregistrés sur l'appareil avec copie locale et export professionnel pour les équipes EHPAD.",
+      "name": "QuotaAndSessionModal",
+      "purpose": "Modale contextuelle d'alerte lors d'une expiration de session JWT ou d'un dépassement de quota journalier (30 STT, 100 TTS, 100 uploads).",
       "states": {
-        "loading": "Chargement de la collection des souvenirs...",
-        "empty": "Aucun souvenir enregistré dans l'appareil pour le moment.",
-        "error": "Erreur de lecture du stockage local."
+        "session_expired": "Session expirée",
+        "quota_stt_exceeded": "Quota de retranscriptions atteint (30/jour)",
+        "quota_tts_exceeded": "Quota de synthèse vocale atteint (100/jour)"
       },
-      "layout": "Liste claire filtrée par résident ou par date, lecteur audio intégré avec barre de progression tactile, indicateur de stockage local et bouton d'export des données pour l'équipe soignante."
+      "layout": "Carte modale centrée avec bordure #A67C63, icône d'avertissement Phosphor, message compréhensible pour l'équipe soignante, bouton 'Se reconnecter' ou 'Compris (Continuer en local)'.",
+      "test_ids": {
+        "modal_container": "quota-session-modal-container",
+        "modal_title": "quota-session-modal-title",
+        "modal_message": "quota-session-modal-message",
+        "modal_primary_button": "quota-session-modal-primary-button",
+        "modal_dismiss_button": "quota-session-modal-dismiss-button"
+      }
     }
   ],
+  "security_and_storage_guidelines": {
+    "jwt_token_storage": "Utiliser expo-secure-store pour la sauvegarde chiffrée du token JWT et des identifiants de session.",
+    "pin_storage": "Le code PIN de sécurité de l'espace pro doit être stocké exclusivement dans expo-secure-store et non en simple AsyncStorage.",
+    "data_isolation": "Chaque requête HTTP (profils, capsules, exports, carnets PDF, fusion) transmet le header 'Authorization: Bearer <token>'. Le serveur backend filtre hermétiquement toutes les données par 'establishment_id'.",
+    "family_share_links": "Les liens familiaux de partage sont valides 30 jours au maximum et incluent une option de révocation immédiate par l'Administrateur.",
+    "cors_policy": "Restreindre précisément l'origine CORS aux origines autorisées de l'application mobile et du portail de partage."
+  },
   "images": {
     "resident_1": {
       "url": "https://images.unsplash.com/photo-1647082286159-16a43c39eab1",
@@ -141,5 +234,6 @@
       "alt": "Ambiance atelier mémoire EHPAD"
     }
   },
-  "instructions_to_main_agent": "1. Build Racontelle EHPAD with Persona 8 (Hand-Drawn / Journal LIGHT) optimized for senior legibility and professional workshop efficiency. 2. Implement all 4 screens (/app/frontend/app/index.tsx, profiles, recording workshop with 3 daily questions and free recording, and local storage history). 3. Ensure offline-first functionality with local storage & temporary server copy indicator. 4. Maintain large touch targets (≥48x48pt), high contrast, warm paper textures (#FAF6F0), and Fraunces + Plus Jakarta Sans typography. 5. ZERO EMOJIS in system UI. Use Phosphor icons. 6. Fully compliant with French healthcare workshop professional standards."
+  "instructions_to_main_agent": "1. Mettre à jour et implémenter le flux d'authentification JWT et de gestion d'établissement pour Racontelle EHPAD. 2. Créer les composants AuthLoginModal/Screen, AuthRegisterModal/Screen, EstablishmentHeaderBar et QuotaAndSessionModal. 3. S'assurer que le stockage local permet l'enregistrement vocal sans connexion mais bloque la synchronisation serveur et l'IA en cas d'absence de JWT valide. 4. Intégrer les rôles 'Administrateur' et 'Membre' avec affichage du badge dans l'en-tête. 5. Conserver la charte graphique : Blanc doux (#FFFFFF), Rose thé (#E7A7A5), Sauge (#B9C5B3), Brun mémoire (#A67C63), Bleu encre (#2F3E52). 6. Ajouter tous les testIDs spécifiés pour chaque bouton, champ et message.",
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": "1. Toujours tester les formulaires d'authentification avec testIDs explicites. 2. Conserver les cibles tactiles >= 48x48pt. 3. Pas d'émojis dans les boutons système (utiliser les icônes Phosphor ou de grands textes clairs en français). 4. Gérer les erreurs de réseau et d'expiration JWT de façon gracieuse avec des alertes bienveillantes pour le personnel soignant."
 }

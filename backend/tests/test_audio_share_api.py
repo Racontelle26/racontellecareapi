@@ -10,8 +10,7 @@ import wave
 import pytest
 import requests
 
-BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "").rstrip("/")
-assert BASE_URL, "EXPO_PUBLIC_BACKEND_URL env var required"
+BASE_URL = os.environ["EXPO_PUBLIC_BACKEND_URL"].rstrip("/")
 
 
 def make_wav(duration_sec: float = 2.0, freq: float = 440.0) -> bytes:

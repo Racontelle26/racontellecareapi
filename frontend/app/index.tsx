@@ -31,15 +31,20 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardAwareScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
 
-import { api, apiBaseUrl } from "@/src/api";
+import { api, apiBaseUrl, ApiError, authApi } from "@/src/api";
+import { AuthScreen } from "@/src/components/auth-screen";
+import { EstablishmentBanner } from "@/src/components/establishment-banner";
 import { Waveform } from "@/src/components/waveform";
-import { readLocalState, mergeResidents, writeLocalState } from "@/src/local";
+import { readLocalState, mergeCapsules, mergeResidents, setLocalScope, writeLocalState } from "@/src/local";
+import { readProfessionalPin, writeProfessionalPin } from "@/src/secure-pin";
 import { makeStyles, useTheme } from "@/src/theme";
-import type { Capsule, LocalState, Question, Resident } from "@/src/types";
+import type { AuthSession, AuthUser, Capsule, LocalState, Question, Resident } from "@/src/types";
 
 type Screen = "home" | "profile" | "workshop" | "archive" | "stats";
 type WorkshopMode = "free" | "question";
 type RecorderStatus = "idle" | "recording" | "paused" | "done";
+
+const usageClockNow = () => globalThis.performance?.now?.() ?? Date.now();
 
 const FALLBACK_QUESTIONS: Question[] = [
   { id: "q1", theme: "Enfance", text: "Quel est votre tout premier souvenir ?", sensitive: false },
@@ -162,7 +167,13 @@ export default function Index() {
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(recorder) as { isRecording?: boolean; durationMillis?: number };
   const [screen, setScreen] = useState<Screen>("home");
-  const [state, setState] = useState<LocalState>({ residents: [], capsules: [], usage: { total_sec: 0, by_resident: {} } });
+  const [state, setState] = useState<LocalState>({ residents: [], capsules: [], usage: { total_ms: 0, by_resident_ms: {} }, exports: {}, answered: {} });
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [authChecking, setAuthChecking] = useState(true);
+  const [guestMode, setGuestMode] = useState(false);
+  const [authMessage, setAuthMessage] = useState<string | null>(null);
+  const [rememberedEmail, setRememberedEmail] = useState("");
+  const [professionalPin, setProfessionalPin] = useState<string | null>(null);
   const [questions, setQuestions] = useState<Question[]>(FALLBACK_QUESTIONS);
   const [selectedResident, setSelectedResident] = useState<Resident | null>(null);
   const [workshopMode, setWorkshopMode] = useState<WorkshopMode>("free");
@@ -209,7 +220,8 @@ export default function Index() {
   const currentQuestion = sessionQuestions[questionIndex] ?? FALLBACK_QUESTIONS[0];
   const stateRef = useRef(state);
   stateRef.current = state;
-  const usageSession = useRef<{ startedAt: number; residentId: string | null }>({ startedAt: Date.now(), residentId: null });
+  const usageSession = useRef<{ startedAt: number; residentId: string | null; active: boolean }>({ startedAt: usageClockNow(), residentId: null, active: AppState.currentState === "active" });
+  const [usageTick, setUsageTick] = useState(usageClockNow());
 
   // Transcription automatique : tout souvenir synchronisé avec un audio mais
   // sans transcription est (re)transcrit en arrière-plan — y compris ceux dont
@@ -232,12 +244,20 @@ export default function Index() {
     }
   }, []);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (sessionUser: AuthUser | null = authUser) => {
     const local = await readLocalState();
     setState(local);
+    if (!sessionUser) {
+      setLoading(false);
+      return;
+    }
     try {
-      const [remoteResidents, remoteQuestions] = await Promise.all([api.residents(), api.questions()]);
-      const next = { ...local, residents: mergeResidents(local.residents, remoteResidents) };
+      const [remoteResidents, remoteCapsules, remoteQuestions] = await Promise.all([api.residents(), api.capsules(), api.questions()]);
+      const next = {
+        ...local,
+        residents: mergeResidents(local.residents, remoteResidents),
+        capsules: mergeCapsules(local.capsules, remoteCapsules),
+      };
       setState(next);
       await writeLocalState(next);
       if (remoteQuestions.length) setQuestions(remoteQuestions);
@@ -247,9 +267,67 @@ export default function Index() {
     } finally {
       setLoading(false);
     }
-  }, [autoTranscribe]);
+  }, [authUser, autoTranscribe]);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    let active = true;
+    void authApi.rememberedUser().then(async (user) => {
+      if (!active) return;
+      setLocalScope(user?.tenant_id ?? null);
+      usageSession.current = { startedAt: usageClockNow(), residentId: null, active: AppState.currentState === "active" };
+      setAuthUser(user);
+      setRememberedEmail(user?.email ?? "");
+      setProfessionalPin(await readProfessionalPin(user?.tenant_id ?? null));
+      setState(await readLocalState());
+      setLoading(false);
+      setAuthChecking(false);
+    });
+    authApi.onSessionExpired(() => {
+      setAuthMessage("Votre session a expiré par sécurité. Connectez-vous à nouveau.");
+      setAuthUser(null);
+      setGuestMode(false);
+      setLoading(false);
+      setLocalScope(null);
+      usageSession.current = { startedAt: usageClockNow(), residentId: null, active: false };
+    });
+    return () => {
+      active = false;
+      authApi.onSessionExpired(null);
+    };
+  }, []);
+
+  const activateSession = async (session: AuthSession) => {
+    setLocalScope(session.user.tenant_id);
+    usageSession.current = { startedAt: usageClockNow(), residentId: null, active: AppState.currentState === "active" };
+    setProfessionalPin(await readProfessionalPin(session.user.tenant_id));
+    setAuthUser(session.user);
+    setRememberedEmail(session.user.email);
+    setGuestMode(false);
+    setAuthMessage(null);
+    setLoading(true);
+    await refresh(session.user);
+  };
+
+  const continueLocally = async () => {
+    setLocalScope(null);
+    usageSession.current = { startedAt: usageClockNow(), residentId: null, active: AppState.currentState === "active" };
+    setProfessionalPin(await readProfessionalPin(null));
+    setAuthUser(null);
+    setGuestMode(true);
+    setAuthMessage(null);
+    setLoading(true);
+    await refresh(null);
+  };
+
+  const logout = async () => {
+    commitUsage(null, false);
+    await authApi.logout();
+    setAuthUser(null);
+    setGuestMode(false);
+    setLocalScope(null);
+    setProfessionalPin(await readProfessionalPin(null));
+    setAuthMessage("Vous êtes déconnecté. Les enregistrements locaux restent conservés.");
+  };
 
   const persist = async (next: LocalState) => {
     stateRef.current = next;
@@ -257,41 +335,58 @@ export default function Index() {
     await writeLocalState(next);
   };
 
-  // Suivi du temps d'utilisation : global en continu, et attribué à la personne
-  // dont la fiche ou l'atelier est ouvert. Segment clôturé à chaque changement
-  // d'écran ou passage en arrière-plan.
-  const commitUsage = useCallback(async (residentId: string | null) => {
-    const previousResidentId = usageSession.current.residentId;
-    const elapsed = Math.round((Date.now() - usageSession.current.startedAt) / 1000);
-    usageSession.current = { startedAt: Date.now(), residentId };
-    if (elapsed < 3) return;
+  // Chronométrage réel : chaque milliseconde au premier plan est comptée, sans
+  // seuil ni arrondi. Le temps résident correspond à sa fiche + son atelier.
+  const commitUsage = useCallback((residentId: string | null, active = AppState.currentState === "active") => {
+    const previous = usageSession.current;
+    const timestamp = usageClockNow();
+    const elapsedMs = previous.active ? Math.max(0, timestamp - previous.startedAt) : 0;
+    usageSession.current = { startedAt: timestamp, residentId, active };
+    if (!elapsedMs) return;
     const current = stateRef.current;
-    const usage = current.usage ?? { total_sec: 0, by_resident: {} };
-    await persist({
+    const usage = current.usage ?? { total_ms: 0, by_resident_ms: {} };
+    const next = {
       ...current,
       usage: {
-        total_sec: usage.total_sec + elapsed,
-        by_resident: previousResidentId
-          ? { ...usage.by_resident, [previousResidentId]: (usage.by_resident[previousResidentId] ?? 0) + elapsed }
-          : usage.by_resident,
+        total_ms: usage.total_ms + elapsedMs,
+        by_resident_ms: previous.residentId
+          ? { ...usage.by_resident_ms, [previous.residentId]: (usage.by_resident_ms[previous.residentId] ?? 0) + elapsedMs }
+          : usage.by_resident_ms,
       },
-    });
+    };
+    stateRef.current = next;
+    setState(next);
+    void writeLocalState(next);
   }, []);
 
   useEffect(() => {
     const residentId = screen === "profile" || screen === "workshop" ? selectedResident?.id ?? null : null;
-    if (residentId !== usageSession.current.residentId) void commitUsage(residentId);
+    if (residentId !== usageSession.current.residentId) commitUsage(residentId);
   }, [screen, selectedResident, commitUsage]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (status) => {
       if (status === "active") {
-        usageSession.current.startedAt = Date.now();
-      } else {
-        void commitUsage(usageSession.current.residentId);
+        usageSession.current = { ...usageSession.current, startedAt: usageClockNow(), active: true };
+        setUsageTick(usageClockNow());
+      } else if (usageSession.current.active) {
+        commitUsage(usageSession.current.residentId, false);
       }
     });
     return () => subscription.remove();
+  }, [commitUsage]);
+
+  // L'affichage avance chaque seconde et un point de contrôle est persisté
+  // toutes les 10 secondes afin de limiter toute perte en cas d'arrêt brutal.
+  useEffect(() => {
+    const ticker = setInterval(() => setUsageTick(usageClockNow()), 1000);
+    const checkpoint = setInterval(() => {
+      if (usageSession.current.active) commitUsage(usageSession.current.residentId, true);
+    }, 10000);
+    return () => {
+      clearInterval(ticker);
+      clearInterval(checkpoint);
+    };
   }, [commitUsage]);
 
   const beginWorkshop = (resident: Resident | null, mode: WorkshopMode) => {
@@ -406,7 +501,7 @@ export default function Index() {
     capsule.audio_uri = keptUri;
     const optimistic = { ...state, capsules: [capsule, ...state.capsules] };
     await persist(optimistic);
-    try {
+    if (authUser) try {
       const remote = await api.saveCapsule({
         resident_id: capsule.resident_id,
         question_id: capsule.question_id,
@@ -421,7 +516,9 @@ export default function Index() {
       await persist({ ...optimistic, capsules: [synced, ...state.capsules] });
       // Copie de sauvegarde côté serveur (stockage objet), silencieuse hors-ligne.
       if (keptUri) {
-        void api.uploadCapsuleAudio(remote.id, keptUri).catch(() => {});
+        void api.uploadCapsuleAudio(remote.id, keptUri).catch((reason) => {
+          if (reason instanceof ApiError && reason.status === 429) setNotice("Quota quotidien d’envois audio atteint. Le souvenir reste conservé localement.");
+        });
         // Transcription automatique du souvenir, visible dans l'espace de la personne.
         void api.transcribeCapsule(remote.id, keptUri)
           .then(async ({ transcription }) => {
@@ -431,10 +528,14 @@ export default function Index() {
               capsules: current.capsules.map((item) => (item.id === remote.id ? { ...item, transcription } : item)),
             });
           })
-          .catch(() => {});
+          .catch((reason) => {
+            if (reason instanceof ApiError && reason.status === 429) setNotice("Quota quotidien de 30 transcriptions atteint. L’audio reste conservé.");
+          });
       }
     } catch {
       setNotice("Souvenir conservé sur l’appareil. La copie serveur sera retentée plus tard.");
+    } else {
+      setNotice("Souvenir conservé sur cet appareil. Connectez-vous pour le synchroniser.");
     }
     resetRecording();
     if (workshopMode === "question") {
@@ -488,6 +589,10 @@ export default function Index() {
   };
 
   const transcribeCapsule = async (capsule: Capsule) => {
+    if (!authUser) {
+      setNotice("Connectez-vous à l’établissement pour lancer la transcription.");
+      return;
+    }
     if (!capsule.audio_uri || !capsule.synced) {
       setNotice("La transcription demande la copie serveur du souvenir.");
       return;
@@ -497,14 +602,18 @@ export default function Index() {
       const { transcription } = await api.transcribeCapsule(capsule.id, capsule.audio_uri);
       await persist({ ...stateRef.current, capsules: stateRef.current.capsules.map((item) => item.id === capsule.id ? { ...item, transcription } : item) });
       setNotice("Transcription prête à relire.");
-    } catch {
-      setNotice("Transcription momentanément indisponible. Réessayez plus tard.");
+    } catch (reason) {
+      setNotice(reason instanceof ApiError && reason.status === 429 ? "Quota quotidien de 30 transcriptions atteint. L’audio reste conservé." : "Transcription momentanément indisponible. Réessayez plus tard.");
     } finally {
       setBusyCapsuleId(null);
     }
   };
 
   const shareCapsule = async (capsule: Capsule) => {
+    if (!authUser) {
+      setNotice("Connectez-vous à l’établissement pour créer un lien familial.");
+      return;
+    }
     if (!capsule.audio_uri || !capsule.synced) {
       setNotice("Le partage demande la copie serveur du souvenir.");
       return;
@@ -516,9 +625,33 @@ export default function Index() {
       await api.uploadCapsuleAudio(capsule.id, capsule.audio_uri);
       const share = await api.shareCapsule(capsule.id);
       await Clipboard.setStringAsync(`${apiBaseUrl}${share.path}`);
-      setNotice("Lien de partage copié. Transmettez-le à la famille.");
+      await persist({
+        ...stateRef.current,
+        capsules: stateRef.current.capsules.map((item) => item.id === capsule.id ? { ...item, share_id: share.share_id, share_expires_at: share.expires_at } : item),
+      });
+      setNotice("Lien copié : il reste valable 30 jours et peut être révoqué.");
     } catch {
       setNotice("Partage impossible pour le moment. Réessayez plus tard.");
+    } finally {
+      setBusyCapsuleId(null);
+    }
+  };
+
+  const revokeShare = async (capsule: Capsule) => {
+    if (!authUser || authUser.role !== "admin" || !capsule.share_id) {
+      setNotice("La révocation est réservée à l’administrateur de l’établissement.");
+      return;
+    }
+    setBusyCapsuleId(capsule.id);
+    try {
+      await api.revokeShare(capsule.share_id);
+      await persist({
+        ...stateRef.current,
+        capsules: stateRef.current.capsules.map((item) => item.id === capsule.id ? { ...item, share_id: null, share_expires_at: null } : item),
+      });
+      setNotice("Le lien familial est révoqué et n’est plus accessible.");
+    } catch {
+      setNotice("Impossible de révoquer ce lien pour le moment.");
     } finally {
       setBusyCapsuleId(null);
     }
@@ -559,6 +692,10 @@ export default function Index() {
   }, [ttsStatus.didJustFinish]);
 
   const speakText = async (id: string, text: string) => {
+    if (!authUser) {
+      setNotice("Connectez-vous à l’établissement pour utiliser la lecture vocale.");
+      return;
+    }
     if (speakingId === id && ttsStatus.playing) {
       ttsPlayer.pause();
       setSpeakingId(null);
@@ -569,9 +706,13 @@ export default function Index() {
       const { path } = await api.tts(text);
       const url = `${apiBaseUrl}${path}`;
       let uri = url;
-      if (Platform.OS !== "web") {
+      if (Platform.OS === "web") {
+        const response = await api.download(path);
+        if (!response.ok) throw new Error("audio indisponible");
+        uri = URL.createObjectURL(await response.blob());
+      } else {
         const target = `${FileSystem.cacheDirectory}tts-${id.replace(/[^a-z0-9-]/gi, "")}.mp3`;
-        const downloaded = await FileSystem.downloadAsync(url, target);
+        const downloaded = await FileSystem.downloadAsync(url, target, { headers: await api.authorizationHeaders() });
         uri = downloaded.uri;
       }
       // Lecture haut-parleur même en mode silencieux ; la session d'enregistrement
@@ -579,9 +720,9 @@ export default function Index() {
       await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false });
       wantSpeak.current = true;
       setTtsUri(uri);
-    } catch {
+    } catch (reason) {
       setSpeakingId(null);
-      setNotice("La lecture vocale est indisponible pour le moment.");
+      setNotice(reason instanceof ApiError && reason.status === 429 ? "Quota quotidien de 100 lectures vocales atteint." : "La lecture vocale est indisponible pour le moment.");
     }
   };
 
@@ -600,18 +741,26 @@ export default function Index() {
 
   // Export équipe soignante : un fichier ZIP (audios + transcriptions).
   const exportResident = async (resident: Resident) => {
+    if (!authUser || authUser.role !== "admin") {
+      setNotice("L’export est réservé à l’administrateur de l’établissement.");
+      return;
+    }
     if (resident.id.startsWith("local-")) {
       setNotice("Synchronisez le profil avec le serveur avant l’export.");
       return;
     }
     setExporting(true);
     try {
-      const url = api.exportResidentUrl(resident.id);
+      const path = api.exportResidentPath(resident.id);
+      const url = `${apiBaseUrl}/api${path}`;
       if (Platform.OS === "web") {
-        (globalThis as any).window?.open?.(url, "_blank");
+        const response = await api.download(path);
+        if (!response.ok) throw new Error("export indisponible");
+        const objectUrl = URL.createObjectURL(await response.blob());
+        (globalThis as any).window?.open?.(objectUrl, "_blank");
       } else {
         const target = `${FileSystem.cacheDirectory}racontelle-${resident.id}.zip`;
-        const downloaded = await FileSystem.downloadAsync(url, target);
+        const downloaded = await FileSystem.downloadAsync(url, target, { headers: await api.authorizationHeaders() });
         if (await Sharing.isAvailableAsync()) {
           await Sharing.shareAsync(downloaded.uri, {
             mimeType: "application/zip",
@@ -633,6 +782,10 @@ export default function Index() {
 
   // Retrait d'un profil : uniquement après extraction des souvenirs.
   const removeResident = async (resident: Resident) => {
+    if (authUser?.role !== "admin") {
+      setNotice("Le retrait d’un profil est réservé à l’administrateur.");
+      return;
+    }
     if (!stateRef.current.exports?.[resident.id]) {
       setNotice("Extrayez d’abord les souvenirs avant de retirer le profil.");
       return;
@@ -648,7 +801,7 @@ export default function Index() {
       residents: stateRef.current.residents.filter((item) => item.id !== resident.id),
       capsules: stateRef.current.capsules.filter((item) => item.resident_id !== resident.id),
     });
-    if (!resident.id.startsWith("local-")) {
+    if (authUser && !resident.id.startsWith("local-")) {
       try {
         await api.deleteResident(resident.id);
       } catch {
@@ -667,6 +820,11 @@ export default function Index() {
   const [printing, setPrinting] = useState(false);
   const [showRename, setShowRename] = useState(false);
   const [renameDraft, setRenameDraft] = useState("");
+  const [showAddMember, setShowAddMember] = useState(false);
+  const [memberName, setMemberName] = useState("");
+  const [memberEmail, setMemberEmail] = useState("");
+  const [memberPassword, setMemberPassword] = useState("");
+  const [memberBusy, setMemberBusy] = useState(false);
 
   // Renommage : un appui sur le prénom dans la fiche permet de le modifier.
   const renameResident = async () => {
@@ -681,7 +839,7 @@ export default function Index() {
       residents: stateRef.current.residents.map((item) => (item.id === updated.id ? updated : item)),
     });
     setSelectedResident(updated);
-    if (!updated.id.startsWith("local-")) {
+    if (authUser && !updated.id.startsWith("local-")) {
       try {
         await api.updateResident(updated.id, name);
       } catch {
@@ -690,6 +848,27 @@ export default function Index() {
     }
     setShowRename(false);
     setNotice(`Le profil s’appelle désormais ${name}.`);
+  };
+
+  const addTeamMember = async () => {
+    if (authUser?.role !== "admin") return;
+    if (!memberName.trim() || !memberEmail.trim() || memberPassword.length < 12) {
+      setNotice("Complétez les champs avec un mot de passe d’au moins 12 caractères.");
+      return;
+    }
+    setMemberBusy(true);
+    try {
+      await api.createMember({ full_name: memberName.trim(), email: memberEmail.trim(), password: memberPassword });
+      setMemberName("");
+      setMemberEmail("");
+      setMemberPassword("");
+      setShowAddMember(false);
+      setNotice("Le membre peut maintenant se connecter à cet établissement.");
+    } catch {
+      setNotice("Impossible d’ajouter ce membre. Vérifiez l’adresse email.");
+    } finally {
+      setMemberBusy(false);
+    }
   };
 
   // Édition d'un souvenir : renommage sur le vif + rattachement à un profil.
@@ -714,7 +893,7 @@ export default function Index() {
     );
     await persist({ ...stateRef.current, capsules });
     setEditingCapsule(null);
-    if (capsule.synced && !capsule.id.startsWith("local-")) {
+    if (authUser && capsule.synced && !capsule.id.startsWith("local-")) {
       try {
         if (title && title !== capsule.title) await api.updateCapsule(capsule.id, title);
         if (editResidentId && editResidentId !== capsule.resident_id) await api.assignCapsule(capsule.id, editResidentId);
@@ -737,18 +916,26 @@ export default function Index() {
 
   // Impression du carnet : PDF des transcriptions, prêt à offrir à la famille.
   const printCarnet = async (resident: Resident) => {
+    if (!authUser || authUser.role !== "admin") {
+      setNotice("L’impression du carnet est réservée à l’administrateur.");
+      return;
+    }
     if (resident.id.startsWith("local-")) {
       setNotice("Synchronisez le profil avec le serveur avant d’imprimer le carnet.");
       return;
     }
     setPrinting(true);
     try {
-      const url = api.carnetResidentUrl(resident.id);
+      const path = api.carnetResidentPath(resident.id);
+      const url = `${apiBaseUrl}/api${path}`;
       if (Platform.OS === "web") {
-        (globalThis as any).window?.open?.(url, "_blank");
+        const response = await api.download(path);
+        if (!response.ok) throw new Error("carnet indisponible");
+        const objectUrl = URL.createObjectURL(await response.blob());
+        (globalThis as any).window?.open?.(objectUrl, "_blank");
       } else {
         const target = `${FileSystem.cacheDirectory}racontelle-carnet-${resident.id}.pdf`;
-        const downloaded = await FileSystem.downloadAsync(url, target);
+        const downloaded = await FileSystem.downloadAsync(url, target, { headers: await api.authorizationHeaders() });
         if (await Sharing.isAvailableAsync()) {
           await Sharing.shareAsync(downloaded.uri, {
             mimeType: "application/pdf",
@@ -767,6 +954,10 @@ export default function Index() {
   // Fusion de doublons : la fiche choisie est conservée, les souvenirs des
   // autres fiches y sont rattachés.
   const confirmMerge = async () => {
+    if (authUser?.role !== "admin") {
+      setNotice("La fusion de profils est réservée à l’administrateur.");
+      return;
+    }
     const keep = mergeGroup.find((resident) => resident.id === mergeKeepId);
     if (!keep) return;
     const duplicates = mergeGroup.filter((resident) => resident.id !== keep.id);
@@ -784,7 +975,7 @@ export default function Index() {
       ),
     });
     const syncedDuplicateIds = duplicateIds.filter((id) => !id.startsWith("local-"));
-    if (!keep.id.startsWith("local-") && syncedDuplicateIds.length) {
+    if (authUser && !keep.id.startsWith("local-") && syncedDuplicateIds.length) {
       try {
         await api.mergeResidents(keep.id, syncedDuplicateIds);
       } catch {
@@ -814,11 +1005,13 @@ export default function Index() {
     const localResident: Resident = { id: `local-${Date.now()}`, display_name: displayName, consent_status: "obtained", active: true, created_at: new Date().toISOString(), photo_uri: draftPhoto };
     const optimistic = { ...state, residents: [...state.residents, localResident] };
     await persist(optimistic);
-    try {
+    if (authUser) try {
       const remote = await api.createResident(displayName);
       await persist({ ...optimistic, residents: optimistic.residents.map((item) => item.id === localResident.id ? { ...remote, photo_uri: draftPhoto } : item) });
     } catch {
       setNotice("Profil conservé localement. La copie serveur sera retentée plus tard.");
+    } else {
+      setNotice("Profil conservé uniquement sur cet appareil.");
     }
     setDraftName("");
     setDraftPhoto(null);
@@ -843,6 +1036,18 @@ export default function Index() {
     return list;
   }, [archiveResidentId, archiveQuery, state.capsules, state.residents]);
 
+  const displayedUsage = useMemo(() => {
+    const stored = state.usage ?? { total_ms: 0, by_resident_ms: {} };
+    const session = usageSession.current;
+    const elapsedMs = session.active ? Math.max(0, usageTick - session.startedAt) : 0;
+    return {
+      total_ms: stored.total_ms + elapsedMs,
+      by_resident_ms: session.residentId
+        ? { ...stored.by_resident_ms, [session.residentId]: (stored.by_resident_ms[session.residentId] ?? 0) + elapsedMs }
+        : stored.by_resident_ms,
+    };
+  }, [state.usage, usageTick]);
+
   // Verrou professionnel : code à 4 chiffres exigé pour l'espace pro, la
   // fusion de doublons et le retrait d'un profil. Créé à la première utilisation.
   const [pinPrompt, setPinPrompt] = useState<{ mode: "create" | "unlock"; onSuccess: () => void } | null>(null);
@@ -852,20 +1057,21 @@ export default function Index() {
   const requirePin = (onSuccess: () => void) => {
     setPinDraft("");
     setPinError(false);
-    setPinPrompt({ mode: stateRef.current.pin ? "unlock" : "create", onSuccess });
+    setPinPrompt({ mode: professionalPin ? "unlock" : "create", onSuccess });
   };
 
   const submitPin = async (value: string) => {
     if (value.length !== 4 || !pinPrompt) return;
     if (pinPrompt.mode === "create") {
-      await persist({ ...stateRef.current, pin: value });
+      await writeProfessionalPin(authUser?.tenant_id ?? null, value);
+      setProfessionalPin(value);
       const action = pinPrompt.onSuccess;
       setPinPrompt(null);
       setNotice("Code professionnel créé.");
       action();
       return;
     }
-    if (value === stateRef.current.pin) {
+    if (value === professionalPin) {
       const action = pinPrompt.onSuccess;
       setPinPrompt(null);
       action();
@@ -875,17 +1081,25 @@ export default function Index() {
     }
   };
 
+  if (authChecking) {
+    return <View testID="auth-session-loading" style={[styles.root, styles.center]}><ActivityIndicator size="large" color={colors.brandPrimary} /><Text style={styles.body}>Vérification de la session sécurisée…</Text></View>;
+  }
+
+  if (!authUser && !guestMode) {
+    return <AuthScreen onAuthenticated={(session) => void activateSession(session)} onContinueLocal={() => void continueLocally()} initialMessage={authMessage} initialEmail={rememberedEmail} />;
+  }
+
   if (loading) {
     return <View style={[styles.root, styles.center]}><ActivityIndicator size="large" color={colors.brandPrimary} /><Text style={styles.body}>Ouverture du carnet…</Text></View>;
   }
 
   return (
     <View style={styles.root}>
-      {screen === "home" && <HomeScreen styles={styles} colors={colors} insets={insets} state={state} onAdd={() => setShowAdd(true)} onProfile={(resident: Resident) => { setSelectedResident(resident); setScreen("profile"); }} onFree={() => beginWorkshop(null, "free")} onArchive={() => setScreen("archive")} onStats={() => requirePin(() => setScreen("stats"))} notice={notice} />}
-      {screen === "profile" && selectedResident && <ProfileScreen styles={styles} colors={colors} insets={insets} resident={selectedResident} capsules={state.capsules.filter((item) => item.resident_id === selectedResident.id)} busyCapsuleId={busyCapsuleId} playingCapsuleId={playingCapsuleId} printing={printing} onBack={() => setScreen("home")} onStart={() => beginWorkshop(selectedResident, "free")} onArchive={() => { setArchiveResidentId(selectedResident.id); setScreen("archive"); }} onPhoto={() => void pickPhoto("profile")} onTranscribe={transcribeCapsule} onShare={shareCapsule} onPlay={togglePlay} onListen={(capsule: Capsule) => capsule.transcription && void speakText(`t-${capsule.id}`, capsule.transcription)} speakingCapsuleId={speakingId} onPrintCarnet={() => void printCarnet(selectedResident)} onRemoveRequest={() => requirePin(() => setShowRemove(true))} onRename={() => { setRenameDraft(selectedResident.display_name); setShowRename(true); }} onEditCapsule={openCapsuleEdit} />}
+      {screen === "home" && <HomeScreen styles={styles} colors={colors} insets={insets} state={state} authUser={authUser} onAuthAction={() => authUser ? void logout() : setGuestMode(false)} onAdd={() => setShowAdd(true)} onProfile={(resident: Resident) => { setSelectedResident(resident); setScreen("profile"); }} onFree={() => beginWorkshop(null, "free")} onArchive={() => setScreen("archive")} onStats={() => requirePin(() => setScreen("stats"))} />}
+      {screen === "profile" && selectedResident && <ProfileScreen styles={styles} colors={colors} insets={insets} resident={selectedResident} capsules={state.capsules.filter((item) => item.resident_id === selectedResident.id)} busyCapsuleId={busyCapsuleId} playingCapsuleId={playingCapsuleId} printing={printing} isAdmin={authUser?.role === "admin"} onBack={() => setScreen("home")} onStart={() => beginWorkshop(selectedResident, "free")} onArchive={() => { setArchiveResidentId(selectedResident.id); setScreen("archive"); }} onPhoto={() => void pickPhoto("profile")} onTranscribe={transcribeCapsule} onShare={shareCapsule} onRevokeShare={revokeShare} onPlay={togglePlay} onListen={(capsule: Capsule) => capsule.transcription && void speakText(`t-${capsule.id}`, capsule.transcription)} speakingCapsuleId={speakingId} onPrintCarnet={() => void printCarnet(selectedResident)} onRemoveRequest={() => requirePin(() => setShowRemove(true))} onRename={() => { setRenameDraft(selectedResident.display_name); setShowRename(true); }} onEditCapsule={openCapsuleEdit} />}
       {screen === "workshop" && <WorkshopScreen styles={styles} colors={colors} insets={insets} resident={selectedResident} mode={workshopMode} questionIndex={questionIndex} questionTotal={Math.max(sessionQuestions.length, 1)} question={currentQuestion} recorderStatus={recorderStatus} durationSeconds={durationSeconds} speakingQuestion={speakingId === `q-${currentQuestion.id}`} onListenQuestion={() => void speakText(`q-${currentQuestion.id}`, currentQuestion.text)} onBack={() => setScreen(selectedResident ? "profile" : "home")} onRecord={handleRecordPress} onStop={stopRecording} onReset={resetRecording} onPlay={async () => { await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false }); player.play(); }} onSave={saveRecording} onModeChange={(nextMode: WorkshopMode) => { setWorkshopMode(nextMode); resetRecording(); }} onSkip={() => { if (questionIndex < sessionQuestions.length - 1) setQuestionIndex((value) => value + 1); else { setScreen(selectedResident ? "profile" : "home"); setNotice("Atelier terminé. Les questions passées seront reproposées ultérieurement."); } }} />}
-      {screen === "archive" && <ArchiveScreen styles={styles} colors={colors} insets={insets} residents={state.residents} capsules={visibleCapsules} selectedId={archiveResidentId} busyCapsuleId={busyCapsuleId} playingCapsuleId={playingCapsuleId} speakingCapsuleId={speakingId} searchQuery={archiveQuery} onSearch={setArchiveQuery} onSelect={setArchiveResidentId} onBack={() => setScreen("home")} onPlay={togglePlay} onTranscribe={transcribeCapsule} onShare={shareCapsule} onListen={(capsule: Capsule) => capsule.transcription && void speakText(`t-${capsule.id}`, capsule.transcription)} onEditCapsule={openCapsuleEdit} />}
-      {screen === "stats" && <StatsScreen styles={styles} colors={colors} insets={insets} state={state} duplicateGroups={duplicateGroups} onMergeGroup={(group: Resident[]) => { setMergeGroup(group); setMergeKeepId(null); setShowMerge(true); }} onBack={() => setScreen("home")} />}
+      {screen === "archive" && <ArchiveScreen styles={styles} colors={colors} insets={insets} residents={state.residents} capsules={visibleCapsules} selectedId={archiveResidentId} busyCapsuleId={busyCapsuleId} playingCapsuleId={playingCapsuleId} speakingCapsuleId={speakingId} isAdmin={authUser?.role === "admin"} searchQuery={archiveQuery} onSearch={setArchiveQuery} onSelect={setArchiveResidentId} onBack={() => setScreen("home")} onPlay={togglePlay} onTranscribe={transcribeCapsule} onShare={shareCapsule} onRevokeShare={revokeShare} onListen={(capsule: Capsule) => capsule.transcription && void speakText(`t-${capsule.id}`, capsule.transcription)} onEditCapsule={openCapsuleEdit} />}
+      {screen === "stats" && <StatsScreen styles={styles} colors={colors} insets={insets} state={state} usage={displayedUsage} authUser={authUser} duplicateGroups={authUser?.role === "admin" ? duplicateGroups : []} onAddMember={() => setShowAddMember(true)} onMergeGroup={(group: Resident[]) => { setMergeGroup(group); setMergeKeepId(null); setShowMerge(true); }} onBack={() => setScreen("home")} />}
       {notice && <Pressable accessibilityRole="button" onPress={() => setNotice(null)} style={[styles.notice, { bottom: insets.bottom + 16 }]}><Icon name="information-circle-outline" color={colors.onInfo} size={18} /><Text style={styles.noticeText}>{notice}</Text><Icon name="close" color={colors.onInfo} size={18} /></Pressable>}
       <Modal testID="add-resident-modal" visible={showAdd} transparent animationType="slide" onRequestClose={() => setShowAdd(false)}>
         <View style={styles.modalBackdrop}>
@@ -958,6 +1172,22 @@ export default function Index() {
           </View>
         </View>
       </Modal>
+      <Modal testID="add-member-modal" visible={showAddMember && authUser?.role === "admin"} transparent animationType="slide" onRequestClose={() => setShowAddMember(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <KeyboardAwareScrollView bottomOffset={86} keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 14, paddingBottom: 16 }}>
+              <View style={styles.sectionHeader}><Text style={styles.heading}>Ajouter un membre</Text><Pressable testID="add-member-cancel" accessibilityRole="button" onPress={() => setShowAddMember(false)} style={styles.backButton}><Icon name="close" color={colors.onSurface} /></Pressable></View>
+              <Text style={styles.body}>Ce compte membre pourra enregistrer et consulter les souvenirs de {authUser?.establishment_name}. Les exports et suppressions restent réservés aux administrateurs.</Text>
+              <TextInput testID="add-member-name-input" value={memberName} onChangeText={setMemberName} placeholder="Nom du professionnel" placeholderTextColor={colors.muted} style={styles.input} autoCapitalize="words" />
+              <TextInput testID="add-member-email-input" value={memberEmail} onChangeText={setMemberEmail} placeholder="Adresse email professionnelle" placeholderTextColor={colors.muted} style={styles.input} autoCapitalize="none" keyboardType="email-address" />
+              <TextInput testID="add-member-password-input" value={memberPassword} onChangeText={setMemberPassword} placeholder="Mot de passe temporaire · 12 caractères" placeholderTextColor={colors.muted} style={styles.input} secureTextEntry autoCapitalize="none" />
+            </KeyboardAwareScrollView>
+            <KeyboardStickyView style={{ paddingBottom: insets.bottom + 8 }}>
+              <Pressable testID="add-member-submit" accessibilityRole="button" disabled={memberBusy} onPress={() => void addTeamMember()} style={({ pressed }) => [styles.primaryButton, memberBusy && { opacity: 0.6 }, pressed && styles.pressed]}>{memberBusy ? <ActivityIndicator color={colors.onBrandPrimary} /> : <Icon name="person-add-outline" color={colors.onBrandPrimary} />}<Text style={styles.primaryText}>Créer le compte membre</Text></Pressable>
+            </KeyboardStickyView>
+          </View>
+        </View>
+      </Modal>
       <Modal testID="edit-capsule-modal" visible={!!editingCapsule} transparent animationType="slide" onRequestClose={() => setEditingCapsule(null)}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
@@ -995,10 +1225,11 @@ export default function Index() {
   );
 }
 
-function HomeScreen({ styles, colors, insets, state, onAdd, onProfile, onFree, onArchive, onStats, notice }: any) {
+function HomeScreen({ styles, colors, insets, state, authUser, onAuthAction, onAdd, onProfile, onFree, onArchive, onStats }: any) {
   return <ScrollView testID="home-screen" contentContainerStyle={[styles.screen, { paddingTop: insets.top + 22, paddingBottom: insets.bottom + 32 }]}>
     <View style={styles.header}><View><Text style={styles.eyebrow}>Carnet de l’atelier</Text><Image testID="home-logo" source={require("../assets/images/racontelle-logo.webp")} style={styles.logo} contentFit="contain" /></View><View style={styles.avatar}><Icon name="leaf-outline" color={colors.onBrandSecondary} /></View></View>
-    <View style={styles.status}><Icon name="cloud-offline-outline" color={colors.onBrandTertiary} size={18} /><Text style={styles.statusText}>Mode local actif</Text></View>
+    <View style={styles.status}><Icon name={authUser ? "shield-checkmark-outline" : "cloud-offline-outline"} color={colors.onBrandTertiary} size={18} /><Text testID="home-sync-status" style={styles.statusText}>{authUser ? "Espace établissement sécurisé" : "Mode local actif"}</Text></View>
+    <EstablishmentBanner user={authUser} onAuthAction={onAuthAction} />
     <View style={styles.hero}><Text style={styles.heroTitle}>Les voix que l’on aime racontent les plus belles histoires.</Text><Text style={styles.body}>Un espace simple pour écouter, préserver et transmettre les souvenirs de l’atelier.</Text></View>
     <View style={styles.actionRow}><Pressable testID="home-free-mode" accessibilityRole="button" onPress={onFree} style={({ pressed }) => [styles.actionCard, styles.actionPrimary, pressed && styles.pressed]}><Icon name="mic-outline" color={colors.onBrandPrimary} size={26} /><View><Text style={[styles.actionTitle, styles.actionTitleLight]}>Mode spontané</Text><Text style={[styles.actionText, styles.actionTextLight]}>Enregistrer sans choisir de personne</Text></View></Pressable><Pressable testID="home-archive" accessibilityRole="button" onPress={onArchive} style={({ pressed }) => [styles.actionCard, styles.actionSecondary, pressed && styles.pressed]}><Icon name="albums-outline" color={colors.onBrandTertiary} size={26} /><View><Text style={styles.actionTitle}>Mes souvenirs</Text><Text style={styles.actionText}>Retrouver le carnet audio</Text></View></Pressable></View>
     <Pressable testID="home-stats" accessibilityRole="button" onPress={onStats} style={({ pressed }) => [styles.statsCard, pressed && styles.pressed]}><Icon name="stats-chart-outline" color={colors.onBrandSecondary} size={24} /><View style={{ flex: 1 }}><Text style={styles.actionTitle}>Espace professionnel</Text><Text style={styles.actionText}>Temps d’utilisation global et par personne</Text></View><Icon name="chevron-forward" color={colors.onBrandSecondary} size={20} /></Pressable>
@@ -1008,10 +1239,10 @@ function HomeScreen({ styles, colors, insets, state, onAdd, onProfile, onFree, o
   </ScrollView>;
 }
 
-function ProfileScreen({ styles, colors, insets, resident, capsules, busyCapsuleId, playingCapsuleId, speakingCapsuleId, printing, onBack, onStart, onArchive, onPhoto, onTranscribe, onShare, onPlay, onListen, onPrintCarnet, onRemoveRequest, onRename, onEditCapsule }: any) {
+function ProfileScreen({ styles, colors, insets, resident, capsules, busyCapsuleId, playingCapsuleId, speakingCapsuleId, printing, isAdmin, onBack, onStart, onArchive, onPhoto, onTranscribe, onShare, onRevokeShare, onPlay, onListen, onPrintCarnet, onRemoveRequest, onRename, onEditCapsule }: any) {
   const guidedAnswers = capsules.filter((capsule: Capsule) => capsule.mode === "question");
   const freeMemories = capsules.filter((capsule: Capsule) => capsule.mode === "free");
-  const renderCapsule = (capsule: Capsule) => <CapsuleRow key={capsule.id} styles={styles} colors={colors} capsule={capsule} resident={resident} busy={busyCapsuleId === capsule.id} playing={playingCapsuleId === capsule.id} speaking={speakingCapsuleId === `t-${capsule.id}`} onPlay={capsule.audio_uri ? () => onPlay(capsule) : undefined} onListen={capsule.transcription ? () => onListen(capsule) : undefined} onEdit={() => onEditCapsule(capsule)} onTranscribe={() => onTranscribe(capsule)} onShare={() => onShare(capsule)} />;
+  const renderCapsule = (capsule: Capsule) => <CapsuleRow key={capsule.id} styles={styles} colors={colors} capsule={capsule} resident={resident} busy={busyCapsuleId === capsule.id} playing={playingCapsuleId === capsule.id} speaking={speakingCapsuleId === `t-${capsule.id}`} onPlay={capsule.audio_uri ? () => onPlay(capsule) : undefined} onListen={capsule.transcription ? () => onListen(capsule) : undefined} onEdit={() => onEditCapsule(capsule)} onTranscribe={() => onTranscribe(capsule)} onShare={() => onShare(capsule)} onRevokeShare={isAdmin && capsule.share_id ? () => onRevokeShare(capsule) : undefined} />;
   return <ScrollView testID="profile-screen" contentContainerStyle={[styles.screen, { paddingTop: insets.top + 18, paddingBottom: insets.bottom + 32 }]}>
     <View style={styles.header}><Pressable testID="profile-back" accessibilityRole="button" onPress={onBack} style={styles.backButton}><Icon name="arrow-back" color={colors.onSurface} /></Pressable><Text style={styles.eyebrow}>Fiche personne</Text><View style={{ width: 48 }} /></View>
     <View style={styles.profileHeader}><Pressable testID="profile-photo-button" accessibilityRole="button" onPress={onPhoto} style={({ pressed }) => pressed && styles.pressed}><View style={styles.largeAvatar}>{resident.photo_uri ? <Image source={{ uri: resident.photo_uri }} style={{ width: 80, height: 80, borderRadius: 40 }} contentFit="cover" /> : <Text style={styles.largeAvatarText}>{initials(resident.display_name)}</Text>}</View></Pressable><Pressable testID="profile-rename" accessibilityRole="button" accessibilityLabel="Renommer le profil" onPress={onRename} style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 44 }, pressed && styles.pressed]}><Text style={styles.title}>{resident.display_name}</Text><Icon name="pencil-outline" color={colors.muted} size={18} /></Pressable><Text style={styles.small}>Consentement obtenu · profil local</Text><Pressable testID="profile-change-photo" accessibilityRole="button" onPress={onPhoto} style={styles.textButton}><Text style={styles.textButtonLabel}>{resident.photo_uri ? "Changer la photo" : "Ajouter une photo"}</Text></Pressable></View>
@@ -1025,9 +1256,7 @@ function ProfileScreen({ styles, colors, insets, resident, capsules, busyCapsule
       {freeMemories.slice(0, 5).map(renderCapsule)}
     </View> : null}
     {freeMemories.length > 5 && <Pressable testID="profile-open-archive" accessibilityRole="button" onPress={onArchive} style={styles.secondaryButton}><Text style={styles.secondaryText}>Voir tous les souvenirs libres</Text></Pressable>}
-    <Pressable testID="profile-print-carnet" accessibilityRole="button" disabled={printing} onPress={onPrintCarnet} style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>{printing ? <ActivityIndicator color={colors.brandPrimary} /> : <Icon name="book-outline" color={colors.brandPrimary} />}<Text style={styles.secondaryText}>Imprimer le carnet (PDF)</Text></Pressable>
-    <View style={{ height: 1, backgroundColor: colors.divider }} />
-    <Pressable testID="profile-remove" accessibilityRole="button" onPress={onRemoveRequest} style={({ pressed }) => [styles.textButton, { alignSelf: "center" }, pressed && styles.pressed]}><Text style={[styles.textButtonLabel, { color: colors.error }]}>Retirer le profil (départ de l’établissement)</Text></Pressable>
+    {isAdmin && <><Pressable testID="profile-print-carnet" accessibilityRole="button" disabled={printing} onPress={onPrintCarnet} style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>{printing ? <ActivityIndicator color={colors.brandPrimary} /> : <Icon name="book-outline" color={colors.brandPrimary} />}<Text style={styles.secondaryText}>Imprimer le carnet (PDF)</Text></Pressable><View style={{ height: 1, backgroundColor: colors.divider }} /><Pressable testID="profile-remove" accessibilityRole="button" onPress={onRemoveRequest} style={({ pressed }) => [styles.textButton, { alignSelf: "center" }, pressed && styles.pressed]}><Text style={[styles.textButtonLabel, { color: colors.error }]}>Retirer le profil (départ de l’établissement)</Text></Pressable></>}
   </ScrollView>;
 }
 
@@ -1048,42 +1277,42 @@ function WorkshopScreen({ styles, colors, insets, resident, mode, questionIndex,
   </ScrollView>;
 }
 
-function ArchiveScreen({ styles, colors, insets, residents, capsules, selectedId, busyCapsuleId, playingCapsuleId, speakingCapsuleId, searchQuery = "", onSearch, onSelect, onBack, onPlay, onTranscribe, onShare, onListen, onEditCapsule }: any) {
+function ArchiveScreen({ styles, colors, insets, residents, capsules, selectedId, busyCapsuleId, playingCapsuleId, speakingCapsuleId, isAdmin, searchQuery = "", onSearch, onSelect, onBack, onPlay, onTranscribe, onShare, onRevokeShare, onListen, onEditCapsule }: any) {
   return <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.screen, { paddingTop: insets.top + 18, paddingBottom: insets.bottom + 32 }]}>
     <View style={styles.header}><Pressable testID="archive-back" accessibilityRole="button" onPress={onBack} style={styles.backButton}><Icon name="arrow-back" color={colors.onSurface} /></Pressable><Text style={styles.eyebrow}>Archive locale</Text><View style={{ width: 48 }} /></View>
     <View><Text style={styles.title}>Mes souvenirs</Text><Text style={styles.body}>Les capsules restent disponibles sur cet appareil, même sans réseau.</Text></View>
     <TextInput testID="archive-search" value={searchQuery} onChangeText={onSearch} placeholder="Rechercher un mot, un souvenir…" placeholderTextColor={colors.muted} style={styles.input} returnKeyType="search" autoCorrect={false} />
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.archiveFilter}><Pressable testID="archive-filter-all" onPress={() => onSelect(null)} style={[styles.filter, selectedId === null && styles.filterActive]}><Text style={[styles.filterText, selectedId === null && styles.filterTextActive]}>Tous</Text></Pressable>{residents.map((resident: Resident) => <Pressable testID={`archive-filter-${resident.id}`} key={resident.id} onPress={() => onSelect(resident.id)} style={[styles.filter, selectedId === resident.id && styles.filterActive]}><Text style={[styles.filterText, selectedId === resident.id && styles.filterTextActive]}>{resident.display_name}</Text></Pressable>)}</ScrollView>
-    {capsules.length ? capsules.map((capsule: Capsule) => <CapsuleRow key={capsule.id} styles={styles} colors={colors} capsule={capsule} resident={residents.find((item: Resident) => item.id === capsule.resident_id)} busy={busyCapsuleId === capsule.id} playing={playingCapsuleId === capsule.id} speaking={speakingCapsuleId === `t-${capsule.id}`} onPlay={capsule.audio_uri ? () => onPlay(capsule) : undefined} onListen={capsule.transcription ? () => onListen(capsule) : undefined} onEdit={() => onEditCapsule(capsule)} onTranscribe={() => onTranscribe(capsule)} onShare={() => onShare(capsule)} />) : <View style={styles.empty}><Icon name="albums-outline" color={colors.brand} size={30} /><Text style={styles.heading}>{searchQuery.trim() ? "Aucun souvenir trouvé" : "Votre archive est vide"}</Text><Text style={[styles.body, { textAlign: "center" }]}>{searchQuery.trim() ? `Aucune transcription ne contient « ${searchQuery.trim()} ».` : "Les souvenirs sauvegardés pendant l’atelier apparaîtront ici."}</Text></View>}
+    {capsules.length ? capsules.map((capsule: Capsule) => <CapsuleRow key={capsule.id} styles={styles} colors={colors} capsule={capsule} resident={residents.find((item: Resident) => item.id === capsule.resident_id)} busy={busyCapsuleId === capsule.id} playing={playingCapsuleId === capsule.id} speaking={speakingCapsuleId === `t-${capsule.id}`} onPlay={capsule.audio_uri ? () => onPlay(capsule) : undefined} onListen={capsule.transcription ? () => onListen(capsule) : undefined} onEdit={() => onEditCapsule(capsule)} onTranscribe={() => onTranscribe(capsule)} onShare={() => onShare(capsule)} onRevokeShare={isAdmin && capsule.share_id ? () => onRevokeShare(capsule) : undefined} />) : <View style={styles.empty}><Icon name="albums-outline" color={colors.brand} size={30} /><Text style={styles.heading}>{searchQuery.trim() ? "Aucun souvenir trouvé" : "Votre archive est vide"}</Text><Text style={[styles.body, { textAlign: "center" }]}>{searchQuery.trim() ? `Aucune transcription ne contient « ${searchQuery.trim()} ».` : "Les souvenirs sauvegardés pendant l’atelier apparaîtront ici."}</Text></View>}
   </ScrollView>;
 }
 
-function formatHours(totalSeconds: number) {
-  // Minutage précis pour l'espace professionnel.
+function formatTrackedTime(totalMilliseconds: number) {
+  const totalSeconds = Math.max(0, Math.floor(totalMilliseconds / 1000));
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = Math.max(totalSeconds, 0) % 60;
-  if (hours > 0) return `${hours} h ${minutes.toString().padStart(2, "0")} min`;
-  if (minutes > 0) return `${minutes} min ${seconds.toString().padStart(2, "0")} s`;
+  const seconds = totalSeconds % 60;
+  if (hours > 0) return `${hours} h ${minutes} min ${seconds} s`;
+  if (minutes > 0) return `${minutes} min ${seconds} s`;
   return `${seconds} s`;
 }
 
-function StatsScreen({ styles, colors, insets, state, duplicateGroups = [], onMergeGroup, onBack }: any) {
-  const usage = state.usage ?? { total_sec: 0, by_resident: {} };
+function StatsScreen({ styles, colors, insets, state, usage, authUser, duplicateGroups = [], onAddMember, onMergeGroup, onBack }: any) {
   const recordedTotal = state.capsules.reduce((sum: number, capsule: Capsule) => sum + (capsule.duration_sec || 0), 0);
   const rows = state.residents
     .map((resident: Resident) => ({
       resident,
-      usageSec: usage.by_resident[resident.id] ?? 0,
+      usageMs: usage.by_resident_ms[resident.id] ?? 0,
       capsules: state.capsules.filter((capsule: Capsule) => capsule.resident_id === resident.id),
     }))
-    .sort((a: any, b: any) => b.usageSec - a.usageSec);
+    .sort((a: any, b: any) => b.usageMs - a.usageMs);
   return <ScrollView testID="stats-screen" contentContainerStyle={[styles.screen, { paddingTop: insets.top + 18, paddingBottom: insets.bottom + 32 }]}>
     <View style={styles.header}><Pressable testID="stats-back" accessibilityRole="button" onPress={onBack} style={styles.backButton}><Icon name="arrow-back" color={colors.onSurface} /></Pressable><Text style={styles.eyebrow}>Espace professionnel</Text><View style={{ width: 48 }} /></View>
-    <View><Text style={styles.title}>Temps d’utilisation</Text><Text style={styles.body}>Durées mesurées sur cet appareil : l’ensemble de l’application, et le temps passé sur chaque fiche et atelier.</Text></View>
-    <View testID="stats-global" style={styles.statHero}><Text style={styles.statHeroLabel}>Temps global d’utilisation</Text><Text style={styles.statHeroValue}>{formatHours(usage.total_sec)}</Text><Text style={[styles.small, { color: colors.onBrandPrimary, opacity: 0.85 }]}>{state.capsules.length} souvenir{state.capsules.length > 1 ? "s" : ""} · {formatHours(recordedTotal)} d’audio conservé</Text></View>
+    <View><Text style={styles.title}>Temps d’utilisation</Text><Text testID="stats-establishment" style={styles.body}>{authUser ? `${authUser.establishment_name} · ${authUser.role === "admin" ? "Administrateur" : "Membre"}` : "Mode local"}</Text><Text testID="stats-timing-description" style={styles.body}>Chronométrage réel au premier plan : temps total dans l’application, puis temps passé sur la fiche et l’atelier de chaque résident.</Text></View>
+    {authUser?.role === "admin" && <Pressable testID="stats-add-member" accessibilityRole="button" onPress={onAddMember} style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}><Icon name="person-add-outline" color={colors.brandPrimary} /><Text style={styles.secondaryText}>Ajouter un membre à l’équipe</Text></Pressable>}
+    <View testID="stats-global" style={styles.statHero}><Text style={styles.statHeroLabel}>Temps total d’utilisation</Text><Text testID="stats-global-time" style={styles.statHeroValue}>{formatTrackedTime(usage.total_ms)}</Text><Text style={[styles.small, { color: colors.onBrandPrimary, opacity: 0.85 }]}>{state.capsules.length} souvenir{state.capsules.length > 1 ? "s" : ""} · {formatTrackedTime(recordedTotal * 1000)} d’audio conservé</Text></View>
     <View style={styles.sectionHeader}><Text style={styles.heading}>Par personne</Text><Text style={styles.small}>{state.residents.length}/10</Text></View>
-    {rows.length ? rows.map(({ resident, usageSec, capsules }: any) => <View testID={`stats-row-${resident.id}`} key={resident.id} style={styles.statRow}><View style={styles.avatar}>{resident.photo_uri ? <Image source={{ uri: resident.photo_uri }} style={{ width: 44, height: 44, borderRadius: 22 }} contentFit="cover" /> : <Text style={styles.avatarText}>{initials(resident.display_name)}</Text>}</View><View style={{ flex: 1, gap: 2 }}><Text style={styles.profileName}>{resident.display_name}</Text><Text style={styles.small}>{capsules.length} souvenir{capsules.length > 1 ? "s" : ""} · {formatHours(capsules.reduce((sum: number, capsule: Capsule) => sum + (capsule.duration_sec || 0), 0))} d’audio</Text></View><Text style={styles.statValue}>{formatHours(usageSec)}</Text></View>) : <View style={styles.empty}><Icon name="stats-chart-outline" color={colors.brand} size={30} /><Text style={styles.body}>Créez un profil pour suivre le temps d’atelier par personne.</Text></View>}
+    {rows.length ? rows.map(({ resident, usageMs, capsules }: any) => <View testID={`stats-row-${resident.id}`} key={resident.id} style={styles.statRow}><View style={styles.avatar}>{resident.photo_uri ? <Image source={{ uri: resident.photo_uri }} style={{ width: 44, height: 44, borderRadius: 22 }} contentFit="cover" /> : <Text style={styles.avatarText}>{initials(resident.display_name)}</Text>}</View><View style={{ flex: 1, gap: 2 }}><Text style={styles.profileName}>{resident.display_name}</Text><Text style={styles.small}>{capsules.length} souvenir{capsules.length > 1 ? "s" : ""} · {formatTrackedTime(capsules.reduce((sum: number, capsule: Capsule) => sum + (capsule.duration_sec || 0), 0) * 1000)} d’audio</Text></View><View style={{ alignItems: "flex-end", gap: 2 }}><Text style={styles.small}>Temps d’utilisation</Text><Text testID={`stats-time-${resident.id}`} style={styles.statValue}>{formatTrackedTime(usageMs)}</Text></View></View>) : <View style={styles.empty}><Icon name="stats-chart-outline" color={colors.brand} size={30} /><Text style={styles.body}>Créez un profil pour suivre le temps d’atelier par personne.</Text></View>}
     {duplicateGroups.length ? <>
       <View style={styles.sectionHeader}><Text style={styles.heading}>Profils en double</Text><Text style={styles.small}>{duplicateGroups.length}</Text></View>
       {duplicateGroups.map((group: Resident[]) => <Pressable testID={`merge-group-${group[0].display_name.trim().toLowerCase()}`} key={group[0].display_name.trim().toLowerCase()} accessibilityRole="button" onPress={() => onMergeGroup(group)} style={({ pressed }) => [styles.statRow, pressed && styles.pressed]}><View style={styles.avatar}><Icon name="copy-outline" color={colors.onBrandSecondary} size={20} /></View><View style={{ flex: 1, gap: 2 }}><Text style={styles.profileName}>{group[0].display_name}</Text><Text style={styles.small}>{group.length} fiches portent ce prénom</Text></View><Text style={styles.capsuleActionText}>Fusionner</Text></Pressable>)}
@@ -1092,6 +1321,6 @@ function StatsScreen({ styles, colors, insets, state, duplicateGroups = [], onMe
   </ScrollView>;
 }
 
-function CapsuleRow({ styles, colors, capsule, resident, busy, playing, speaking, onPlay, onListen, onEdit, onTranscribe, onShare }: { styles: any; colors: any; capsule: Capsule; resident?: Resident; busy?: boolean; playing?: boolean; speaking?: boolean; onPlay?: () => void; onListen?: () => void; onEdit?: () => void; onTranscribe?: () => void; onShare?: () => void }) {
-  return <View style={styles.capsule}><View style={styles.capsuleTop}><View style={{ flex: 1, gap: 5 }}><Text style={styles.capsuleTitle}>{capsule.title ?? "Souvenir vocal"}</Text><Text style={styles.capsuleDate}>{formatDate(capsule.recorded_at)} · {formatDuration(capsule.duration_sec)}</Text></View>{onPlay && <Pressable testID={`capsule-play-${capsule.id}`} accessibilityRole="button" accessibilityLabel={playing ? "Pause" : "Écouter"} onPress={onPlay} style={styles.backButton}><Icon name={playing ? "pause" : "play"} color={colors.brandPrimary} size={20} /></Pressable>}</View>{capsule.transcription ? <Text testID={`capsule-transcription-${capsule.id}`} style={styles.transcription}>« {capsule.transcription} »</Text> : capsule.synced && capsule.audio_uri ? <Text testID={`capsule-transcription-pending-${capsule.id}`} style={styles.small}>Transcription automatique en cours…</Text> : null}<View style={styles.capsuleMeta}><View style={styles.tag}><Text style={styles.tagText}>{capsule.mode === "question" ? capsule.theme : resident?.display_name ?? "À classer"}</Text></View><Text style={styles.small}>{capsule.synced ? "Copie serveur" : "Conservé sur l’appareil"}</Text></View>{busy ? <ActivityIndicator testID={`capsule-busy-${capsule.id}`} size="small" color={colors.brandPrimary} /> : <View style={styles.capsuleActions}>{onEdit && <Pressable testID={`capsule-edit-${capsule.id}`} accessibilityRole="button" onPress={onEdit} style={({ pressed }) => [styles.capsuleAction, pressed && styles.pressed]}><Icon name="pencil-outline" color={colors.brandPrimary} size={16} /><Text style={styles.capsuleActionText}>Modifier</Text></Pressable>}{onListen && <Pressable testID={`capsule-listen-${capsule.id}`} accessibilityRole="button" onPress={onListen} style={({ pressed }) => [styles.capsuleAction, pressed && styles.pressed]}><Icon name={speaking ? "stop-circle-outline" : "volume-high-outline"} color={colors.brandPrimary} size={16} /><Text style={styles.capsuleActionText}>{speaking ? "Lecture…" : "Écouter"}</Text></Pressable>}{onTranscribe && <Pressable testID={`capsule-transcribe-${capsule.id}`} accessibilityRole="button" onPress={onTranscribe} style={({ pressed }) => [styles.capsuleAction, pressed && styles.pressed]}><Icon name="text-outline" color={colors.brandPrimary} size={16} /><Text style={styles.capsuleActionText}>{capsule.transcription ? "Retranscrire" : "Transcrire"}</Text></Pressable>}{onShare && <Pressable testID={`capsule-share-${capsule.id}`} accessibilityRole="button" onPress={onShare} style={({ pressed }) => [styles.capsuleAction, pressed && styles.pressed]}><Icon name="share-social-outline" color={colors.brandPrimary} size={16} /><Text style={styles.capsuleActionText}>Partager à la famille</Text></Pressable>}</View>}</View>;
+function CapsuleRow({ styles, colors, capsule, resident, busy, playing, speaking, onPlay, onListen, onEdit, onTranscribe, onShare, onRevokeShare }: { styles: any; colors: any; capsule: Capsule; resident?: Resident; busy?: boolean; playing?: boolean; speaking?: boolean; onPlay?: () => void; onListen?: () => void; onEdit?: () => void; onTranscribe?: () => void; onShare?: () => void; onRevokeShare?: () => void }) {
+  return <View style={styles.capsule}><View style={styles.capsuleTop}><View style={{ flex: 1, gap: 5 }}><Text style={styles.capsuleTitle}>{capsule.title ?? "Souvenir vocal"}</Text><Text style={styles.capsuleDate}>{formatDate(capsule.recorded_at)} · {formatDuration(capsule.duration_sec)}</Text></View>{onPlay && <Pressable testID={`capsule-play-${capsule.id}`} accessibilityRole="button" accessibilityLabel={playing ? "Pause" : "Écouter"} onPress={onPlay} style={styles.backButton}><Icon name={playing ? "pause" : "play"} color={colors.brandPrimary} size={20} /></Pressable>}</View>{capsule.transcription ? <Text testID={`capsule-transcription-${capsule.id}`} style={styles.transcription}>« {capsule.transcription} »</Text> : capsule.synced && capsule.audio_uri ? <Text testID={`capsule-transcription-pending-${capsule.id}`} style={styles.small}>Transcription automatique en cours…</Text> : null}<View style={styles.capsuleMeta}><View style={styles.tag}><Text style={styles.tagText}>{capsule.mode === "question" ? capsule.theme : resident?.display_name ?? "À classer"}</Text></View><Text style={styles.small}>{capsule.synced ? "Copie serveur" : "Conservé sur l’appareil"}</Text></View>{capsule.share_expires_at && <Text testID={`capsule-share-expiry-${capsule.id}`} style={styles.small}>Lien familial actif jusqu’au {formatDate(capsule.share_expires_at)}</Text>}{busy ? <ActivityIndicator testID={`capsule-busy-${capsule.id}`} size="small" color={colors.brandPrimary} /> : <View style={styles.capsuleActions}>{onEdit && <Pressable testID={`capsule-edit-${capsule.id}`} accessibilityRole="button" onPress={onEdit} style={({ pressed }) => [styles.capsuleAction, pressed && styles.pressed]}><Icon name="pencil-outline" color={colors.brandPrimary} size={16} /><Text style={styles.capsuleActionText}>Modifier</Text></Pressable>}{onListen && <Pressable testID={`capsule-listen-${capsule.id}`} accessibilityRole="button" onPress={onListen} style={({ pressed }) => [styles.capsuleAction, pressed && styles.pressed]}><Icon name={speaking ? "stop-circle-outline" : "volume-high-outline"} color={colors.brandPrimary} size={16} /><Text style={styles.capsuleActionText}>{speaking ? "Lecture…" : "Écouter"}</Text></Pressable>}{onTranscribe && <Pressable testID={`capsule-transcribe-${capsule.id}`} accessibilityRole="button" onPress={onTranscribe} style={({ pressed }) => [styles.capsuleAction, pressed && styles.pressed]}><Icon name="text-outline" color={colors.brandPrimary} size={16} /><Text style={styles.capsuleActionText}>{capsule.transcription ? "Retranscrire" : "Transcrire"}</Text></Pressable>}{onShare && <Pressable testID={`capsule-share-${capsule.id}`} accessibilityRole="button" onPress={onShare} style={({ pressed }) => [styles.capsuleAction, pressed && styles.pressed]}><Icon name="share-social-outline" color={colors.brandPrimary} size={16} /><Text style={styles.capsuleActionText}>{capsule.share_id ? "Remplacer le lien" : "Partager à la famille"}</Text></Pressable>}{onRevokeShare && <Pressable testID={`capsule-revoke-share-${capsule.id}`} accessibilityRole="button" onPress={onRevokeShare} style={({ pressed }) => [styles.capsuleAction, pressed && styles.pressed]}><Icon name="link-outline" color={colors.error} size={16} /><Text style={[styles.capsuleActionText, { color: colors.error }]}>Révoquer le lien</Text></Pressable>}</View>}</View>;
 }
