@@ -3,7 +3,7 @@ import { View, Pressable } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { CaretLeft } from "phosphor-react-native";
+import { CaretLeft, Eye, EyeSlash } from "phosphor-react-native";
 import { Body, Button, Label, TextField, Title } from "@/src/components/ui";
 import { useAuth } from "@/src/auth/auth-context";
 import { useToast } from "@/src/components/toast";
@@ -18,6 +18,7 @@ export default function Login() {
   const toast = useToast();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const submit = async () => {
@@ -66,7 +67,19 @@ export default function Login() {
             value={password}
             onChangeText={setPassword}
             placeholder="••••••••"
-            secureTextEntry
+            secureTextEntry={!showPassword}
+            accessory={
+              <Pressable
+                testID="login-password-visibility"
+                onPress={() => setShowPassword((value) => !value)}
+                hitSlop={8}
+                style={styles.passwordVisibility}
+                accessibilityRole="button"
+                accessibilityLabel={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+              >
+                {showPassword ? <EyeSlash color={colors.muted} size={23} /> : <Eye color={colors.muted} size={23} />}
+              </Pressable>
+            }
           />
           <Pressable onPress={() => router.push("/(auth)/forgot-password")} testID="login-forgot" hitSlop={8}>
             <Label style={styles.forgot}>Mot de passe oublié ?</Label>
@@ -85,5 +98,6 @@ const useStyles = makeStyles((colors) => ({
   title: { fontSize: 30 },
   sub: { marginBottom: spacing.lg },
   form: { gap: spacing.lg },
+  passwordVisibility: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   forgot: { color: colors.brandPrimary, textAlign: "right" },
 }));

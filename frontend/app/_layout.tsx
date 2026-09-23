@@ -12,7 +12,6 @@ import * as SplashScreen from "expo-splash-screen";
 import { ErrorBoundary } from "@/src/components/error-boundary";
 import { ToastProvider } from "@/src/components/toast";
 import { AuthProvider, useAuth } from "@/src/auth/auth-context";
-import { BiometricLockScreen } from "@/src/auth/biometric-lock-screen";
 import { queryClient } from "@/src/query-client";
 import { useTheme } from "@/src/theme";
 
@@ -21,12 +20,12 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 
 function RootNavigator() {
   const { colors } = useTheme();
-  const { loading, user, hasCircle, locked } = useAuth();
+  const { loading, user, hasCircle } = useAuth();
   const segments = useSegments();
   const router = useRouter();
 
   useEffect(() => {
-    if (loading || locked) return;
+    if (loading) return;
     const root = segments[0];
     const inAuth = root === "(auth)";
     const inSetup = root === "circle";
@@ -37,7 +36,7 @@ function RootNavigator() {
     } else if (inAuth || inSetup) {
       router.replace("/(tabs)");
     }
-  }, [loading, locked, user, hasCircle, segments, router]);
+  }, [loading, user, hasCircle, segments, router]);
 
   if (loading) {
     return (
@@ -48,13 +47,10 @@ function RootNavigator() {
   }
 
   return (
-    <View style={{ flex: 1 }}>
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.surface } }}>
-        <Stack.Screen name="record" options={{ presentation: "modal" }} />
-        <Stack.Screen name="feedback" options={{ presentation: "modal" }} />
-      </Stack>
-      {locked ? <BiometricLockScreen /> : null}
-    </View>
+    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.surface } }}>
+      <Stack.Screen name="record" options={{ presentation: "modal" }} />
+      <Stack.Screen name="feedback" options={{ presentation: "modal" }} />
+    </Stack>
   );
 }
 

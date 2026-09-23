@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { View, Pressable, ScrollView, Switch, ActivityIndicator, Platform } from "react-native";
+import { View, Pressable, ScrollView, Switch, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CaretRight, Users, ChatCircleDots, SignOut, Microphone, Clock, FingerprintSimple, LockKey } from "phosphor-react-native";
+import { CaretRight, Users, ChatCircleDots, SignOut, Microphone, Clock } from "phosphor-react-native";
 import { Body, Button, Card, Label, TextField, Title, Avatar } from "@/src/components/ui";
 import { api } from "@/src/api/client";
 import { useAuth } from "@/src/auth/auth-context";
@@ -27,7 +27,7 @@ export default function Profile() {
   const styles = useStyles();
   const { colors } = useTheme();
   const bottomChrome = usesNativeTabs ? insets.bottom : 0;
-  const { user, member, signOut, refresh, biometricAvailable, biometricEnabled, setBiometricEnabled } = useAuth();
+  const { user, member, signOut, refresh } = useAuth();
   const qc = useQueryClient();
   const toast = useToast();
   const membersQ = useQuery({ queryKey: ["members"], queryFn: () => api.get<FamilyMember[]>("/circle/members") });
@@ -38,7 +38,6 @@ export default function Profile() {
   const [color, setColor] = useState(member?.initials_color ?? COLORS[0]);
   const [dailyEmail, setDailyEmail] = useState(member?.daily_email ?? true);
   const [saving, setSaving] = useState(false);
-  const [changingBiometric, setChangingBiometric] = useState(false);
 
   const save = async () => {
     setSaving(true);
@@ -59,13 +58,6 @@ export default function Profile() {
     }
   };
 
-  const toggleBiometric = async (enabled: boolean) => {
-    setChangingBiometric(true);
-    const changed = await setBiometricEnabled(enabled);
-    if (changed) toast.show(enabled ? "Ouverture par empreinte activée" : "Ouverture par empreinte désactivée", "success");
-    else toast.show("Empreinte non reconnue ou indisponible", "error");
-    setChangingBiometric(false);
-  };
 
   return (
     <ScrollView
@@ -109,32 +101,6 @@ export default function Profile() {
         </View>
         <Button title="Enregistrer" testID="profile-save" loading={saving} onPress={save} />
       </Card>
-
-      {Platform.OS !== "web" ? (
-        <Card style={styles.securityCard} testID="profile-security-section">
-          <View style={styles.securityHeader}>
-            <View style={styles.securityIcon}><FingerprintSimple color={colors.brandPrimary} size={27} weight="duotone" /></View>
-            <View style={styles.securityText}>
-              <Body style={styles.securityTitle}>Ouverture par empreinte</Body>
-              <Body muted style={styles.toggleSub}>Évite de ressaisir votre e-mail et mot de passe</Body>
-            </View>
-            <Switch
-              testID="biometric-toggle-switch"
-              value={biometricEnabled}
-              disabled={changingBiometric || (!biometricAvailable && !biometricEnabled)}
-              onValueChange={toggleBiometric}
-              trackColor={{ true: colors.brandSecondary, false: colors.surfaceTertiary }}
-              thumbColor={colors.surface}
-            />
-          </View>
-          <View style={styles.securityStatus}>
-            <LockKey color={biometricAvailable ? colors.brandSecondary : colors.warning} size={17} />
-            <Label style={styles.securityLabel} testID={biometricAvailable ? "biometric-status-label" : "biometric-hardware-warning"}>
-              {biometricAvailable ? "EMPREINTE DISPONIBLE · PIN EN SECOURS" : "AUCUNE EMPREINTE ENREGISTRÉE"}
-            </Label>
-          </View>
-        </Card>
-      ) : null}
 
       <View style={styles.familySection} testID="profile-family-section">
         <View style={styles.familyHeader}>
@@ -192,13 +158,6 @@ const useStyles = makeStyles((colors) => ({
   swatchActive: { borderColor: colors.onSurface },
   toggleRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginTop: spacing.xs },
   toggleSub: { fontSize: 12 },
-  securityCard: { gap: spacing.md },
-  securityHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  securityIcon: { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", backgroundColor: colors.brandTertiary },
-  securityText: { flex: 1, gap: 2 },
-  securityTitle: { fontSize: 16 },
-  securityStatus: { minHeight: 36, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, borderRadius: 18, backgroundColor: colors.surfaceSecondary },
-  securityLabel: { flex: 1, color: colors.muted, fontSize: 10 },
   familySection: { gap: spacing.md },
   familyHeader: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between" },
   familyTitle: { fontSize: 22 },

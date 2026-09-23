@@ -358,3 +358,32 @@
 ##     message: "expo-local-authentication 57.0.3; vérification hardware/enrollment/FINGERPRINT; biométrie strong; disableDeviceFallback false; PIN système; verrou au démarrage et après 30s en arrière-plan; login mot de passe alternatif; toggle Profil. Web inchangé. Aucun mot de passe stocké. yarn lint et tsc passent."
 ##   - agent: "testing"
 ##     message: "Itération 13: code/config, sécurité du stockage et régressions web validés; login/profil/logout/PDF passent; biométrie cachée sur web. Prompt empreinte, PIN, persistance et expiration JWT restent à confirmer sur Android réel. Retest natif requis."
+
+## user_problem_statement_8: "Ouvrir automatiquement l'application sur téléphone sans demander identifiant/mot de passe; afficher le mot de passe lorsqu'il doit être utilisé après expiration."
+## frontend_8:
+##   - task: "Session persistante et ouverture automatique"
+##     implemented: true
+##     working: true
+##     files: ["/app/frontend/src/auth/auth-context.tsx", "/app/frontend/app/_layout.tsx"]
+##     priority: "critical"
+##     needs_retesting: false
+##   - task: "Afficher/masquer le mot de passe au login"
+##     implemented: true
+##     working: true
+##     files: ["/app/frontend/app/(auth)/login.tsx", "/app/frontend/src/components/ui.tsx"]
+##     priority: "high"
+##     needs_retesting: false
+## metadata_8:
+##   created_by: "main_agent"
+##   version: "1.8"
+##   test_sequence: 14
+##   run_ui: true
+## agent_communication_8:
+##   - agent: "main"
+##     message: "Le choix ouverture automatique remplace la biométrie : expo-local-authentication et permissions supprimés, aucun verrou au démarrage/arrière-plan. JWT SecureStore est relu puis /auth/me valide la session. Œil login bascule password/text sans perdre la valeur. Auto-test: login, reveal, reload => accueil sans login. lint/tsc OK."
+##   - agent: "testing"
+##     message: "Itération 14: session reload et route interne, logout persistant, 401, 503, sécurité stockage et PDF validés. Seul défaut: cible œil 23x23."
+##   - agent: "main"
+##     message: "Cible login-password-visibility portée à 44x44, lint et TypeScript OK. Retest final requis."
+##   - agent: "testing"
+##     message: "Itération 15: œil 44x44, password/text/password, valeur et labels accessibilité validés; login+reload ouvre accueil, logout+reload reste déconnecté; aucun overflow; lint/tsc OK."

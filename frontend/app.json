@@ -24,9 +24,7 @@
       "package": "com.emergent.familystories.ubz2aq",
       "permissions": [
         "RECORD_AUDIO",
-        "CAMERA",
-        "USE_BIOMETRIC",
-        "USE_FINGERPRINT"
+        "CAMERA"
       ]
     },
     "web": {

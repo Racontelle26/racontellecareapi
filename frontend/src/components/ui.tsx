@@ -104,20 +104,23 @@ const useButtonStyles = makeStyles((colors) => ({
 // ---------------------------------------------------------------------------
 // TextField
 // ---------------------------------------------------------------------------
-type FieldProps = TextInputProps & { label?: string; testID?: string };
+type FieldProps = TextInputProps & { label?: string; testID?: string; accessory?: React.ReactNode };
 
-export function TextField({ label, testID, style, ...props }: FieldProps) {
+export function TextField({ label, testID, style, accessory, ...props }: FieldProps) {
   const styles = useFieldStyles();
   const { colors } = useTheme();
   return (
     <View style={styles.wrap}>
       {label ? <Label style={styles.label}>{label}</Label> : null}
-      <TextInput
-        testID={testID}
-        placeholderTextColor={colors.muted}
-        style={[styles.input, style]}
-        {...props}
-      />
+      <View style={styles.inputRow}>
+        <TextInput
+          testID={testID}
+          placeholderTextColor={colors.muted}
+          style={[styles.input, accessory ? styles.inputWithAccessory : undefined, style]}
+          {...props}
+        />
+        {accessory ? <View style={styles.accessory}>{accessory}</View> : null}
+      </View>
     </View>
   );
 }
@@ -125,6 +128,7 @@ export function TextField({ label, testID, style, ...props }: FieldProps) {
 const useFieldStyles = makeStyles((colors) => ({
   wrap: { gap: spacing.sm },
   label: { marginLeft: spacing.xs },
+  inputRow: { position: "relative" },
   input: {
     backgroundColor: colors.surfaceSecondary,
     borderWidth: 1,
@@ -135,7 +139,10 @@ const useFieldStyles = makeStyles((colors) => ({
     fontSize: 16,
     fontFamily: fonts.body,
     color: colors.onSurface,
+    width: "100%",
   },
+  inputWithAccessory: { paddingRight: 58 },
+  accessory: { position: "absolute", right: 5, top: 0, bottom: 0, width: 48, alignItems: "center", justifyContent: "center" },
 }));
 
 // ---------------------------------------------------------------------------

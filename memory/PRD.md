@@ -106,6 +106,14 @@ Trois cahiers des charges fournis (Beta test, MVP technique chiffrable, V7 ritue
 - Web inchangé : aucune interface ni API biométrique exécutée.
 - Validation itération 13 : TypeScript/lint et parcours web réussis. Le prompt natif empreinte/PIN et le partage PDF Android doivent être confirmés sur un téléphone Android réel.
 
+## Ouverture automatique de session (2026-09, itérations 14–15)
+- Le choix utilisateur d’ouverture automatique remplace le verrouillage biométrique : dépendance, permissions et interface empreinte supprimées.
+- Après la première connexion, le JWT reste dans SecureStore et l’application valide automatiquement la session via `/auth/me` à chaque ouverture.
+- Aucun identifiant ni mot de passe n’est redemandé tant que le JWT est valide ; la déconnexion volontaire ou une réponse `401` supprime la session.
+- Le login possède un bouton œil accessible pour afficher/masquer le mot de passe sans effacer sa valeur.
+- Cible tactile du bouton œil : 44 × 44 points, sans débordement horizontal.
+- Recette itération 15 : login + reload ouvre directement l’accueil ; logout + reload reste déconnecté ; accessibilité, lint et TypeScript validés.
+
 ## Backlog (prioritized)
 - P2 : Réponse texte/photo à une question ; carte postale souvenir PDF ; capsule temporelle.
 - P2 : Export des événements CSV (mesure bêta) via endpoint admin.

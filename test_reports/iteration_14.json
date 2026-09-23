@@ -1,0 +1,60 @@
+{
+  "summary": "Frontend-only auth/session regression completed on public web URL with mobile viewport. Auto-open session persistence, internal-route reload behavior, logout persistence, forced /auth/me 401 handling, non-401 handling, password visibility toggle, and book PDF web regression were validated.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Login password visibility control",
+        "issue": "Measured interactive element box for `login-password-visibility` is 23x23 on web, below requested 44x44 minimum touch target.",
+        "testID": "login-password-visibility",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Login",
+        "issues": [
+          "Password visibility icon target appears undersized for touch ergonomics (requested >=44)."
+        ]
+      }
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/artifacts_iter14/home_load_iter14.jpeg",
+    "/app/test_reports/artifacts_iter14/final_iter14.jpeg",
+    "/app/test_reports/artifacts_iter14/final_iter14_retry.jpeg",
+    "/app/test_reports/artifacts_iter14/final_iter14_focus.jpeg",
+    "/root/.emergent/automation_output/20260923_134030/console_20260923_134030.log",
+    "/root/.emergent/automation_output/20260923_134128/console_20260923_134128.log",
+    "/root/.emergent/automation_output/20260923_134259/console_20260923_134259.log",
+    "/root/.emergent/automation_output/20260923_134404/console_20260923_134404.log"
+  ],
+  "action_items": [
+    "Increase the practical touch area of `login-password-visibility` to >=44x44 (e.g., explicit width/height on Pressable) while keeping current toggle behavior.",
+    "Optional: add a stable testID on auth-loading container to make transient redirect checks more deterministic.",
+    "Run one native-device confirmation pass (iOS/Android) for SecureStore persistence semantics; web validation completed using storage shim and live API."
+  ],
+  "critical_code_review_comments": [
+    "No biometric remnants found in app code/config under tested scope: no `expo-local-authentication` dependency, no biometric permissions (`USE_BIOMETRIC`/`USE_FINGERPRINT`), no lock-screen flow references.",
+    "Auth persistence path remains token-only: `TOKEN_KEY=racontelle_token` via `secureSet/secureGet/secureRemove`; no password persistence implementation found.",
+    "On forced `/api/auth/me` 401, token was cleared (observed local storage token length became 0) and app returned to unauthenticated flow.",
+    "On forced non-401 (`503`) for `/api/auth/me`, app did not treat session validation as success (returned to auth flow), and resumed authenticated opening once API recovered."
+  ],
+  "updated_files": [
+    "/app/test_reports/iteration_14.json"
+  ],
+  "success_rate": {
+    "backend": "N/A (skipped by request)",
+    "frontend": "95%"
+  },
+  "seed_data_creation": "None",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Validated with verification@racontelle.fr / Souvenir123 on https://family-stories-34.preview.emergentagent.com. Login -> reload -> home auto-open works. Internal route `/profile` reload stays authenticated. Voluntary logout persists across reload. Forced `/api/auth/me` 401 logs out and clears token; forced 503 does not falsely authenticate. Password visibility toggles and preserves value; book PDF web summary shown: 'PDF prêt : 2 histoires incluses.'",
+  "rca_of_issue": "Password visibility touch-target gap: the icon Pressable currently renders with ~23x23 box and relies on `hitSlop={8}`. Effective interaction area is still below requested 44 minimum in web measurement. Mitigation: enforce explicit 44x44 Pressable container (or larger) for the toggle control."
+}
