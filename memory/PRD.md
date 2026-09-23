@@ -119,7 +119,7 @@ Trois cahiers des charges fournis (Beta test, MVP technique chiffrable, V7 ritue
 - Le flux mobile ne lit et ne copie plus cette URI : `expo-print` retourne directement le PDF encodé en Base64.
 - Le Base64 est écrit dans le cache scoped de l’expérience sous `racontelle-livre-<timestamp>.pdf`, puis vérifié avant `Sharing.shareAsync`.
 - Garde mémoire : refus au-delà de 40 Mio de Base64 avec message français explicite.
-- Régression web et contrôles statiques validés ; ouverture réelle de la feuille Android Expo Go à confirmer sur le téléphone de l’utilisateur.
+- Régression web et contrôles statiques validés ; génération et feuille de partage confirmées par l’utilisateur sur Android Expo Go réel.
 
 ## Backlog (prioritized)
 - P2 : Réponse texte/photo à une question ; carte postale souvenir PDF ; capsule temporelle.

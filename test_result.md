@@ -395,7 +395,7 @@
 ##     working: true
 ##     files: ["/app/frontend/src/book/share-pdf.ts", "/app/frontend/app/book/index.tsx"]
 ##     priority: "critical"
-##     needs_retesting: true
+##     needs_retesting: false
 ##     root_cause: "Expo Go Android SDK 57 génère le PDF dans le cache natif global /cache/Print, illisible depuis le cache scoped de l'expérience et expo-sharing."
 ## metadata_9:
 ##   created_by: "main_agent"
@@ -407,3 +407,5 @@
 ##     message: "Deuxième stratégie: Print.printToFileAsync({html,base64:true}) puis FileSystem.writeAsStringAsync dans cacheDirectory avec EncodingType.Base64; aucun copyAsync ni lecture du chemin /cache/Print. Fichier scoped .pdf vérifié exists+size avant Sharing. Limite base64 40MiB. tsc/lints OK; export web 2 histoires inchangé. Test Android Expo Go requis."
 ##   - agent: "testing"
 ##     message: "Itération 16: aucune copie/cache Print résiduelle; chaîne base64 -> cache scoped -> getInfo -> Sharing validée; web 2 histoires, lint et tsc passent. Pas d'appareil/adb dans le conteneur: feuille Android Expo Go encore à confirmer par l'utilisateur."
+##   - agent: "user"
+##     message: "Validation sur Android Expo Go réel : la génération du PDF et l'ouverture du partage fonctionnent."
