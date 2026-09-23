@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Racontelle",
-    "slug": "frontend",
+    "name": "Racontelle Care",
+    "slug": "racontelle-care",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "frontend",
+    "scheme": "racontelle-care",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,

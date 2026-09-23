@@ -38,7 +38,7 @@ export type ColorScheme = "light" | "dark";
 const light = {
   // ---------------------------------------------------------------------------
   // Surfaces: backgrounds, from the screen down to small fills.
-  // Charte Racontelle : blanc doux, rose thé, sauge douce, brun mémoire,
+  // Charte Racontelle Care : blanc doux, rose thé, sauge douce, brun mémoire,
   // bleu encre doux.
   // ---------------------------------------------------------------------------
   surface: "#FFFFFF",

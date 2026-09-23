@@ -38,7 +38,7 @@ import { Waveform } from "@/src/components/waveform";
 import { readLocalState, mergeCapsules, mergeResidents, setLocalScope, writeLocalState } from "@/src/local";
 import { readProfessionalPin, writeProfessionalPin } from "@/src/secure-pin";
 import { makeStyles, useTheme } from "@/src/theme";
-import type { AuthSession, AuthUser, Capsule, LocalState, Question, Resident } from "@/src/types";
+import type { AuthSession, AuthUser, Capsule, LocalState, Question, Resident, UsageState } from "@/src/types";
 
 type Screen = "home" | "profile" | "workshop" | "archive" | "stats";
 type WorkshopMode = "free" | "question";
@@ -46,13 +46,50 @@ type RecorderStatus = "idle" | "recording" | "paused" | "done";
 
 const usageClockNow = () => globalThis.performance?.now?.() ?? Date.now();
 
+type UsageSession = { startedAt: number; residentId: string | null; active: boolean };
+
+function commitUsageSegment({
+  usageSession,
+  stateRef,
+  residentId,
+  active,
+  setState,
+  setDisplayedUsage,
+}: {
+  usageSession: { current: UsageSession };
+  stateRef: { current: LocalState };
+  residentId: string | null;
+  active?: boolean;
+  setState: (next: LocalState) => void;
+  setDisplayedUsage: (usage: UsageState) => void;
+}) {
+  const previous = usageSession.current;
+  const timestamp = usageClockNow();
+  const elapsedMs = previous.active ? Math.max(0, timestamp - previous.startedAt) : 0;
+  usageSession.current = { startedAt: timestamp, residentId, active: active ?? AppState.currentState === "active" };
+  if (!elapsedMs) return;
+  const current = stateRef.current;
+  const usage = current.usage ?? { total_ms: 0, by_resident_ms: {} };
+  const nextUsage = {
+    total_ms: usage.total_ms + elapsedMs,
+    by_resident_ms: previous.residentId
+      ? { ...usage.by_resident_ms, [previous.residentId]: (usage.by_resident_ms[previous.residentId] ?? 0) + elapsedMs }
+      : usage.by_resident_ms,
+  };
+  const next = { ...current, usage: nextUsage };
+  stateRef.current = next;
+  setState(next);
+  setDisplayedUsage(nextUsage);
+  void writeLocalState(next);
+}
+
 const FALLBACK_QUESTIONS: Question[] = [
   { id: "q1", theme: "Enfance", text: "Quel est votre tout premier souvenir ?", sensitive: false },
   { id: "q2", theme: "Famille", text: "Qui vous faisait le plus rire dans votre famille ?", sensitive: false },
   { id: "q3", theme: "Transmission", text: "Quel conseil aimeriez-vous transmettre aux plus jeunes ?", sensitive: false },
 ];
 
-// Charte typographique Racontelle :
+// Charte typographique Racontelle Care :
 // Allura → titres & accroches (script manuscrit élégant)
 // Cormorant Garamond → textes & corps (serif raffiné et lisible)
 // Montserrat → menus, boutons, petits titres (sans-serif moderne)
@@ -219,9 +256,18 @@ export default function Index() {
   const [sessionQuestions, setSessionQuestions] = useState<Question[]>([]);
   const currentQuestion = sessionQuestions[questionIndex] ?? FALLBACK_QUESTIONS[0];
   const stateRef = useRef(state);
-  stateRef.current = state;
-  const usageSession = useRef<{ startedAt: number; residentId: string | null; active: boolean }>({ startedAt: usageClockNow(), residentId: null, active: AppState.currentState === "active" });
-  const [usageTick, setUsageTick] = useState(usageClockNow());
+  const usageSession = useRef<UsageSession>({ startedAt: usageClockNow(), residentId: null, active: AppState.currentState === "active" });
+  const [displayedUsage, setDisplayedUsage] = useState(state.usage);
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
+  const persist = useCallback(async (next: LocalState) => {
+    stateRef.current = next;
+    setState(next);
+    await writeLocalState(next);
+  }, []);
 
   // Transcription automatique : tout souvenir synchronisé avec un audio mais
   // sans transcription est (re)transcrit en arrière-plan — y compris ceux dont
@@ -242,7 +288,7 @@ export default function Index() {
         // Réseau ou service indisponible : sera retenté au prochain lancement.
       }
     }
-  }, []);
+  }, [persist]);
 
   const refresh = useCallback(async (sessionUser: AuthUser | null = authUser) => {
     const local = await readLocalState();
@@ -320,7 +366,7 @@ export default function Index() {
   };
 
   const logout = async () => {
-    commitUsage(null, false);
+    commitUsageSegment({ usageSession, stateRef, residentId: null, active: false, setState, setDisplayedUsage });
     await authApi.logout();
     setAuthUser(null);
     setGuestMode(false);
@@ -329,65 +375,50 @@ export default function Index() {
     setAuthMessage("Vous êtes déconnecté. Les enregistrements locaux restent conservés.");
   };
 
-  const persist = async (next: LocalState) => {
-    stateRef.current = next;
-    setState(next);
-    await writeLocalState(next);
-  };
-
   // Chronométrage réel : chaque milliseconde au premier plan est comptée, sans
   // seuil ni arrondi. Le temps résident correspond à sa fiche + son atelier.
-  const commitUsage = useCallback((residentId: string | null, active = AppState.currentState === "active") => {
-    const previous = usageSession.current;
-    const timestamp = usageClockNow();
-    const elapsedMs = previous.active ? Math.max(0, timestamp - previous.startedAt) : 0;
-    usageSession.current = { startedAt: timestamp, residentId, active };
-    if (!elapsedMs) return;
-    const current = stateRef.current;
-    const usage = current.usage ?? { total_ms: 0, by_resident_ms: {} };
-    const next = {
-      ...current,
-      usage: {
-        total_ms: usage.total_ms + elapsedMs,
-        by_resident_ms: previous.residentId
-          ? { ...usage.by_resident_ms, [previous.residentId]: (usage.by_resident_ms[previous.residentId] ?? 0) + elapsedMs }
-          : usage.by_resident_ms,
-      },
-    };
-    stateRef.current = next;
-    setState(next);
-    void writeLocalState(next);
-  }, []);
-
   useEffect(() => {
     const residentId = screen === "profile" || screen === "workshop" ? selectedResident?.id ?? null : null;
-    if (residentId !== usageSession.current.residentId) commitUsage(residentId);
-  }, [screen, selectedResident, commitUsage]);
+    if (residentId !== usageSession.current.residentId) {
+      commitUsageSegment({ usageSession, stateRef, residentId, setState, setDisplayedUsage });
+    }
+  }, [screen, selectedResident]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (status) => {
       if (status === "active") {
         usageSession.current = { ...usageSession.current, startedAt: usageClockNow(), active: true };
-        setUsageTick(usageClockNow());
       } else if (usageSession.current.active) {
-        commitUsage(usageSession.current.residentId, false);
+        commitUsageSegment({ usageSession, stateRef, residentId: usageSession.current.residentId, active: false, setState, setDisplayedUsage });
       }
     });
     return () => subscription.remove();
-  }, [commitUsage]);
+  }, []);
 
   // L'affichage avance chaque seconde et un point de contrôle est persisté
   // toutes les 10 secondes afin de limiter toute perte en cas d'arrêt brutal.
   useEffect(() => {
-    const ticker = setInterval(() => setUsageTick(usageClockNow()), 1000);
+    const ticker = setInterval(() => {
+      const stored = stateRef.current.usage ?? { total_ms: 0, by_resident_ms: {} };
+      const session = usageSession.current;
+      const elapsedMs = session.active ? Math.max(0, usageClockNow() - session.startedAt) : 0;
+      setDisplayedUsage({
+        total_ms: stored.total_ms + elapsedMs,
+        by_resident_ms: session.residentId
+          ? { ...stored.by_resident_ms, [session.residentId]: (stored.by_resident_ms[session.residentId] ?? 0) + elapsedMs }
+          : stored.by_resident_ms,
+      });
+    }, 1000);
     const checkpoint = setInterval(() => {
-      if (usageSession.current.active) commitUsage(usageSession.current.residentId, true);
+      if (usageSession.current.active) {
+        commitUsageSegment({ usageSession, stateRef, residentId: usageSession.current.residentId, active: true, setState, setDisplayedUsage });
+      }
     }, 10000);
     return () => {
       clearInterval(ticker);
       clearInterval(checkpoint);
     };
-  }, [commitUsage]);
+  }, []);
 
   const beginWorkshop = (resident: Resident | null, mode: WorkshopMode) => {
     if (resident && resident.consent_status !== "obtained") {
@@ -688,7 +719,9 @@ export default function Index() {
   }, [ttsUri, ttsPlayer]);
 
   useEffect(() => {
-    if (ttsStatus.didJustFinish) setSpeakingId(null);
+    if (!ttsStatus.didJustFinish) return;
+    const timeout = setTimeout(() => setSpeakingId(null), 0);
+    return () => clearTimeout(timeout);
   }, [ttsStatus.didJustFinish]);
 
   const speakText = async (id: string, text: string) => {
@@ -1035,18 +1068,6 @@ export default function Index() {
     }
     return list;
   }, [archiveResidentId, archiveQuery, state.capsules, state.residents]);
-
-  const displayedUsage = useMemo(() => {
-    const stored = state.usage ?? { total_ms: 0, by_resident_ms: {} };
-    const session = usageSession.current;
-    const elapsedMs = session.active ? Math.max(0, usageTick - session.startedAt) : 0;
-    return {
-      total_ms: stored.total_ms + elapsedMs,
-      by_resident_ms: session.residentId
-        ? { ...stored.by_resident_ms, [session.residentId]: (stored.by_resident_ms[session.residentId] ?? 0) + elapsedMs }
-        : stored.by_resident_ms,
-    };
-  }, [state.usage, usageTick]);
 
   // Verrou professionnel : code à 4 chiffres exigé pour l'espace pro, la
   // fusion de doublons et le retrait d'un profil. Créé à la première utilisation.

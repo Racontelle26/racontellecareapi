@@ -1,0 +1,48 @@
+{
+  "summary": "Branding retest completed on backend + frontend preview. Core rename checks pass (Expo config, web title, logo visibility, API root, share HTML branding, requested backend regressions). ESLint currently fails with 11 errors in frontend/app/index.tsx.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "frontend/app/index.tsx",
+        "issue": "ESLint fails (11 errors, mostly react-hooks/refs + one set-state-in-effect + immutability warning promoted as error)",
+        "testID": "N/A",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_branding_share_carnet.py",
+    "/app/test_reports/pytest/pytest_results_iter14_requested.xml",
+    "/app/test_reports/pytest/pytest_results_iter14_branding.xml",
+    "/app/test_reports/screens/iter14/branding_home.jpeg"
+  ],
+  "action_items": [
+    "Fix ESLint errors in frontend/app/index.tsx so lint gate passes.",
+    "If strict PDF text assertion is required, add a PDF text extraction dependency/tooling in CI (current checks validate PDF generation + naming + endpoint behavior)."
+  ],
+  "critical_code_review_comments": [
+    "frontend/app/index.tsx is very large (>700 lines) and should be split into smaller modules/components.",
+    "Multiple React Hooks lint violations indicate maintainability risk and potential render/state bugs under stricter React compiler rules.",
+    "No visible 'Ehpad Recall'/'EHPAD Recall' string remains in frontend/app, frontend/src, backend/server.py, memory/PRD.md (technical URLs/bundle IDs preserved as expected)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_branding_share_carnet.py",
+    "/app/test_reports/iteration_14.json"
+  ],
+  "success_rate": {
+    "backend": "100%",
+    "frontend": "90%"
+  },
+  "seed_data_creation": "Created TEST_BRAND_* resident + capsule in branding test; cleaned up (capsule/resident deleted).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Branding checks passed on live preview URL. Requested replay command passed 13/13 with -k not transcribe. Added dedicated branding regression test for share HTML + carnet endpoint behavior. STT/transcribe intentionally excluded.",
+  "rca_of_issue": "RCA (lint): The remaining failure is not runtime branding behavior but static quality gate. ESLint on Expo React/React Compiler rules flags direct ref reads/writes during render and related hook patterns in frontend/app/index.tsx. Repro: run `yarn lint` in /app/frontend. Mitigation: refactor timing/session ref usage into effects/state transitions and split the large screen container."
+}

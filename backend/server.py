@@ -570,7 +570,7 @@ import html as _html
 SHARE_PAGE = """<!doctype html>
 <html lang="fr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Un souvenir partagé — Racontelle</title>
+<title>Un souvenir partagé — Racontelle Care</title>
 <style>
   body {{ margin:0; font-family: Georgia, 'Times New Roman', serif; background:#FFFFFF; color:#2F3E52; }}
   main {{ max-width: 560px; margin: 0 auto; padding: 48px 24px 64px; }}
@@ -584,7 +584,7 @@ SHARE_PAGE = """<!doctype html>
   .footer {{ margin-top:32px; font-size:13px; color:#7C8698; }}
 </style></head>
 <body><main>
-  <div class="brand">Racontelle</div>
+  <div class="brand">Racontelle Care</div>
   <div class="tagline">Écouter · Préserver · Transmettre</div>
   <h1>{title}</h1>
   <div class="meta">{subtitle}</div>
@@ -758,7 +758,7 @@ async def merge_residents(input: MergeRequest, admin: AuthUser = Depends(require
 
 
 def _register_pdf_fonts():
-    """Polices de la charte Racontelle, avec repli sur les polices intégrées."""
+    """Polices de la charte Racontelle Care, avec repli sur les polices intégrées."""
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
 
@@ -830,7 +830,7 @@ async def carnet_pdf(resident_id: str, admin: AuthUser = Depends(require_admin))
         def footer():
             page.setFont(fonts["Montserrat"], 8)
             page.setFillColor(muted)
-            page.drawCentredString(width / 2, 12 * mm, "Écouter · Préserver · Transmettre — Racontelle")
+            page.drawCentredString(width / 2, 12 * mm, "Écouter · Préserver · Transmettre — Racontelle Care")
 
         def new_page():
             footer()
@@ -840,7 +840,7 @@ async def carnet_pdf(resident_id: str, admin: AuthUser = Depends(require_admin))
         y = height - 30 * mm
         page.setFont(fonts["Allura"], 42)
         page.setFillColor(dark_rose)
-        page.drawString(margin, y, "Racontelle")
+        page.drawString(margin, y, "Racontelle Care")
         y -= 9 * mm
         page.setFont(fonts["Montserrat"], 8)
         page.setFillColor(muted)

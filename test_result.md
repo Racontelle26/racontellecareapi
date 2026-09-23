@@ -130,6 +130,41 @@
 ##   test_all: false
 ##   test_priority: "high_first"
 
+## known_external_integration_issue:
+##   - flow: "Transcription automatique Whisper"
+##     working: false
+##     mocked: false
+##     priority: "critical"
+##     comment: "La clé gérée renouvelée restaure Object Storage mais est limitée aux modèles Claude et refuse whisper-1. Le renommage, les uploads, partages et carnets fonctionnent; l'entitlement STT doit être activé côté fournisseur."
+
+## user_problem_statement_brand: "Remplace le nom de Ehpad recall par Racontelle Care partout."
+## branding:
+##   - task: "Renommage complet visible en Racontelle Care"
+##     implemented: true
+##     working: true
+##     files: "/app/frontend/app.json, /app/backend/server.py, /app/frontend/app/_layout.tsx, /app/frontend/app/index.tsx, /app/frontend/src/theme.ts, /app/memory/PRD.md"
+##     stuck_count: 0
+##     priority: "high"
+##     needs_retesting: false
+##     status_history:
+##       - working: "NA"
+##         agent: "main"
+##         comment: "Nom, slug, scheme, titre web, partage familial, carnets PDF et documentation renommés Racontelle Care. Les URL de preview et bundle IDs historiques sont conservés pour ne pas casser l'environnement ni l'identité des builds. Titre public vérifié et 13 tests carnets/partages réussis."
+##       - working: false
+##         agent: "testing"
+##         comment: "Itération 14 : marque entièrement validée, mais yarn lint signalait 11 règles React dans le chronomètre existant."
+##       - working: true
+##         agent: "main"
+##         comment: "Les 11 règles React ont été corrigées sans désactiver ESLint. yarn lint et tsc passent; titre Racontelle Care et chronomètre résident 2 s revérifiés sur mobile. Profil TEST supprimé."
+## test_plan_brand:
+##   current_focus:
+##     - "Le titre web et la configuration Expo affichent Racontelle Care"
+##     - "Le partage familial affiche Racontelle Care"
+##     - "Le carnet PDF affiche Racontelle Care"
+##     - "Aucun ancien nom visible ne subsiste dans le frontend ou les documents générés"
+##   test_all: false
+##   test_priority: "high_first"
+
 ## user_problem_statement_session: "Ouverture automatique : la session reste mémorisée et l’application s’ouvre directement, sans aucune vérification. Permettre d'afficher le mot de passe lorsqu'il doit être utilisé lorsque la session expire."
 ## frontend_session:
 ##   - task: "Ouverture locale immédiate et mot de passe affichable"

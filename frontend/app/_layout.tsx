@@ -12,7 +12,7 @@ import { queryClient } from "@/src/query-client";
 LogBox.ignoreAllLogs(true)
 
 export default function RootLayout() {
-  // Charte Racontelle : Allura (titres & accroches), Cormorant Garamond
+  // Charte Racontelle Care : Allura (titres & accroches), Cormorant Garamond
   // (textes & corps), Montserrat (menus, boutons, petits titres).
   const [fontsLoaded] = useFonts({
     "Allura-Regular": require("../assets/fonts/Allura-Regular.ttf"),
