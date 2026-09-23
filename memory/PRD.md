@@ -114,6 +114,13 @@ Trois cahiers des charges fournis (Beta test, MVP technique chiffrable, V7 ritue
 - Cible tactile du bouton œil : 44 × 44 points, sans débordement horizontal.
 - Recette itération 15 : login + reload ouvre directement l’accueil ; logout + reload reste déconnecté ; accessibilité, lint et TypeScript validés.
 
+## Second correctif PDF Expo Go Android (2026-09, itération 16)
+- Cause appareil confirmée : dans Expo Go SDK 57, `expo-print` place son URI dans `/cache/Print`, inaccessible au module FileSystem scoped ; `copyAsync` échoue donc avant le partage.
+- Le flux mobile ne lit et ne copie plus cette URI : `expo-print` retourne directement le PDF encodé en Base64.
+- Le Base64 est écrit dans le cache scoped de l’expérience sous `racontelle-livre-<timestamp>.pdf`, puis vérifié avant `Sharing.shareAsync`.
+- Garde mémoire : refus au-delà de 40 Mio de Base64 avec message français explicite.
+- Régression web et contrôles statiques validés ; ouverture réelle de la feuille Android Expo Go à confirmer sur le téléphone de l’utilisateur.
+
 ## Backlog (prioritized)
 - P2 : Réponse texte/photo à une question ; carte postale souvenir PDF ; capsule temporelle.
 - P2 : Export des événements CSV (mesure bêta) via endpoint admin.

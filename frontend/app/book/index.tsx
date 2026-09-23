@@ -3,7 +3,6 @@ import { View, Pressable, ScrollView, ActivityIndicator, Platform } from "react-
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import { CaretLeft, BookOpenText, Sparkle, CaretRight, FilePdf } from "phosphor-react-native";
 import { Body, Card, Label, Title } from "@/src/components/ui";
@@ -106,9 +105,8 @@ export default function BookHome() {
         }
         setPdfSummary(`PDF prêt : ${result.chapterCount} histoire${result.chapterCount > 1 ? "s" : ""} incluse${result.chapterCount > 1 ? "s" : ""}.`);
       } else {
-        const { uri } = await Print.printToFileAsync({ html });
         if (await Sharing.isAvailableAsync()) {
-          const shareableUri = await preparePdfForSharing(uri);
+          const shareableUri = await preparePdfForSharing(html);
           await Sharing.shareAsync(shareableUri, {
             mimeType: "application/pdf",
             dialogTitle: "Partager votre livre de famille",

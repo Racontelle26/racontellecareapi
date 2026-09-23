@@ -1,0 +1,50 @@
+{
+  "summary": "Frontend-only validation completed for Android Expo Go PDF sharing fix request: web flow, static code checks, and lint/type checks passed; native Android share sheet remains unverified in this container.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Android Expo Go native PDF share sheet",
+        "issue": "Real-device/emulator execution unavailable here (adb not installed), so runtime confirmation of WhatsApp/e-mail/Fichiers share sheet on Android could not be executed in this run.",
+        "affected_testIDs": [
+          "book-export-pdf"
+        ]
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/test_reports/artifacts_iter16/home_load_iter16.jpeg",
+    "/app/test_reports/artifacts_iter16/book_export_iter16.jpeg",
+    "/root/.emergent/automation_output/20260923_140002/console_20260923_140002.log"
+  ],
+  "action_items": [
+    "Run a real Android Expo Go/device test for `book-export-pdf` and confirm share sheet opens without copyAsync rejected / isn't readable / Not allowed to read URL errors.",
+    "If any Android failure persists, capture device logs around `preparePdfForSharing` + `Sharing.shareAsync` call path."
+  ],
+  "critical_code_review_comments": [
+    "No `copyAsync` usage remains in frontend PDF sharing path; no reference to `/cache/Print` detected.",
+    "New contract is implemented in `src/book/share-pdf.ts`: `Print.printToFileAsync({ html, base64: true })`, mandatory non-empty base64, write via `writeAsStringAsync(..., EncodingType.Base64)`, then `getInfoAsync` exists+size checks.",
+    "40 MiB base64 guard is present (`MAX_PDF_BASE64_LENGTH = 40 * 1024 * 1024`) with French error message for oversized PDF.",
+    "French error messages are present for storage unavailable, missing base64, oversized PDF, and empty generated file.",
+    "Android sharing options are correctly set (`mimeType`, `dialogTitle`, no Android UTI) while iOS keeps `UTI: com.adobe.pdf` conditionally.",
+    "Web regression path remains isolated by `Platform.OS === \"web\"`; test produced `PDF prêt : 2 histoires incluses.` with 2 chapter cards."
+  ],
+  "updated_files": [
+    "/app/test_reports/iteration_16.json"
+  ],
+  "success_rate": {
+    "backend": "N/A (skipped by request)",
+    "frontend": "92%"
+  },
+  "seed_data_creation": "None",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Credentials file read and verified account used: verification@racontelle.fr / Souvenir123. Web mobile viewport test passed: login -> home -> book -> export summary with exactly 2 stories. lint and tsc both pass. Native Android runtime still required.",
+  "rca_of_issue": "Original Expo Go Android issue is consistent with inaccessible native `/cache/Print` URI. Current implementation avoids reading/copying that URI by generating base64 directly and writing to scoped cache before sharing, which is the expected mitigation path; only real Android execution remains to close validation."
+}

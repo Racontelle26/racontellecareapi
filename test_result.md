@@ -387,3 +387,23 @@
 ##     message: "Cible login-password-visibility portée à 44x44, lint et TypeScript OK. Retest final requis."
 ##   - agent: "testing"
 ##     message: "Itération 15: œil 44x44, password/text/password, valeur et labels accessibilité validés; login+reload ouvre accueil, logout+reload reste déconnecté; aucun overflow; lint/tsc OK."
+
+## user_problem_statement_9: "PDF mobile toujours cassé sur Android Expo Go. Nouveau message: ExponentFileSystem.copyAsync rejected; /data/user/0/host.exp.exponent/cache/Print/<uuid>.pdf isn't readable; share sheet ne s'ouvre pas."
+## frontend_9:
+##   - task: "Contourner le cloisonnement cache expo-print / expo-file-system dans Expo Go"
+##     implemented: true
+##     working: true
+##     files: ["/app/frontend/src/book/share-pdf.ts", "/app/frontend/app/book/index.tsx"]
+##     priority: "critical"
+##     needs_retesting: true
+##     root_cause: "Expo Go Android SDK 57 génère le PDF dans le cache natif global /cache/Print, illisible depuis le cache scoped de l'expérience et expo-sharing."
+## metadata_9:
+##   created_by: "main_agent"
+##   version: "1.9"
+##   test_sequence: 16
+##   run_ui: true
+## agent_communication_9:
+##   - agent: "main"
+##     message: "Deuxième stratégie: Print.printToFileAsync({html,base64:true}) puis FileSystem.writeAsStringAsync dans cacheDirectory avec EncodingType.Base64; aucun copyAsync ni lecture du chemin /cache/Print. Fichier scoped .pdf vérifié exists+size avant Sharing. Limite base64 40MiB. tsc/lints OK; export web 2 histoires inchangé. Test Android Expo Go requis."
+##   - agent: "testing"
+##     message: "Itération 16: aucune copie/cache Print résiduelle; chaîne base64 -> cache scoped -> getInfo -> Sharing validée; web 2 histoires, lint et tsc passent. Pas d'appareil/adb dans le conteneur: feuille Android Expo Go encore à confirmer par l'utilisateur."
