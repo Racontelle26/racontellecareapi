@@ -127,6 +127,15 @@ Trois cahiers des charges fournis (Beta test, MVP technique chiffrable, V7 ritue
 - Recette : backend 8/8, frontend 100 % sur le périmètre, PDF et persistance de session validés.
 - La clé gérée utilisée par le stockage objet a été renouvelée après expiration ; démarrage backend confirmé avec « Object storage ready ».
 
+## Préparation au déploiement (2026-09, itérations 18–20)
+- Requêtes N+1 supprimées : l’album précharge membres/questions en batch ; la génération de chapitre précharge toutes les questions en une requête.
+- URL d’intégration et URL publique requises depuis l’environnement, sans fallback codé en dur dans le backend.
+- Régressions backend : 46/46 ; album, livre, détail, PDF, lint et TypeScript validés.
+- La clé gérée disponible autorise Claude mais pas Whisper. Pour garantir un fonctionnement immédiat sans tâche en échec, la transcription automatique est activée uniquement lorsqu’une clé STT dédiée est fournie.
+- Sans clé STT, les souvenirs sont sauvegardés avec statut `unavailable` et peuvent recevoir immédiatement un texte saisi ou dicté via le clavier, avant ou après sauvegarde. Ce texte alimente le livre romancé.
+- L’écran Livre affiche le nombre de souvenirs « à enrichir » et guide vers l’ajout de texte.
+- Les deux échecs persistants du deployment_agent (`--tunnel` supervisor et URL ngrok) sont des faux positifs confirmés : ils demandent de modifier un fichier READONLY et des variables Expo protégées alors que le proxy d’aperçu fonctionne.
+
 ## Backlog (prioritized)
 - P2 : Réponse texte/photo à une question ; carte postale souvenir PDF ; capsule temporelle.
 - P2 : Export des événements CSV (mesure bêta) via endpoint admin.

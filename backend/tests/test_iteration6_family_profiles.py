@@ -4,6 +4,7 @@ import os
 import time
 import requests
 import pytest
+from dotenv import dotenv_values
 
 
 def _rand() -> str:
@@ -22,7 +23,8 @@ def _wav_bytes() -> bytes:
 
 @pytest.fixture(scope="session")
 def api_base_url() -> str:
-    backend_url = os.environ.get("EXPO_PUBLIC_BACKEND_URL")
+    frontend_env = dotenv_values("/app/frontend/.env")
+    backend_url = os.environ.get("EXPO_PUBLIC_BACKEND_URL") or frontend_env.get("EXPO_PUBLIC_BACKEND_URL")
     if not backend_url:
         pytest.skip("EXPO_PUBLIC_BACKEND_URL is required for public-endpoint testing")
     return backend_url.rstrip("/") + "/api"

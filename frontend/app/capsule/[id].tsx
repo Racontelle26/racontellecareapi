@@ -57,6 +57,9 @@ export default function CapsuleDetail() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [editTitle, setEditTitle] = useState("");
   const [editNarratorId, setEditNarratorId] = useState("");
+  const [editingTranscript, setEditingTranscript] = useState(false);
+  const [transcriptText, setTranscriptText] = useState("");
+  const [savingTranscript, setSavingTranscript] = useState(false);
   useEffect(() => {
     (async () => {
       await setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
@@ -159,6 +162,21 @@ export default function CapsuleDetail() {
       toast.show(e?.message || "Modification impossible", "error");
     } finally {
       setSavingEdit(false);
+    }
+  };
+
+  const saveTranscript = async () => {
+    if (!transcriptText.trim()) return toast.show("Ajoutez le texte du souvenir", "error");
+    setSavingTranscript(true);
+    try {
+      await api.patch(`/capsules/${id}/transcript`, { transcript: transcriptText.trim() });
+      await Promise.all([capsuleQ.refetch(), qc.invalidateQueries({ queryKey: ["capsules"] }), qc.invalidateQueries({ queryKey: ["book-status"] })]);
+      setEditingTranscript(false);
+      toast.show("Texte du souvenir enregistré", "success");
+    } catch (e: any) {
+      toast.show(e?.message || "Enregistrement impossible", "error");
+    } finally {
+      setSavingTranscript(false);
     }
   };
 
@@ -272,30 +290,34 @@ export default function CapsuleDetail() {
             {c.transcript_status === "done" && c.transcript ? (
               <View style={styles.transcript}>
                 <Label style={styles.transcriptLabel}>TRANSCRIPTION</Label>
-                <Body style={styles.transcriptText}>{c.transcript}</Body>
+                {editingTranscript ? (
+                  <>
+                    <TextField testID="capsule-transcript-input" value={transcriptText} onChangeText={setTranscriptText} multiline numberOfLines={6} textAlignVertical="top" maxLength={50000} style={styles.transcriptField} />
+                    <Button title="Enregistrer le texte" testID="capsule-transcript-save" loading={savingTranscript} onPress={saveTranscript} />
+                  </>
+                ) : (
+                  <>
+                    <Body style={styles.transcriptText} testID="capsule-transcript-text">{c.transcript}</Body>
+                    <Pressable testID="capsule-transcript-edit" onPress={() => { setTranscriptText(c.transcript || ""); setEditingTranscript(true); }} style={styles.transcriptEdit}>
+                      <PencilSimple color={colors.brandPrimary} size={18} />
+                      <Label style={styles.retryText}>Modifier le texte</Label>
+                    </Pressable>
+                  </>
+                )}
               </View>
             ) : c.transcript_status === "pending" ? (
               <View style={styles.transcriptPending}>
                 <ActivityIndicator color={colors.brandSecondary} size="small" />
                 <Label style={styles.transcriptHint}>Transcription en cours…</Label>
               </View>
-            ) : c.transcript_status === "failed" ? (
-              <Pressable
-                style={styles.retry}
-                testID="capsule-retranscribe"
-                onPress={async () => {
-                  try {
-                    await api.post(`/capsules/${id}/transcribe`);
-                    toast.show("Transcription relancée", "info");
-                    setTimeout(() => capsuleQ.refetch(), 4000);
-                  } catch {
-                    toast.show("Erreur", "error");
-                  }
-                }}
-              >
-                <Label style={styles.retryText}>Relancer la transcription</Label>
-              </Pressable>
-            ) : null}
+            ) : (
+              <View style={styles.transcript} testID="capsule-transcript-manual">
+                <Label style={styles.transcriptLabel}>TEXTE DU SOUVENIR</Label>
+                <Body muted style={styles.transcriptHint}>Écrivez le souvenir ou utilisez le micro de votre clavier pour l’ajouter au livre.</Body>
+                <TextField testID="capsule-transcript-input" value={transcriptText} onChangeText={setTranscriptText} placeholder="Dictez ou écrivez votre souvenir…" multiline numberOfLines={6} textAlignVertical="top" maxLength={50000} style={styles.transcriptField} />
+                <Button title="Enregistrer le texte" testID="capsule-transcript-save" loading={savingTranscript} onPress={saveTranscript} />
+              </View>
+            )}
 
             {canDelete ? (
               <Pressable style={styles.delete} testID="capsule-delete" onPress={remove}>
@@ -369,6 +391,8 @@ const useStyles = makeStyles((colors) => ({
   transcript: { backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, padding: spacing.lg, gap: spacing.sm },
   transcriptLabel: { color: colors.brandSecondary, letterSpacing: 0.5 },
   transcriptText: { fontSize: 16, lineHeight: 25 },
+  transcriptField: { minHeight: 130, paddingTop: spacing.md },
+  transcriptEdit: { minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm },
   transcriptPending: { flexDirection: "row", alignItems: "center", gap: spacing.sm, justifyContent: "center", paddingVertical: spacing.md },
   transcriptHint: { color: colors.muted },
   retry: { alignItems: "center", paddingVertical: spacing.md },

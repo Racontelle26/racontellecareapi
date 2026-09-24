@@ -52,6 +52,7 @@ export default function RecordScreen() {
   const [photos, setPhotos] = useState<{ uri: string; mime: string }[]>([]);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [freeTitle, setFreeTitle] = useState("Souvenir sur le vif");
+  const [manualTranscript, setManualTranscript] = useState("");
 
   const pickFromLibrary = async () => {
     const remaining = MAX_PHOTOS - photos.length;
@@ -192,6 +193,7 @@ export default function RecordScreen() {
       if (params.dailyId) form.append("daily_question_id", String(params.dailyId));
       if (params.theme) form.append("theme", String(params.theme));
       form.append("title", params.questionText ? String(params.questionText) : (freeTitle.trim() || "Souvenir sur le vif"));
+      if (manualTranscript.trim()) form.append("transcript", manualTranscript.trim());
       const name = `memoire-${Date.now()}.${Platform.OS === "web" ? "webm" : "m4a"}`;
       if (Platform.OS === "web") {
         const blob = await (await fetch(recordedUri)).blob();
@@ -369,6 +371,24 @@ export default function RecordScreen() {
             {recordedUri ? "Réécoutez, puis enregistrez votre réponse" : isRecording ? "Enregistrement en cours…" : "Appuyez pour commencer à raconter"}
           </Body>
         </View>
+
+        {recordedUri ? (
+          <View style={styles.transcriptInput} testID="record-transcript-section">
+            <TextField
+              label="TEXTE DU SOUVENIR (FACULTATIF)"
+              testID="record-transcript-input"
+              value={manualTranscript}
+              onChangeText={setManualTranscript}
+              placeholder="Vous pouvez écrire ou utiliser le micro du clavier…"
+              multiline
+              numberOfLines={5}
+              textAlignVertical="top"
+              maxLength={50000}
+              style={styles.transcriptField}
+            />
+            <Body muted style={styles.transcriptHelp}>Ce texte enrichira immédiatement votre livre familial.</Body>
+          </View>
+        ) : null}
       </ScrollView>
 
       {recordedUri ? (
@@ -425,6 +445,9 @@ const useStyles = makeStyles((colors) => ({
     justifyContent: "center",
   },
   recorder: { alignItems: "center", gap: spacing.lg, marginTop: spacing.lg },
+  transcriptInput: { gap: spacing.sm },
+  transcriptField: { minHeight: 120, paddingTop: spacing.md },
+  transcriptHelp: { fontSize: 13 },
   timer: { fontSize: 52, fontVariant: ["tabular-nums"] },
   recBtn: {
     width: 96,

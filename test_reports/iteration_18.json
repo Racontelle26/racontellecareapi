@@ -1,0 +1,60 @@
+{
+  "summary": "Health-check de préparation au déploiement exécuté sur backend + frontend mobile web. Retests itérations 6/7/8 passés (33/33), nouveaux tests ciblés N+1/list_capsules/book passés (5/5), et smoke UI album/livre validé sur URL publique.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/capsules (background transcription)",
+        "issue": "Échec transcription Whisper en logs: clé LLM actuelle non autorisée pour model whisper-1; transcript_status passe en failed.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {
+        "component": "Runtime Expo web",
+        "issue": "Avertissement console non bloquant: props.pointerEvents is deprecated. Use style.pointerEvents"
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration6_family_profiles.py",
+    "/app/backend/tests/test_iteration7_profile_members.py",
+    "/app/backend/tests/test_iteration8_media_security.py",
+    "/app/backend/tests/test_iteration18_nplus1_capsules_book.py",
+    "/app/test_reports/pytest/pytest_iteration18_retest_6_7_8.xml",
+    "/app/test_reports/pytest/pytest_iteration18_nplus1_targeted.xml",
+    "/app/test_reports/artifacts_iter18/home_after_login.jpeg",
+    "/app/test_reports/artifacts_iter18/book_screen.jpeg",
+    "/app/test_reports/artifacts_iter18/album_capsule_detail_iter18.jpeg"
+  ],
+  "action_items": [
+    "Corriger l’intégration STT (whisper-1) ou configurer une clé/modèle autorisé pour éviter transcript_status=failed.",
+    "Conserver la stratégie batch actuelle de list_capsules et generate_chapter (N+1 bien supprimé), puis monitorer en production via métriques DB.",
+    "Optionnel: corriger l’avertissement pointerEvents pour réduire le bruit console."
+  ],
+  "critical_code_review_comments": [
+    "list_capsules: batching confirmé par instrumentation (1 find capsules + <=1 find members + <=1 find questions; aucun find_one en boucle).",
+    "generate_chapter: préchargement questions confirmé en une requête $in avant boucle; aucune lookup question unitaire par capsule.",
+    "GET /api/capsules, GET/PATCH /api/capsules/{id}, POST /api/capsules/{id}/photos et endpoints livre testés sans fuite _id (projection/clean efficaces).",
+    "frontend album/livre: recherche, filtres, ouverture détail capsule et ouverture chapitre existant fonctionnent sur preview public."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration6_family_profiles.py",
+    "/app/backend/tests/test_iteration18_nplus1_capsules_book.py",
+    "/app/test_reports/iteration_18.json"
+  ],
+  "success_rate": {
+    "backend": "100% (38/38 tests exécutés: 33 régression + 5 ciblés)",
+    "frontend": "100% sur smoke demandé (album + livre)"
+  },
+  "seed_data_creation": "Création de comptes/cercle/capsules TEST_i18_* via API publique pour valider scénarios 0/1/plusieurs et filtres/recherche.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Ne pas modifier supervisor READONLY. Preview public OK via proxy. Les tests N+1 ajoutés sont dans test_iteration18_nplus1_capsules_book.py (instrumentation + régression API).",
+  "rca_of_issue": "RCA principal restant: les erreurs de transcription viennent d’un mismatch capacité clé/modèle (whisper-1 non autorisé), visible en backend logs après création de capsules. Repro: créer capsule audio -> tâche transcribe_capsule déclenchée -> log OpenAIException key not allowed -> transcript_status failed. Mitigation: aligner modèle STT autorisé avec la clé ou provisionner clé compatible Whisper."
+}

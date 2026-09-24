@@ -12,7 +12,7 @@ import { makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { buildBookHtml, openPrintPreviewWindow, printBookWindow, type PdfPhoto } from "@/src/book/book-pdf";
 import { preparePdfForSharing } from "@/src/book/share-pdf";
 
-type BookStatus = { memory_count: number; transcribed: number; pending: number; chapter_count: number; can_generate: boolean };
+type BookStatus = { memory_count: number; transcribed: number; pending: number; unavailable?: number; chapter_count: number; can_generate: boolean };
 type Chapter = { id: string; title: string; content?: string; memory_count: number; created_at: string };
 type Summary = { circle: { name: string } };
 type Capsule = { id: string; photo_url?: string | null; narrator_name?: string; question_text?: string };
@@ -154,6 +154,7 @@ export default function BookHome() {
             <Body style={styles.statusLine}>
               {status.memory_count} souvenir{status.memory_count > 1 ? "s" : ""} · {status.transcribed} transcrit{status.transcribed > 1 ? "s" : ""}
               {status.pending > 0 ? ` · ${status.pending} en cours` : ""}
+              {(status.unavailable ?? 0) > 0 ? ` · ${status.unavailable} à enrichir` : ""}
             </Body>
           ) : null}
 
@@ -180,8 +181,10 @@ export default function BookHome() {
           ) : null}
           {!status?.can_generate ? (
             <Body muted style={styles.hint}>Enregistrez au moins un souvenir pour commencer.</Body>
-          ) : status?.pending ? (
-            <Body muted style={styles.hint}>Astuce : attendez la fin des transcriptions pour un texte plus riche.</Body>
+          ) : (status?.pending ?? 0) > 0 || (status?.unavailable ?? 0) > 0 ? (
+            <Body muted style={styles.hint}>
+              {status.unavailable ? "Astuce : ajoutez le texte depuis chaque souvenir pour enrichir le prochain chapitre." : "Astuce : attendez la fin des transcriptions pour un texte plus riche."}
+            </Body>
           ) : null}
         </Card>
 

@@ -1,0 +1,70 @@
+{
+  "summary": "Validation de readiness STT fallback exécutée sur backend + UI mobile web publique. Tests ciblés STT/transcripts/permissions réussis, régressions backend 6/7/8/18 réussies, lint+tsc frontend OK. Un écart UI détecté sur l’écran Livre (hint indisponible absent quand unavailable>0 et pending=0).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Book screen hint",
+        "issue": "Le message d’aide ‘ajoutez le texte…’ n’apparaît pas quand des souvenirs sont en statut unavailable mais aucun pending (pending=0).",
+        "testID": "book-generate",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "Livre > disponibilité transcription",
+        "issue": "Règle métier attendue non reflétée en UI: unavailable sans pending ne déclenche pas le hint d’enrichissement texte.",
+        "affected_testIDs": [
+          "home-book-cta",
+          "book-generate"
+        ]
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": [
+      {
+        "component": "Runtime web Expo",
+        "issue": "warning console non bloquant: props.pointerEvents is deprecated."
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration19_stt_fallback_and_transcript.py",
+    "/app/tests/seed_iteration19_ui_account.py",
+    "/app/test_reports/pytest/pytest_iteration19_stt_fallback.xml",
+    "/app/test_reports/pytest/pytest_iteration19_regression_6_7_8_18.xml",
+    "/app/test_reports/artifacts_iter19/home_load_iter19.jpeg",
+    "/app/test_reports/artifacts_iter19/ui_capsule_transcript_saved.jpeg",
+    "/app/test_reports/artifacts_iter19/ui_book_after_manual_save.jpeg",
+    "/app/test_reports/artifacts_iter19/ui_seed.json"
+  ],
+  "action_items": [
+    "Corriger la condition d’affichage du hint dans /app/frontend/app/book/index.tsx pour inclure le cas unavailable>0 même quand pending=0.",
+    "Conserver la stratégie actuelle STT fallback: sans clé STT, capsules en unavailable (pas pending) et /transcribe en 503 explicite.",
+    "Optionnel: réduire le bruit logs passlib bcrypt (__about__) et warning pointerEvents côté web."
+  ],
+  "critical_code_review_comments": [
+    "POST /api/capsules respecte le fallback sans clé STT: transcript_status=unavailable et pas de pending.",
+    "POST multipart avec transcript manuel conserve le texte exact et force transcript_status=done immédiatement.",
+    "PATCH /api/capsules/{id}/transcript applique correctement les permissions recorder/owner, renvoie 403 pour non-owner non auteur, 404 pour cercle étranger, et la réponse est sans _id.",
+    "Startup migration couvre bien pending -> unavailable quand STT_API_KEY absent (testé via test unitaire monkeypatch).",
+    "book/index.tsx: le hint unavailable est conditionné par status.pending, ce qui masque le message attendu si pending=0 et unavailable>0."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration19_stt_fallback_and_transcript.py",
+    "/app/tests/seed_iteration19_ui_account.py",
+    "/app/test_reports/iteration_19.json"
+  ],
+  "success_rate": {
+    "backend": "100% (46/46 exécutés: 8 ciblés STT + 38 régressions 6/7/8/18)",
+    "frontend": "90% (scénarios ciblés validés, 1 écart UI sur hint Livre)"
+  },
+  "seed_data_creation": "Compte de test UI créé via API publique: test_ui_i19_1790254633428@racontelle-test.fr / Souvenir123, avec 2 capsules seed (unavailable + done).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Le test UI de sauvegarde transcript manuel est validé sur capsule unavailable (formulaire visible + sauvegarde OK). Revalider le hint Livre après correction conditionnelle unavailable/pending.",
+  "rca_of_issue": "RCA UI hint Livre: dans /app/frontend/app/book/index.tsx, l’aide ‘ajoutez le texte...’ est rendue uniquement dans la branche status?.pending. Donc quand unavailable>0 et pending=0, aucun hint n’est affiché malgré le besoin métier. Repro: cercle avec capsules dont transcript_status in [done, unavailable], ouvrir /book. Mitigation: afficher le hint unavailable dès que status.unavailable>0, indépendamment de pending."
+}

@@ -1,0 +1,46 @@
+{
+  "summary": "Retest frontend ciblé Livre effectué après itération 19. Le correctif unavailable>0/pending=0 est validé en données réelles (compteur + hint). Cas pending>0 validé en scénario MOCKED faute de données pending réelles dans cet environnement.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {
+        "component": "Runtime web Expo",
+        "issue": "Warning console non bloquant observé: props.pointerEvents is deprecated. Use style.pointerEvents"
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/frontend/app/book/index.tsx",
+    "/app/tests/seed_iteration19_ui_account.py",
+    "/app/test_reports/artifacts_iter20/book_fixture_unavailable.jpeg",
+    "/app/test_reports/artifacts_iter20/book_verification_no_hint.jpeg",
+    "/app/test_reports/artifacts_iter20/book_mocked_branches.jpeg"
+  ],
+  "action_items": [
+    "Aucun correctif bloquant à appliquer sur le scope demandé.",
+    "Optionnel: revalider le cas pending>0 sur données réelles si une transcription asynchrone pending redevient disponible (ici validé en MOCKED)."
+  ],
+  "critical_code_review_comments": [
+    "La condition d’aide Livre couvre bien maintenant (pending>0) OR (unavailable>0).",
+    "Le compteur status line 'N à enrichir' est bien affiché quand unavailable>0.",
+    "Le branchement pending>0 sans unavailable conserve le hint d’attente transcription (validé en MOCKED)."
+  ],
+  "updated_files": [
+    "/app/test_reports/iteration_20.json"
+  ],
+  "success_rate": {
+    "backend": "NA (frontend-only run)",
+    "frontend": "100% du scope ciblé (2 branches réelles + 1 branche MOCKED)"
+  },
+  "seed_data_creation": "Fixture créée via /app/tests/seed_iteration19_ui_account.py : test_ui_i19_1790254883748@racontelle-test.fr / Souvenir123 (1 capsule unavailable + 1 done).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Cas réel validé unavailable>0/pending=0: status '2 souvenirs · 1 transcrit · 1 à enrichir' + hint exact affiché. Cas réel pending=0/unavailable=0 validé sur compte verification. Cas pending>0 sans unavailable validé uniquement en MOCKED via interception /api/book/status.",
+  "rca_of_issue": "RCA itération 19 confirmée résolue: le hint enrichissement ne dépend plus uniquement de pending. Reproduction corrigée avec fixture unavailable. Aucun bug de régression observé sur smoke Livre (générer visible, PDF visible, ouverture chapitre ok) et lint/TypeScript passent."
+}

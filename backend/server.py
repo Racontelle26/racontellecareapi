@@ -52,9 +52,10 @@ RESET_MIN = 30
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Object storage (audio)
-STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
+STORAGE_BASE = os.environ["INTEGRATION_PROXY_URL"].strip()
 STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
 EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
+STT_API_KEY = os.environ.get("OPENAI_API_KEY") or os.environ.get("EMERGENT_STT_KEY")
 APP_NAME = "racontelle-family"
 _storage_key = None
 
@@ -65,10 +66,10 @@ MAX_REQUEST_BYTES = 100 * 1024 * 1024
 MAX_AUDIO_DURATION_SEC = 2 * 60 * 60
 
 # Email
-EMAIL_BASE_URL = "https://integrations.emergentagent.com"
+EMAIL_BASE_URL = os.environ["INTEGRATION_PROXY_URL"].strip().rstrip("/")
 EMAIL_KEY = os.environ.get("EMERGENT_EMAIL_KEY")
 EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME", "Racontelle")
-APP_PUBLIC_URL = os.environ.get("APP_PUBLIC_URL", "https://racontelle.family")
+APP_PUBLIC_URL = os.environ["APP_PUBLIC_URL"].strip().rstrip("/")
 
 TZ_PARIS_OFFSET = timedelta(hours=2)  # Europe/Paris (indicative for daily date)
 
@@ -136,13 +137,16 @@ BOOK_MODEL_NAME = "claude-sonnet-5"
 
 async def transcribe_capsule(capsule_id: str, storage_path: str, ext: str):
     """Background task: download the audio, transcribe with Whisper, store the transcript."""
+    if not STT_API_KEY:
+        await db.capsules.update_one({"id": capsule_id}, {"$set": {"transcript_status": "unavailable"}})
+        return
     tmp = None
     try:
         content, _ = await run_in_threadpool(get_object, storage_path)
         with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as f:
             f.write(content)
             tmp = f.name
-        stt = OpenAISpeechToText(api_key=EMERGENT_KEY)
+        stt = OpenAISpeechToText(api_key=STT_API_KEY)
         with open(tmp, "rb") as fh:
             resp = await stt.transcribe(file=fh, model="whisper-1", response_format="text", language="fr")
         text = resp if isinstance(resp, str) else (getattr(resp, "text", None) or str(resp))
@@ -171,6 +175,12 @@ async def generate_chapter(circle_id: str) -> dict:
     capsules = await db.capsules.find({"circle_id": circle_id, "status": "saved"}).sort("recorded_at", 1).to_list(500)
     if not capsules:
         raise HTTPException(400, "Ajoutez au moins un souvenir avant de créer un chapitre")
+    question_ids = list({c["question_id"] for c in capsules if c.get("question_id")})
+    questions = await db.questions.find(
+        {"id": {"$in": question_ids}},
+        {"_id": 0, "id": 1, "text": 1},
+    ).to_list(len(question_ids)) if question_ids else []
+    question_by_id = {question["id"]: question for question in questions}
 
     # Characters
     cast_lines = []
@@ -185,7 +195,7 @@ async def generate_chapter(circle_id: str) -> dict:
     used_ids = []
     for c in capsules:
         narrator = member_by_id.get(c["narrator_member_id"], {})
-        q = await db.questions.find_one({"id": c.get("question_id")}) if c.get("question_id") else None
+        q = question_by_id.get(c.get("question_id"))
         question = q["text"] if q else (c.get("title") or "Souvenir libre")
         transcript = (c.get("transcript") or "").strip()
         body = transcript if transcript else "(souvenir vocal sans transcription — inspire-toi de la question)"
@@ -520,6 +530,10 @@ class FeedbackIn(BaseModel):
 class CapsuleUpdateIn(BaseModel):
     title: str = Field(min_length=1, max_length=120)
     narrator_member_id: str
+
+
+class CapsuleTranscriptIn(BaseModel):
+    transcript: str = Field(min_length=1, max_length=50000)
 
 
 AVATAR_COLORS = ["#C98B8B", "#738A70", "#D1A054", "#8A9691", "#B57477", "#A38160"]
@@ -1018,6 +1032,7 @@ async def create_capsule(
     daily_question_id: Optional[str] = Form(None),
     theme: Optional[str] = Form(None),
     title: Optional[str] = Form(None),
+    transcript: Optional[str] = Form(None),
     file: UploadFile = File(...),
     photos: List[UploadFile] = File(default=[]),
     user=Depends(get_current_user),
@@ -1061,16 +1076,19 @@ async def create_capsule(
         if stored:
             photos_list.append(stored)
 
+    manual_transcript = (transcript or "").strip()
     capsule = {
         "id": cid, "circle_id": member["circle_id"], "narrator_member_id": narrator_member_id,
         "recorded_by_user_id": user["id"], "question_id": question_id, "daily_question_id": daily_question_id,
         "theme": theme, "title": title or ("Souvenir sur le vif" if not question_id else None), "storage_path": path, "mime_type": ctype,
         "photos": photos_list, "photo_path": None, "photo_mime": None,
         "duration_sec": duration_sec, "recorded_at": now().isoformat(), "created_at": now().isoformat(),
-        "status": "saved", "transcript": None, "transcript_status": "pending",
+        "status": "saved", "transcript": manual_transcript or None,
+        "transcript_status": "done" if manual_transcript else ("pending" if STT_API_KEY else "unavailable"),
     }
     await db.capsules.insert_one(capsule)
-    background_tasks.add_task(transcribe_capsule, cid, path, ext)
+    if not manual_transcript and STT_API_KEY:
+        background_tasks.add_task(transcribe_capsule, cid, path, ext)
     if daily_question_id:
         await db.daily_states.update_one(
             {"daily_question_id": daily_question_id, "member_id": member["id"]},
@@ -1083,13 +1101,21 @@ async def create_capsule(
     return await _enrich_capsule(capsule)
 
 
-async def _enrich_capsule(c: dict) -> dict:
+async def _enrich_capsule(
+    c: dict,
+    members_by_id: Optional[dict] = None,
+    questions_by_id: Optional[dict] = None,
+) -> dict:
     c = clean(c)
-    narrator = await db.members.find_one({"id": c["narrator_member_id"]})
+    narrator = members_by_id.get(c["narrator_member_id"]) if members_by_id is not None else await db.members.find_one(
+        {"id": c["narrator_member_id"]}, {"_id": 0}
+    )
     if narrator:
         c["narrator_name"] = narrator["display_name"]
         c["narrator_color"] = narrator.get("initials_color")
-    q = await db.questions.find_one({"id": c.get("question_id")}) if c.get("question_id") else None
+    q = questions_by_id.get(c.get("question_id")) if questions_by_id is not None else (
+        await db.questions.find_one({"id": c.get("question_id")}, {"_id": 0}) if c.get("question_id") else None
+    )
     c["question_text"] = q["text"] if q else c.get("title")
     c["audio_url"] = f"/api/capsules/{c['id']}/audio"
     photos = _capsule_photos(c)
@@ -1109,7 +1135,19 @@ async def list_capsules(narrator: Optional[str] = None, theme: Optional[str] = N
     if theme:
         query["theme"] = theme
     docs = await db.capsules.find(query).sort("recorded_at", -1).to_list(1000)
-    enriched = [await _enrich_capsule(d) for d in docs]
+    member_ids = list({doc["narrator_member_id"] for doc in docs if doc.get("narrator_member_id")})
+    question_ids = list({doc["question_id"] for doc in docs if doc.get("question_id")})
+    members = await db.members.find(
+        {"id": {"$in": member_ids}},
+        {"_id": 0, "id": 1, "display_name": 1, "initials_color": 1},
+    ).to_list(len(member_ids)) if member_ids else []
+    questions = await db.questions.find(
+        {"id": {"$in": question_ids}},
+        {"_id": 0, "id": 1, "text": 1},
+    ).to_list(len(question_ids)) if question_ids else []
+    members_by_id = {item["id"]: item for item in members}
+    questions_by_id = {item["id"]: item for item in questions}
+    enriched = [await _enrich_capsule(doc, members_by_id, questions_by_id) for doc in docs]
     term = (q or "").strip().lower()
     if term:
         def matches(c: dict) -> bool:
@@ -1155,6 +1193,25 @@ async def update_capsule(capsule_id: str, body: CapsuleUpdateIn, user=Depends(ge
     )
     await db.events.insert_one({"id": oid(), "event_type": "capsule_updated", "capsule_id": capsule_id,
                                 "circle_id": member["circle_id"], "user_id": user["id"], "occurred_at": now().isoformat()})
+    updated = await db.capsules.find_one({"id": capsule_id}, {"_id": 0})
+    return await _enrich_capsule(updated)
+
+
+@api.patch("/capsules/{capsule_id}/transcript")
+async def update_capsule_transcript(capsule_id: str, body: CapsuleTranscriptIn, user=Depends(get_current_user)):
+    member = await get_member(user)
+    if not member:
+        raise HTTPException(404, "Aucun cercle")
+    capsule = await db.capsules.find_one({"id": capsule_id, "circle_id": member["circle_id"], "status": "saved"})
+    if not capsule:
+        raise HTTPException(404, "Souvenir introuvable")
+    if capsule.get("recorded_by_user_id") != user["id"] and member.get("role") != "owner":
+        raise HTTPException(403, "Vous ne pouvez modifier que vos souvenirs")
+    transcript = body.transcript.strip()
+    await db.capsules.update_one(
+        {"id": capsule_id},
+        {"$set": {"transcript": transcript, "transcript_status": "done", "updated_at": now().isoformat()}},
+    )
     updated = await db.capsules.find_one({"id": capsule_id}, {"_id": 0})
     return await _enrich_capsule(updated)
 
@@ -1208,6 +1265,8 @@ async def retranscribe_capsule(capsule_id: str, background_tasks: BackgroundTask
     c = await db.capsules.find_one({"id": capsule_id, "circle_id": member["circle_id"], "status": "saved"})
     if not c:
         raise HTTPException(404, "Souvenir introuvable")
+    if not STT_API_KEY:
+        raise HTTPException(503, "Transcription automatique temporairement indisponible. Ajoutez le texte du souvenir manuellement.")
     ext = Path(c["storage_path"]).suffix.lstrip(".") or "m4a"
     await db.capsules.update_one({"id": capsule_id}, {"$set": {"transcript_status": "pending"}})
     background_tasks.add_task(transcribe_capsule, capsule_id, c["storage_path"], ext)
@@ -1303,8 +1362,10 @@ async def book_status(user=Depends(get_current_user)):
     total = await db.capsules.count_documents({"circle_id": cid, "status": "saved"})
     transcribed = await db.capsules.count_documents({"circle_id": cid, "status": "saved", "transcript_status": "done"})
     pending = await db.capsules.count_documents({"circle_id": cid, "status": "saved", "transcript_status": "pending"})
+    unavailable = await db.capsules.count_documents({"circle_id": cid, "status": "saved", "transcript_status": {"$in": ["failed", "unavailable"]}})
     chapters = await db.book_chapters.count_documents({"circle_id": cid, "status": "ready"})
-    return {"memory_count": total, "transcribed": transcribed, "pending": pending, "chapter_count": chapters, "can_generate": total > 0}
+    return {"memory_count": total, "transcribed": transcribed, "pending": pending, "unavailable": unavailable,
+            "chapter_count": chapters, "can_generate": total > 0}
 
 
 @api.post("/book/chapters")
@@ -1412,6 +1473,11 @@ async def startup():
             q["usage"] = "Question de récit de vie"
             await db.questions.update_one({"source_number": q["source_number"]}, {"$setOnInsert": q}, upsert=True)
         logger.info("Seeded questions bank")
+    if not STT_API_KEY:
+        await db.capsules.update_many(
+            {"status": "saved", "transcript_status": "pending"},
+            {"$set": {"transcript_status": "unavailable"}},
+        )
     try:
         await run_in_threadpool(init_storage)
         logger.info("Object storage ready")
