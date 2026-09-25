@@ -17,17 +17,20 @@ compilation d'Expo : aucun outil Android n'est nécessaire sur l'ordinateur.
 L'application de test a besoin du **nouveau serveur** (questions par thème, quiz, réglages,
 retours, mot de passe oublié). L'ancien serveur ne suffit pas.
 
-1. Remplacer le code du projet Emergent par le contenu de `Racontelle-care-v2-beta.zip`
-   (dossier `backend/` au minimum). Aucune nouvelle dépendance Python n'est nécessaire.
+1. Dans Emergent, déployer la branche GitHub **`beta-v2`** du dépôt `Racontelle26/Racontelle`
+   (ou fusionner `beta-v2` dans `main`). Aucune nouvelle dépendance Python n'est nécessaire.
 2. Redémarrer le serveur. Au démarrage, il charge les 400 questions automatiquement.
 3. Facultatif : renseigner `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`
    pour l'envoi des codes « Mot de passe oublié ».
-4. Noter l'adresse publique du serveur (`https://…`), sans `/api` à la fin.
+4. Vérifier le déploiement : `https://ehpad-recall.preview.emergentagent.com/api/settings`
+   doit répondre **401** (authentification requise) et non plus **404**.
 
-## 2. Renseigner l'adresse du serveur
+## 2. Adresse du serveur
 
-Dans `frontend/eas.json`, remplacer `ADRESSE_DU_SERVEUR_A_RENSEIGNER` par cette adresse
-(profils `preview` et `production`).
+`frontend/eas.json` pointe vers `https://ehpad-recall.preview.emergentagent.com`
+(profils `preview` et `production`). À changer uniquement si le serveur change d'adresse.
+Tant que l'ancien serveur tourne, profils et souvenirs se synchronisent quand même ; seules
+les nouvelles fonctions (thèmes du serveur, quiz, réglages, retours) restent indisponibles.
 
 ## 3. Se connecter à Expo (une seule fois)
 
@@ -59,7 +62,9 @@ $env:EAS_NO_VCS="1"; npx eas-cli build --platform android --profile preview
 
 ## 6. À vérifier en priorité sur le téléphone
 
-- [ ] Enregistrer un souvenir guidé de plus de 5 minutes, avec pause et reprise
+- [ ] Enregistrer un souvenir guidé de plus de 5 minutes, avec pause et reprise (l'écran doit rester allumé)
+- [ ] Pendant un enregistrement, passer sur une autre application puis revenir : le récit est en pause, rien n'est perdu
+- [ ] Bouton « retour » d'Android : revient à l'écran précédent ; pendant un enregistrement, demande confirmation
 - [ ] Réécouter, recommencer, sauvegarder
 - [ ] Passer en mode avion, enregistrer, voir « En attente d'envoi », rétablir le réseau, voir « Sauvegardé »
 - [ ] Refuser le micro une fois, vérifier le message, puis l'autoriser dans les réglages

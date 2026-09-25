@@ -3,7 +3,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { api, ApiError } from "../api";
 import { isLocalId, mergeCapsules, mergeResidents, readLocalState, remapResidentId, writeLocalState } from "../local";
 import { BUNDLED_QUESTIONS } from "../question-bank";
-import type { AuthUser, BetaSettings, Capsule, ConsentStatus, LocalState, Resident } from "../types";
+import type { AuthUser, BetaSettings, Capsule, ConsentStatus, LocalState, Question, Resident } from "../types";
 
 export const DEFAULT_SETTINGS: BetaSettings = {
   features: { quiz: true, sensitive_themes: false, voice_reading: true, family_share: false, transcription: false, carnet_pdf: false },
@@ -180,7 +180,15 @@ export function useCarnetStore(setNotice: (message: string) => void) {
   const syncWithServer = useCallback(async (user: AuthUser | null, onResidentSynced?: (fromId: string, resident: Resident) => void) => {
     if (!user) return;
     try {
-      const [remoteResidents, remoteCapsules, remoteQuestions, remoteSettings] = await Promise.all([api.residents(), api.capsules(), api.questions(), api.settings()]);
+      // Profils et souvenirs sont indispensables ; la banque de questions et
+      // les réglages ont une valeur de repli (banque embarquée, réglages par
+      // défaut) pour qu'un serveur momentanément partiel ne bloque rien.
+      const [remoteResidents, remoteCapsules, remoteQuestions, remoteSettings] = await Promise.all([
+        api.residents(),
+        api.capsules(),
+        api.questions().catch(() => [] as Question[]),
+        api.settings().catch(() => null),
+      ]);
       const current = stateRef.current;
       // Les profils retirés ou fusionnés hors connexion restent masqués tant
       // que le serveur n'a pas reçu l'opération.
@@ -190,7 +198,7 @@ export function useCarnetStore(setNotice: (message: string) => void) {
         residents: mergeResidents(current.residents, remoteResidents, hidden),
         capsules: mergeCapsules(current.capsules, remoteCapsules),
         questions_cache: remoteQuestions.length ? remoteQuestions : current.questions_cache,
-        settings_cache: remoteSettings,
+        settings_cache: remoteSettings ?? current.settings_cache,
       });
     } catch {
       setNotice("Mode local actif : les souvenirs restent sur cet appareil et seront envoyés dès que possible.");

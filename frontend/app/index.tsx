@@ -10,9 +10,10 @@ import {
 import * as Clipboard from "expo-clipboard";
 import * as FileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
+import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import * as Sharing from "expo-sharing";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, AppState, Platform, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, AppState, BackHandler, Platform, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { api, apiBaseUrl, ApiError, authApi } from "@/src/api";
@@ -50,6 +51,7 @@ import { useStyles } from "@/src/ui/styles";
 type Screen = "home" | "profile" | "workshop" | "library" | "pro" | "quiz" | "questions" | "quizAdmin";
 type Confirm = { title: string; message: string; confirmLabel: string; action: () => void };
 
+const KEEP_AWAKE_TAG = "racontelle-enregistrement";
 const PIN_MAX_ATTEMPTS = 5;
 const PIN_LOCK_SECONDS = 60;
 
@@ -275,6 +277,36 @@ export default function Index() {
     return () => clearInterval(interval);
   }, [recorderStatus]);
 
+  // Écran allumé pendant tout l'enregistrement : sans cela, la mise en veille
+  // d'Android (30 s à 2 min) couperait un long récit (BT-09).
+  useEffect(() => {
+    if (recorderStatus !== "recording" && recorderStatus !== "paused") return;
+    void activateKeepAwakeAsync(KEEP_AWAKE_TAG).catch(() => null);
+    return () => { void deactivateKeepAwake(KEEP_AWAKE_TAG).catch(() => null); };
+  }, [recorderStatus]);
+
+  // Application mise en arrière-plan (appel, autre application) : le récit est
+  // mis en pause proprement, la durée reste juste et rien n'est perdu.
+  const recorderStatusRef = useRef<RecorderStatus>("idle");
+  useEffect(() => {
+    recorderStatusRef.current = recorderStatus;
+  }, [recorderStatus]);
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (status) => {
+      if (status === "active" || recorderStatusRef.current !== "recording") return;
+      elapsedBaseMs.current += Date.now() - (recordStartMs.current ?? Date.now());
+      recordStartMs.current = null;
+      try {
+        recorder.pause();
+      } catch {
+        // L'enregistreur a déjà été suspendu par le système.
+      }
+      setRecorderStatus("paused");
+      setNotice("Enregistrement mis en pause : l’application a été quittée. Touchez le bouton pour reprendre.");
+    });
+    return () => subscription.remove();
+  }, [recorder]);
+
   const resetRecording = () => {
     setRecordedUri(null);
     setElapsedSec(0);
@@ -427,19 +459,23 @@ export default function Index() {
 
   // --- Profils -----------------------------------------------------------------
   const [residentForm, setResidentForm] = useState<{ open: boolean; residentId: string | null }>({ open: false, residentId: null });
-  const [photoDenied, setPhotoDenied] = useState(false);
-
+  // Le sélecteur de photos du système ne demande aucune autorisation (Android
+  // 13+ et iOS). La photo choisie arrive dans un cache que le système peut
+  // vider : elle est recopiée dans le stockage permanent de l'appareil.
   const pickPhoto = async (): Promise<string | null> => {
-    let permission = await ImagePicker.getMediaLibraryPermissionsAsync();
-    if (!permission.granted && permission.canAskAgain) permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) {
-      setPhotoDenied(!permission.canAskAgain);
-      setNotice("Autorisez l’accès aux photos pour ajouter un portrait.");
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], allowsEditing: true, aspect: [1, 1], quality: 0.7 });
+      const picked = result.canceled ? null : result.assets[0]?.uri ?? null;
+      if (!picked || Platform.OS === "web") return picked;
+      const dir = `${FileSystem.documentDirectory}photos/`;
+      await FileSystem.makeDirectoryAsync(dir, { intermediates: true }).catch(() => {});
+      const target = `${dir}portrait-${Date.now()}.jpg`;
+      await FileSystem.copyAsync({ from: picked, to: target });
+      return target;
+    } catch {
+      setNotice("La galerie photo n’est pas accessible pour le moment. Réessayez.");
       return null;
     }
-    setPhotoDenied(false);
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], allowsEditing: true, aspect: [1, 1], quality: 0.7 });
-    return result.canceled ? null : result.assets[0]?.uri ?? null;
   };
 
   const changeProfilePhoto = async () => {
@@ -593,6 +629,41 @@ export default function Index() {
   // --- Souvenirs : classement, suppression, partage, transcription -------------
   const [editingCapsule, setEditingCapsule] = useState<Capsule | null>(null);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
+
+  // Retour depuis l'atelier : jamais de perte silencieuse d'un enregistrement.
+  const workshopBack = () => {
+    if (workshopStep === "record" && workshopMode === "question" && recorderStatus === "idle") return setWorkshopStep("theme");
+    const target: Screen = selectedResident ? "profile" : "home";
+    if (recorderStatus === "idle") return leaveWorkshop(target);
+    setConfirm({
+      title: "Quitter sans sauvegarder ?",
+      message: recorderStatus === "done"
+        ? "Cet enregistrement n’a pas encore été sauvegardé. Si vous quittez maintenant, il sera perdu."
+        : "Un enregistrement est en cours. Si vous quittez maintenant, il sera perdu.",
+      confirmLabel: "Quitter sans sauvegarder",
+      action: () => {
+        setConfirm(null);
+        leaveWorkshop(target);
+      },
+    });
+  };
+
+  // Bouton « retour » d'Android : revient à l'écran précédent au lieu de
+  // fermer l'application (les fenêtres se ferment d'elles-mêmes).
+  const hardwareBack = useRef<() => boolean>(() => false);
+  useEffect(() => {
+    hardwareBack.current = () => {
+      if (screen === "home") return false;
+      if (screen === "workshop") workshopBack();
+      else if (screen === "questions" || screen === "quizAdmin") setScreen("pro");
+      else setScreen("home");
+      return true;
+    };
+  });
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => hardwareBack.current());
+    return () => subscription.remove();
+  }, []);
 
   const saveCapsuleEdit = async (changes: { title: string; resident_id: string | null; theme: string | null }) => {
     const capsule = editingCapsule;
@@ -849,10 +920,7 @@ export default function Index() {
       durationSeconds={elapsedSec}
       voiceEnabled={features.voice_reading && !!authUser}
       speakingQuestion={!!question && speakingKey === `q-${question.id}`}
-      onBack={() => {
-        if (workshopStep === "record" && workshopMode === "question" && recorderStatus === "idle") return setWorkshopStep("theme");
-        leaveWorkshop(selectedResident ? "profile" : "home");
-      }}
+      onBack={workshopBack}
       onPickResident={(resident) => {
         if (resident.consent_status !== "obtained") return setNotice("Le consentement doit être obtenu avant tout enregistrement.");
         setSelectedResidentId(resident.id);
@@ -916,7 +984,6 @@ export default function Index() {
     <ResidentFormModal {...base}
       visible={residentForm.open}
       resident={state.residents.find((resident) => resident.id === residentForm.residentId) ?? null}
-      photoDenied={photoDenied}
       onPickPhoto={pickPhoto}
       onClose={() => setResidentForm({ open: false, residentId: null })}
       onSubmit={(draft) => void submitResident(draft)} />

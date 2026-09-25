@@ -1,6 +1,7 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
+import { StatusBar } from "expo-status-bar";
 import { LogBox } from "react-native";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 
@@ -30,6 +31,8 @@ export default function RootLayout() {
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <KeyboardProvider>
+          {/* Fond blanc Racontelle : icônes de la barre d'état en foncé pour rester lisibles. */}
+          <StatusBar style="dark" />
           <Stack screenOptions={{ headerShown: false }} />
         </KeyboardProvider>
       </QueryClientProvider>

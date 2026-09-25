@@ -1,6 +1,6 @@
 import { Image } from "expo-image";
 import { useState, type ReactNode } from "react";
-import { ActivityIndicator, KeyboardAvoidingView, Linking, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
 
 import { appVersion } from "../api";
@@ -44,7 +44,6 @@ export type ResidentDraft = { display_name: string; last_initial: string; unit: 
 type ResidentFormProps = Base & {
   visible: boolean;
   resident: Resident | null;
-  photoDenied: boolean;
   onPickPhoto: () => Promise<string | null>;
   onClose: () => void;
   onSubmit: (draft: ResidentDraft) => void;
@@ -56,7 +55,7 @@ export function ResidentFormModal(props: ResidentFormProps) {
   return props.visible ? <ResidentFormSheet {...props} /> : null;
 }
 
-function ResidentFormSheet({ visible, resident, photoDenied, onPickPhoto, onClose, onSubmit, ...base }: ResidentFormProps) {
+function ResidentFormSheet({ visible, resident, onPickPhoto, onClose, onSubmit, ...base }: ResidentFormProps) {
   const { styles, colors } = base;
   const [draft, setDraft] = useState<ResidentDraft>(() => (resident
     ? { display_name: resident.display_name, last_initial: resident.last_initial ?? "", unit: resident.unit ?? "", consent_status: (resident.consent_status as ConsentStatus) ?? "pending", photo_uri: resident.photo_uri ?? null }
@@ -70,9 +69,7 @@ function ResidentFormSheet({ visible, resident, photoDenied, onPickPhoto, onClos
       <View style={styles.largeAvatar}>{draft.photo_uri ? <Image testID="resident-photo-preview" source={{ uri: draft.photo_uri }} style={{ width: 80, height: 80, borderRadius: 40 }} contentFit="cover" /> : <Icon name="camera-outline" color={colors.onBrandTertiary} size={28} />}</View>
       <View style={{ flex: 1, gap: 6 }}>
         <Pressable testID="resident-photo-button" accessibilityRole="button" onPress={() => void onPickPhoto().then((uri) => uri && set({ photo_uri: uri }))} style={({ pressed }) => [styles.secondaryButton, { minHeight: 48 }, pressed && styles.pressed]}><Icon name="image-outline" color={colors.brandPrimary} size={20} /><Text style={[styles.secondaryText, { fontSize: 14 }]}>{draft.photo_uri ? "Changer la photo" : "Ajouter une photo"}</Text></Pressable>
-        <Text style={styles.small}>Facultative, elle reste sur cet appareil.</Text>
-        {photoDenied && <Pressable testID="resident-photo-settings" accessibilityRole="button" onPress={() => void Linking.openSettings()} style={styles.textButton}><Text style={styles.textButtonLabel}>Ouvrir les réglages</Text></Pressable>}
-      </View>
+        <Text style={styles.small}>Facultative, elle reste sur cet appareil.</Text>      </View>
     </View>
     <TextInput testID="resident-name-input" value={draft.display_name} onChangeText={(value) => set({ display_name: value })} autoFocus={!resident} placeholder="Prénom ou pseudonyme" placeholderTextColor={colors.muted} style={styles.input} maxLength={80} returnKeyType="next" />
     <View style={styles.actionRow}>

@@ -10,7 +10,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_BACKEND_URL": "ADRESSE_DU_SERVEUR_A_RENSEIGNER"
+        "EXPO_PUBLIC_BACKEND_URL": "https://ehpad-recall.preview.emergentagent.com"
       }
     },
     "production": {
@@ -18,7 +18,7 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_BACKEND_URL": "ADRESSE_DU_SERVEUR_A_RENSEIGNER"
+        "EXPO_PUBLIC_BACKEND_URL": "https://ehpad-recall.preview.emergentagent.com"
       }
     }
   }
