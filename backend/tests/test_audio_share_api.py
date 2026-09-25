@@ -50,7 +50,7 @@ def resident(session):
     assert data["display_name"] == name
     yield data
     # deactivate to not pollute the 10-profile list
-    session.patch(f"{BASE_URL}/api/residents/{data['id']}", json={"active": False}, timeout=20)
+    session.delete(f"{BASE_URL}/api/residents/{data['id']}", timeout=20)
 
 
 @pytest.fixture(scope="module")

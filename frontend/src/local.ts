@@ -3,7 +3,7 @@ import { storage } from "@/src/utils/storage";
 import type { Capsule, LocalState, Resident } from "./types";
 
 let scope = "guest";
-const DEFAULT_STATE: LocalState = { residents: [], capsules: [], usage: { total_ms: 0, by_resident_ms: {} }, exports: {}, answered: {} };
+const DEFAULT_STATE: LocalState = { residents: [], capsules: [], usage: { total_ms: 0, by_resident_ms: {} }, exports: {}, answered: {}, pending_removals: [], pending_merges: [] };
 
 function key() {
   return `racontelle.local.v2.${scope}`;
@@ -11,6 +11,10 @@ function key() {
 
 export function setLocalScope(tenantId: string | null) {
   scope = tenantId ?? "guest";
+}
+
+export function isLocalId(id: string | null | undefined) {
+  return !!id && id.startsWith("local-");
 }
 
 export async function readLocalState(): Promise<LocalState> {
@@ -29,6 +33,8 @@ export async function readLocalState(): Promise<LocalState> {
     },
     exports: stored?.exports ?? DEFAULT_STATE.exports,
     answered: stored?.answered ?? DEFAULT_STATE.answered,
+    pending_removals: stored?.pending_removals ?? [],
+    pending_merges: stored?.pending_merges ?? [],
   };
 }
 
@@ -36,18 +42,56 @@ export async function writeLocalState(state: LocalState): Promise<boolean> {
   return storage.setItem(key(), state);
 }
 
-export function mergeResidents(local: Resident[], remote: Resident[]): Resident[] {
-  const byId = new Map(local.map((resident) => [resident.id, resident]));
-  remote.forEach((resident) => {
-    // La photo du profil vit sur l'appareil (offline-first) : la copie
-    // serveur ne doit jamais l'effacer.
-    byId.set(resident.id, { ...resident, photo_uri: byId.get(resident.id)?.photo_uri ?? null });
-  });
-  return Array.from(byId.values()).slice(0, 10);
+/**
+ * Fusion appareil ↔ serveur. Le serveur fait foi pour les profils déjà
+ * synchronisés : un profil retiré ou fusionné depuis un autre appareil
+ * disparaît ici aussi. Les profils créés hors connexion (`local-…`) et les
+ * modifications en attente (`pending_sync`) sont conservés tels quels.
+ */
+export function mergeResidents(local: Resident[], remote: Resident[], hiddenIds: string[] = []): Resident[] {
+  const localById = new Map(local.map((resident) => [resident.id, resident]));
+  const hidden = new Set(hiddenIds);
+  const merged: Resident[] = remote
+    .filter((resident) => !hidden.has(resident.id))
+    .map((resident) => {
+      const mine = localById.get(resident.id);
+      // La photo du profil vit sur l'appareil (offline-first) : la copie
+      // serveur ne doit jamais l'effacer.
+      return mine?.pending_sync
+        ? { ...resident, display_name: mine.display_name, pending_sync: true, photo_uri: mine.photo_uri ?? null }
+        : { ...resident, photo_uri: mine?.photo_uri ?? null };
+    });
+  local.filter((resident) => isLocalId(resident.id)).forEach((resident) => merged.push(resident));
+  return merged;
 }
 
 export function mergeCapsules(local: Capsule[], remote: Capsule[]): Capsule[] {
   const byId = new Map(local.map((capsule) => [capsule.id, capsule]));
-  remote.forEach((capsule) => byId.set(capsule.id, { ...byId.get(capsule.id), ...capsule }));
+  remote.forEach((capsule) => {
+    const mine = byId.get(capsule.id);
+    const next = { ...mine, ...capsule, audio_uri: mine?.audio_uri ?? null };
+    // Une modification locale pas encore envoyée l'emporte sur la copie serveur.
+    byId.set(capsule.id, mine?.pending_update
+      ? { ...next, title: mine.title, resident_id: mine.resident_id, status: mine.status, pending_update: true }
+      : next);
+  });
   return Array.from(byId.values()).sort((a, b) => b.recorded_at.localeCompare(a.recorded_at));
+}
+
+/** Remplace l'identifiant provisoire d'un profil par celui attribué par le serveur. */
+export function remapResidentId(state: LocalState, fromId: string, resident: Resident): LocalState {
+  const renameKey = <T,>(record: Record<string, T> | undefined) => {
+    if (!record || !(fromId in record)) return record ?? {};
+    const { [fromId]: value, ...rest } = record;
+    return { ...rest, [resident.id]: value };
+  };
+  return {
+    ...state,
+    residents: state.residents.map((item) => (item.id === fromId ? resident : item)),
+    capsules: state.capsules.map((capsule) => (capsule.resident_id === fromId ? { ...capsule, resident_id: resident.id } : capsule)),
+    usage: { ...state.usage, by_resident_ms: renameKey(state.usage.by_resident_ms) },
+    exports: renameKey(state.exports),
+    answered: renameKey(state.answered),
+    pending_merges: (state.pending_merges ?? []).map((merge) => (merge.keep_id === fromId ? { ...merge, keep_id: resident.id } : merge)),
+  };
 }

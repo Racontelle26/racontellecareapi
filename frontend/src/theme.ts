@@ -52,7 +52,9 @@ const light = {
   muted: "#7C8698",
 
   // ---------------------------------------------------------------------------
-  // Brand: rose thé #E7A7A5, sauge douce #B9C5B3, bleu encre doux #2F3E52.
+  // Brand Racontelle Care : le bleu encre doux #2F3E52 est la couleur
+  // prioritaire (boutons, titres, pastilles). Rose thé #E7A7A5, sauge douce
+  // #B9C5B3 et brun mémoire #A67C63 restent des accents.
   // ---------------------------------------------------------------------------
   brand: "#E7A7A5",
   onBrand: "#2F3E52",
@@ -60,8 +62,10 @@ const light = {
   onBrandPrimary: "#FFFFFF",
   brandSecondary: "#B9C5B3",
   onBrandSecondary: "#2F3E52",
-  brandTertiary: "#F6E8E7",
-  onBrandTertiary: "#A65F5B",
+  brandTertiary: "#E6EBF1",
+  onBrandTertiary: "#2F3E52",
+  accentRose: "#F6E8E7",
+  onAccentRose: "#A65F5B",
 
   // ---------------------------------------------------------------------------
   // Status: semantic only. Brun mémoire #A67C63 porte les avertissements.

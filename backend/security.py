@@ -2,9 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from email.message import EmailMessage
 import hashlib
+import hmac
+import logging
 import os
 import secrets
+import smtplib
 import uuid
 from typing import Optional
 
@@ -15,8 +19,10 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, EmailStr, Field
 from pwdlib import PasswordHash
 from pymongo.errors import DuplicateKeyError
+from starlette.concurrency import run_in_threadpool
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
 JWT_SECRET = os.environ["JWT_SECRET"]
 JWT_ISSUER = os.environ["JWT_ISSUER"]
@@ -51,6 +57,8 @@ async def ensure_security_indexes() -> None:
     await db.usage_quotas.create_index(
         [("tenant_id", 1), ("user_id", 1), ("day", 1)], unique=True
     )
+    await db.password_resets.create_index("expires_at", expireAfterSeconds=0)
+    await db.password_resets.create_index("user_id")
     await db.share_tokens.create_index("token_hash", unique=True, sparse=True)
     await db.share_tokens.create_index("expires_at", expireAfterSeconds=0)
     for collection in ("residents", "capsules", "status_checks", "share_tokens"):
@@ -338,6 +346,9 @@ async def login(
         await _record_failed_login(email)
         raise HTTPException(status_code=401, detail="Identifiants incorrects")
     await db.auth_attempts.delete_many({"email_hash": hashlib.sha256(email.encode()).hexdigest()})
+    if user["role"] == "admin":
+        # Cahier des charges bêta §12 : les accès administrateur sont journalisés.
+        await _audit_raw(user["tenant_id"], user["id"], "auth.admin_login", "user", user["id"], {"platform": x_client_platform or "inconnu"})
     return await _issue_session(user, response, _is_web(x_client_platform))
 
 
@@ -463,4 +474,169 @@ async def create_member(body: MemberCreate, admin: AuthUser = Depends(require_ad
         await db.users.insert_one(user)
     except DuplicateKeyError as exc:
         raise HTTPException(status_code=409, detail="Cette adresse email est déjà utilisée") from exc
+    await _audit_raw(admin.tenant_id, admin.id, "member.create", "user", user["id"], {"email": email})
     return _user_out(user, admin.establishment_name)
+
+
+# ---------------------------------------------------------------------------
+# Récupération du mot de passe
+#
+# 1. POST /api/auth/password/forgot : un code à usage unique (8 caractères,
+#    valable 30 minutes, 5 essais) est envoyé par email. La réponse est
+#    toujours identique pour ne pas révéler quelles adresses ont un compte.
+# 2. POST /api/auth/password/reset : code + nouveau mot de passe. Toutes les
+#    sessions ouvertes de l'utilisateur sont fermées.
+# Sans serveur SMTP configuré, aucun email ne part : l'administrateur peut
+# alors définir un mot de passe temporaire pour un membre (voir plus bas).
+# ---------------------------------------------------------------------------
+
+RESET_MINUTES = 30
+RESET_MAX_ATTEMPTS = 5
+RESET_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"  # sans 0/O, 1/I/L : lisible et dictable
+SMTP_HOST = os.environ.get("SMTP_HOST", "").strip()
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
+SMTP_USER = os.environ.get("SMTP_USER", "").strip()
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
+SMTP_FROM = os.environ.get("SMTP_FROM", SMTP_USER or "no-reply@racontelle.fr").strip()
+
+
+class ForgotRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetRequest(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=6, max_length=20)
+    new_password: str = Field(min_length=12, max_length=128)
+
+
+class MemberPasswordRequest(BaseModel):
+    new_password: str = Field(min_length=12, max_length=128)
+
+
+def _normalize_code(code: str) -> str:
+    return "".join(ch for ch in code.upper() if ch.isalnum())
+
+
+def _code_hash(reset_id: str, code: str) -> str:
+    return hashlib.sha256(f"{reset_id}:{_normalize_code(code)}".encode()).hexdigest()
+
+
+def _send_reset_email(to: str, full_name: str, code: str) -> None:
+    message = EmailMessage()
+    message["Subject"] = "Racontelle Care — votre code de réinitialisation"
+    message["From"] = SMTP_FROM
+    message["To"] = to
+    message.set_content(
+        f"Bonjour {full_name},\n\n"
+        f"Voici votre code pour choisir un nouveau mot de passe Racontelle Care :\n\n"
+        f"    {code}\n\n"
+        f"Ce code est valable {RESET_MINUTES} minutes et ne peut servir qu'une fois.\n"
+        "Si vous n'êtes pas à l'origine de cette demande, ignorez simplement ce message : "
+        "votre mot de passe actuel reste valable.\n\n"
+        "L'équipe Racontelle Care\n"
+    )
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20) as smtp:
+        smtp.starttls()
+        if SMTP_USER:
+            smtp.login(SMTP_USER, SMTP_PASSWORD)
+        smtp.send_message(message)
+
+
+async def _audit_raw(tenant_id: str, user_id: str, action: str, object_type: str, object_id: Optional[str], details: dict) -> None:
+    await db.audit_logs.insert_one(
+        {
+            "id": str(uuid.uuid4()),
+            "tenant_id": tenant_id,
+            "user_id": user_id,
+            "action": action,
+            "object_type": object_type,
+            "object_id": object_id,
+            "details": details,
+            "created_at": now().isoformat(),
+        }
+    )
+
+
+FORGOT_MESSAGE = {
+    "ok": True,
+    "message": "Si un compte existe pour cette adresse, un code vient d’être envoyé. Pensez à vérifier les courriers indésirables.",
+}
+
+
+@auth_router.post("/password/forgot")
+async def forgot_password(body: ForgotRequest):
+    email = body.email.lower().strip()
+    # Même garde que la connexion : 10 demandes par quart d'heure et par adresse.
+    await _assert_login_rate(email)
+    await _record_failed_login(email)
+    user = await db.users.find_one({"email_lower": email, "disabled": {"$ne": True}}, {"_id": 0})
+    if not user:
+        return FORGOT_MESSAGE
+    code = "".join(secrets.choice(RESET_ALPHABET) for _ in range(8))
+    reset_id = str(uuid.uuid4())
+    await db.password_resets.delete_many({"user_id": user["id"]})
+    await db.password_resets.insert_one(
+        {
+            "id": reset_id,
+            "user_id": user["id"],
+            "tenant_id": user["tenant_id"],
+            "code_hash": _code_hash(reset_id, code),
+            "attempts": 0,
+            "created_at": now(),
+            "expires_at": now() + timedelta(minutes=RESET_MINUTES),
+        }
+    )
+    if not SMTP_HOST:
+        logger.warning("SMTP non configuré : code de réinitialisation non envoyé pour l'utilisateur %s", user["id"])
+        return FORGOT_MESSAGE
+    try:
+        await run_in_threadpool(_send_reset_email, email, user["full_name"], f"{code[:4]}-{code[4:]}")
+    except Exception as exc:  # noqa: BLE001 - on ne révèle rien au client
+        logger.warning("envoi du code de réinitialisation impossible : %s", exc)
+    return FORGOT_MESSAGE
+
+
+@auth_router.post("/password/reset")
+async def reset_password(body: ResetRequest):
+    email = body.email.lower().strip()
+    await _assert_login_rate(email)
+    invalid = HTTPException(status_code=400, detail="Code invalide ou expiré. Demandez un nouveau code.")
+    user = await db.users.find_one({"email_lower": email, "disabled": {"$ne": True}}, {"_id": 0})
+    reset = await db.password_resets.find_one({"user_id": user["id"]}, {"_id": 0}) if user else None
+    if not user or not reset:
+        await _record_failed_login(email)
+        raise invalid
+    expires_at = reset["expires_at"] if reset["expires_at"].tzinfo else reset["expires_at"].replace(tzinfo=timezone.utc)
+    if expires_at <= now() or reset.get("attempts", 0) >= RESET_MAX_ATTEMPTS:
+        await db.password_resets.delete_one({"id": reset["id"]})
+        raise invalid
+    if not hmac.compare_digest(reset["code_hash"], _code_hash(reset["id"], body.code)):
+        await db.password_resets.update_one({"id": reset["id"]}, {"$inc": {"attempts": 1}})
+        await _record_failed_login(email)
+        raise invalid
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {"password_hash": password_hash.hash(body.new_password), "password_changed_at": now()}},
+    )
+    await db.password_resets.delete_many({"user_id": user["id"]})
+    await db.refresh_tokens.update_many(
+        {"user_id": user["id"], "revoked_at": None}, {"$set": {"revoked_at": now()}}
+    )
+    await db.auth_attempts.delete_many({"email_hash": hashlib.sha256(email.encode()).hexdigest()})
+    await _audit_raw(user["tenant_id"], user["id"], "auth.password_reset", "user", user["id"], {})
+    return {"ok": True, "message": "Mot de passe modifié. Vous pouvez vous connecter."}
+
+
+@auth_router.post("/members/{member_id}/password")
+async def set_member_password(member_id: str, body: MemberPasswordRequest, admin: AuthUser = Depends(require_admin)):
+    """Mot de passe temporaire défini par l'administrateur (sans email)."""
+    result = await db.users.update_one(
+        {"id": member_id, "tenant_id": admin.tenant_id},
+        {"$set": {"password_hash": password_hash.hash(body.new_password), "password_changed_at": now()}},
+    )
+    if not result.matched_count:
+        raise HTTPException(status_code=404, detail="Membre introuvable")
+    await db.refresh_tokens.update_many({"user_id": member_id, "revoked_at": None}, {"$set": {"revoked_at": now()}})
+    await _audit_raw(admin.tenant_id, admin.id, "member.password_reset", "user", member_id, {})
+    return {"ok": True}
