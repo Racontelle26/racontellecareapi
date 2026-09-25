@@ -26,7 +26,17 @@ def register(label: str):
         timeout=30,
     )
     assert response.status_code == 201, response.text
-    return response.json(), email, password
+    session = response.json()
+    # Les fonctions hors bêta (partage, transcription, PDF) sont désactivées par
+    # défaut : les tests de sécurité les activent pour les éprouver.
+    enabled = requests.patch(
+        f"{BASE_URL}/api/settings",
+        headers={"Authorization": f"Bearer {session['access_token']}"},
+        json={"family_share": True, "transcription": True, "carnet_pdf": True, "voice_reading": True, "quiz": True},
+        timeout=20,
+    )
+    assert enabled.status_code == 200, enabled.text
+    return session, email, password
 
 
 def auth(token: str):

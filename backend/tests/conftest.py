@@ -9,6 +9,7 @@ load_dotenv("/app/frontend/.env")
 BASE_URL = os.environ["EXPO_PUBLIC_BACKEND_URL"].rstrip("/")
 TEST_EMAIL = "admin.security@racontelle.example.com"
 TEST_PASSWORD = "Racontelle-Test-2026!"
+_token: dict = {}
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -21,6 +22,7 @@ def authenticated_requests():
     )
     assert login.status_code == 200, login.text
     token = login.json()["access_token"]
+    _token["value"] = token
     original = requests.sessions.Session.request
 
     def secured(session, method, url, **kwargs):
@@ -31,5 +33,24 @@ def authenticated_requests():
         return original(session, method, url, **kwargs)
 
     requests.sessions.Session.request = secured
+    # Les fonctions hors bêta sont désactivées par défaut : l'établissement de
+    # test les active pour que la non-régression les couvre.
+    enabled = requests.patch(
+        f"{BASE_URL}/api/settings",
+        json={"family_share": True, "transcription": True, "carnet_pdf": True, "voice_reading": True, "quiz": True},
+        timeout=20,
+    )
+    assert enabled.status_code == 200, enabled.text
     yield
     requests.sessions.Session.request = original
+
+
+@pytest.fixture(scope="module", autouse=True)
+def fresh_resident_slots(authenticated_requests):
+    """La bêta limite l'établissement à 5 profils actifs : chaque module de
+    test repart d'un établissement vide (profils archivés, jamais effacés)."""
+    residents = requests.get(f"{BASE_URL}/api/residents", timeout=20)
+    if residents.status_code == 200:
+        for resident in residents.json():
+            requests.delete(f"{BASE_URL}/api/residents/{resident['id']}", timeout=20)
+    yield

@@ -1,0 +1,18 @@
+# Fichiers non envoyés à EAS Build (le projet n'est pas suivi par Git).
+node_modules/
+.expo/
+.metro-cache/
+dist/
+web-build/
+android/
+ios/
+*.jks
+*.keystore
+*.p8
+*.p12
+*.key
+*.pem
+.env*.local
+npm-debug.*
+yarn-debug.*
+yarn-error.*

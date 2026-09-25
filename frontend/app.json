@@ -14,9 +14,16 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#000000"
+        "backgroundColor": "#FFFFFF"
       },
-      "package": "com.emergent.ehpadrecall.up10xn"
+      "package": "fr.racontelle.care",
+      "versionCode": 1,
+      "permissions": ["android.permission.RECORD_AUDIO"],
+      "blockedPermissions": [
+        "android.permission.CAMERA",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -39,7 +46,19 @@
       "expo-secure-store",
       "expo-web-browser",
       "expo-status-bar",
-      "expo-audio",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Racontelle Care utilise le micro pour enregistrer les souvenirs racontés pendant l’atelier."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Racontelle Care accède à vos photos pour ajouter un portrait au profil d’un résident.",
+          "cameraPermission": false
+        }
+      ],
       "expo-sharing"
     ],
     "experiments": {

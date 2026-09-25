@@ -1,4 +1,3 @@
-import { Ionicons } from "@expo/vector-icons";
 import {
   AudioModule,
   RecordingPresets,
@@ -10,231 +9,264 @@ import {
 } from "expo-audio";
 import * as Clipboard from "expo-clipboard";
 import * as FileSystem from "expo-file-system/legacy";
-import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
+import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import * as Sharing from "expo-sharing";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  AppState,
-  KeyboardAvoidingView,
-  Linking,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  Switch,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, AppState, BackHandler, Platform, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { KeyboardAwareScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
 
 import { api, apiBaseUrl, ApiError, authApi } from "@/src/api";
 import { AuthScreen } from "@/src/components/auth-screen";
-import { EstablishmentBanner } from "@/src/components/establishment-banner";
-import { Waveform } from "@/src/components/waveform";
-import { readLocalState, mergeCapsules, mergeResidents, setLocalScope, writeLocalState } from "@/src/local";
+import type { CapsuleActions } from "@/src/components/capsule-row";
+import {
+  AddMemberModal,
+  ConfirmModal,
+  EditCapsuleModal,
+  FeedbackModal,
+  MergeModal,
+  PinModal,
+  RemoveProfileModal,
+  ResidentFormModal,
+  type ResidentDraft,
+} from "@/src/components/modals";
+import { useCarnetStore } from "@/src/hooks/use-carnet-store";
+import { useUsageTracking } from "@/src/hooks/use-usage-tracking";
+import { isLocalId, setLocalScope } from "@/src/local";
+import { availableQuestions, pickQuestion, THEME_ORDER, themeCards } from "@/src/question-bank";
+import { HomeScreen } from "@/src/screens/home-screen";
+import { LibraryScreen, type LibraryFilter } from "@/src/screens/library-screen";
+import { ProScreen } from "@/src/screens/pro-screen";
+import { ProfileScreen } from "@/src/screens/profile-screen";
+import { QuestionBankScreen } from "@/src/screens/question-bank-screen";
+import { QuizAdminScreen } from "@/src/screens/quiz-admin-screen";
+import { QuizScreen } from "@/src/screens/quiz-screen";
+import { WorkshopScreen, type RecorderStatus, type WorkshopMode, type WorkshopStep } from "@/src/screens/workshop-screen";
 import { readProfessionalPin, writeProfessionalPin } from "@/src/secure-pin";
-import { makeStyles, useTheme } from "@/src/theme";
-import type { AuthSession, AuthUser, Capsule, LocalState, Question, Resident, UsageState } from "@/src/types";
+import { useTheme } from "@/src/theme";
+import type { AuthSession, AuthUser, Capsule, FeatureFlags, FeedbackCategory, Question, Resident } from "@/src/types";
+import { Icon } from "@/src/ui/primitives";
+import { useStyles } from "@/src/ui/styles";
 
-type Screen = "home" | "profile" | "workshop" | "archive" | "stats";
-type WorkshopMode = "free" | "question";
-type RecorderStatus = "idle" | "recording" | "paused" | "done";
+type Screen = "home" | "profile" | "workshop" | "library" | "pro" | "quiz" | "questions" | "quizAdmin";
+type Confirm = { title: string; message: string; confirmLabel: string; action: () => void };
 
-const usageClockNow = () => globalThis.performance?.now?.() ?? Date.now();
+const KEEP_AWAKE_TAG = "racontelle-enregistrement";
+const PIN_MAX_ATTEMPTS = 5;
+const PIN_LOCK_SECONDS = 60;
 
-type UsageSession = { startedAt: number; residentId: string | null; active: boolean };
-
-function commitUsageSegment({
-  usageSession,
-  stateRef,
-  residentId,
-  active,
-  setState,
-  setDisplayedUsage,
-}: {
-  usageSession: { current: UsageSession };
-  stateRef: { current: LocalState };
-  residentId: string | null;
-  active?: boolean;
-  setState: (next: LocalState) => void;
-  setDisplayedUsage: (usage: UsageState) => void;
-}) {
-  const previous = usageSession.current;
-  const timestamp = usageClockNow();
-  const elapsedMs = previous.active ? Math.max(0, timestamp - previous.startedAt) : 0;
-  usageSession.current = { startedAt: timestamp, residentId, active: active ?? AppState.currentState === "active" };
-  if (!elapsedMs) return;
-  const current = stateRef.current;
-  const usage = current.usage ?? { total_ms: 0, by_resident_ms: {} };
-  const nextUsage = {
-    total_ms: usage.total_ms + elapsedMs,
-    by_resident_ms: previous.residentId
-      ? { ...usage.by_resident_ms, [previous.residentId]: (usage.by_resident_ms[previous.residentId] ?? 0) + elapsedMs }
-      : usage.by_resident_ms,
-  };
-  const next = { ...current, usage: nextUsage };
-  stateRef.current = next;
-  setState(next);
-  setDisplayedUsage(nextUsage);
-  void writeLocalState(next);
+function spontaneousTitle(date: Date) {
+  const label = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(date);
+  return `Souvenir spontané — ${label}`;
 }
 
-const FALLBACK_QUESTIONS: Question[] = [
-  { id: "q1", theme: "Enfance", text: "Quel est votre tout premier souvenir ?", sensitive: false },
-  { id: "q2", theme: "Famille", text: "Qui vous faisait le plus rire dans votre famille ?", sensitive: false },
-  { id: "q3", theme: "Transmission", text: "Quel conseil aimeriez-vous transmettre aux plus jeunes ?", sensitive: false },
-];
-
-// Charte typographique Racontelle Care :
-// Allura → titres & accroches (script manuscrit élégant)
-// Cormorant Garamond → textes & corps (serif raffiné et lisible)
-// Montserrat → menus, boutons, petits titres (sans-serif moderne)
-const useStyles = makeStyles((colors) => ({
-  root: { flex: 1, backgroundColor: colors.surface },
-  screen: { paddingHorizontal: 20, gap: 24 },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  backButton: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.surfaceSecondary, alignItems: "center", justifyContent: "center" },
-  logo: { width: 176, height: 56 },
-  eyebrow: { color: colors.muted, fontSize: 12, letterSpacing: 1.5, textTransform: "uppercase", fontFamily: "Montserrat-Bold" },
-  title: { color: colors.onSurface, fontSize: 32, lineHeight: 38, fontFamily: "CormorantGaramond-SemiBold" },
-  heading: { color: colors.onSurface, fontSize: 20, lineHeight: 26, fontFamily: "Montserrat-Bold" },
-  body: { color: colors.onSurfaceSecondary, fontSize: 17, lineHeight: 24, fontFamily: "CormorantGaramond-Regular" },
-  small: { color: colors.muted, fontSize: 13, lineHeight: 18, fontFamily: "Montserrat-Medium" },
-  status: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.brandTertiary, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 10 },
-  statusText: { color: colors.onBrandTertiary, fontSize: 13, fontFamily: "Montserrat-Bold" },
-  hero: { backgroundColor: colors.surfaceSecondary, borderRadius: 24, padding: 20, borderWidth: 1, borderColor: colors.border },
-  heroTitle: { color: colors.onSurface, fontSize: 22, lineHeight: 29, fontFamily: "CormorantGaramond-SemiBold", marginBottom: 8 },
-  actionRow: { flexDirection: "row", gap: 12 },
-  actionCard: { flex: 1, minHeight: 126, borderRadius: 20, padding: 16, justifyContent: "space-between", borderWidth: 1, borderColor: colors.border },
-  actionPrimary: { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },
-  actionSecondary: { backgroundColor: colors.brandTertiary },
-  actionTitle: { color: colors.onSurface, fontSize: 15, fontFamily: "Montserrat-Bold", lineHeight: 21 },
-  actionTitleLight: { color: colors.onBrandPrimary },
-  actionText: { color: colors.onSurfaceSecondary, fontSize: 13, lineHeight: 18, fontFamily: "CormorantGaramond-Regular" },
-  actionTextLight: { color: colors.onBrandPrimary, opacity: 0.88 },
-  sectionHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  textButton: { minHeight: 44, justifyContent: "center", paddingHorizontal: 4 },
-  textButtonLabel: { color: colors.brandPrimary, fontSize: 14, fontFamily: "Montserrat-Bold" },
-  profileGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
-  profileCard: { width: "47%", minHeight: 108, borderRadius: 18, padding: 14, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border, justifyContent: "space-between" },
-  avatar: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: colors.brandSecondary },
-  avatarText: { color: colors.onBrandSecondary, fontSize: 18, fontFamily: "Montserrat-Bold" },
-  profileName: { color: colors.onSurface, fontSize: 16, fontFamily: "Montserrat-Bold", marginTop: 10 },
-  consent: { color: colors.success, fontSize: 11, fontFamily: "Montserrat-Bold", marginTop: 3 },
-  empty: { borderRadius: 20, borderWidth: 1, borderColor: colors.border, borderStyle: "dashed", padding: 22, alignItems: "center", gap: 8 },
-  primaryButton: { minHeight: 52, borderRadius: 18, backgroundColor: colors.brandPrimary, flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "center", paddingHorizontal: 18 },
-  primaryText: { color: colors.onBrandPrimary, fontSize: 16, fontFamily: "Montserrat-Bold" },
-  secondaryButton: { minHeight: 52, borderRadius: 18, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.borderStrong, flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "center", paddingHorizontal: 18 },
-  secondaryText: { color: colors.onSurface, fontSize: 16, fontFamily: "Montserrat-Bold" },
-  profileHeader: { alignItems: "center", gap: 10 },
-  largeAvatar: { width: 80, height: 80, borderRadius: 40, backgroundColor: colors.brandSecondary, alignItems: "center", justifyContent: "center" },
-  largeAvatarText: { color: colors.onBrandSecondary, fontSize: 30, fontFamily: "Montserrat-Bold" },
-  capsule: { borderRadius: 18, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border, padding: 16, gap: 10 },
-  capsuleTop: { flexDirection: "row", justifyContent: "space-between", gap: 10 },
-  capsuleTitle: { color: colors.onSurface, fontSize: 18, lineHeight: 24, fontFamily: "CormorantGaramond-SemiBold", flex: 1 },
-  capsuleDate: { color: colors.muted, fontSize: 12, fontFamily: "Montserrat-Medium" },
-  capsuleMeta: { flexDirection: "row", alignItems: "center", gap: 8 },
-  tag: { alignSelf: "flex-start", backgroundColor: colors.brandTertiary, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 6 },
-  tagText: { color: colors.onBrandTertiary, fontSize: 12, fontFamily: "Montserrat-Bold" },
-  workshopTop: { gap: 10 },
-  progressTrack: { height: 8, backgroundColor: colors.surfaceTertiary, borderRadius: 8, overflow: "hidden" },
-  progressFill: { height: "100%", backgroundColor: colors.brandPrimary, borderRadius: 8 },
-  questionCard: { backgroundColor: colors.surfaceSecondary, borderRadius: 24, padding: 22, borderWidth: 1, borderColor: colors.border, gap: 14 },
-  questionText: { color: colors.onSurface, fontSize: 28, lineHeight: 36, fontFamily: "CormorantGaramond-SemiBold" },
-  recorderPanel: { alignItems: "center", gap: 18, paddingVertical: 12 },
-  recordButton: { width: 112, height: 112, borderRadius: 56, backgroundColor: colors.error, alignItems: "center", justifyContent: "center", borderWidth: 10, borderColor: colors.brandTertiary },
-  recordButtonActive: { backgroundColor: colors.brandPrimary },
-  timer: { color: colors.onSurface, fontSize: 30, fontFamily: "Montserrat-Bold", letterSpacing: 1 },
-  modalBackdrop: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(47,62,82,0.28)" },
-  modalCard: { backgroundColor: colors.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, borderTopWidth: 1, borderColor: colors.border, maxHeight: "88%" },
-  input: { minHeight: 54, borderRadius: 16, backgroundColor: colors.surfaceTertiary, borderWidth: 1, borderColor: colors.border, paddingHorizontal: 16, color: colors.onSurface, fontSize: 18, fontFamily: "CormorantGaramond-Regular" },
-  switchRow: { minHeight: 52, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 14 },
-  archiveFilter: { flexDirection: "row", gap: 8, paddingBottom: 2 },
-  filter: { minHeight: 42, borderRadius: 999, paddingHorizontal: 14, justifyContent: "center", backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border },
-  filterActive: { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },
-  filterText: { color: colors.onSurfaceSecondary, fontSize: 13, fontFamily: "Montserrat-Bold" },
-  filterTextActive: { color: colors.onBrandPrimary },
-  center: { alignItems: "center", justifyContent: "center", gap: 12 },
-  pressed: { opacity: 0.78, transform: [{ scale: 0.985 }] },
-  notice: { position: "absolute", left: 18, right: 18, minHeight: 52, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: colors.info, flexDirection: "row", alignItems: "center", gap: 10, shadowColor: colors.surfaceInverse, shadowOpacity: 0.15, shadowRadius: 12, elevation: 3 },
-  noticeText: { flex: 1, color: colors.onInfo, fontSize: 13, lineHeight: 18, fontFamily: "Montserrat-Medium" },
-  statsCard: { flexDirection: "row", alignItems: "center", gap: 14, borderRadius: 20, padding: 16, backgroundColor: colors.brandSecondary, borderWidth: 1, borderColor: colors.brandSecondary },
-  statHero: { borderRadius: 24, padding: 22, backgroundColor: colors.brandPrimary, gap: 6 },
-  statHeroValue: { color: colors.onBrandPrimary, fontSize: 34, lineHeight: 40, fontFamily: "CormorantGaramond-SemiBold" },
-  statHeroLabel: { color: colors.onBrandPrimary, opacity: 0.85, fontSize: 12, fontFamily: "Montserrat-Bold", letterSpacing: 1, textTransform: "uppercase" },
-  statRow: { flexDirection: "row", alignItems: "center", gap: 12, borderRadius: 18, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border, padding: 14 },
-  statValue: { color: colors.brandPrimary, fontSize: 18, fontFamily: "Montserrat-Bold" },
-  transcription: { color: colors.onSurface, fontSize: 17, lineHeight: 24, fontFamily: "CormorantGaramond-Regular", borderLeftWidth: 3, borderLeftColor: colors.brand, paddingLeft: 12 },
-  capsuleActions: { flexDirection: "row", flexWrap: "wrap", gap: 18, rowGap: 4 },
-  capsuleAction: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 6 },
-  capsuleActionText: { color: colors.brandPrimary, fontSize: 13, fontFamily: "Montserrat-Bold" },
-  dangerButton: { minHeight: 52, borderRadius: 18, backgroundColor: colors.error, flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "center", paddingHorizontal: 18 },
-  modeSwitch: { flexDirection: "row", gap: 10 },
-  modeOption: { flex: 1, minHeight: 56, borderRadius: 18, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingHorizontal: 10 },
-  modeOptionActive: { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },
-  modeOptionText: { color: colors.onSurfaceSecondary, fontSize: 14, fontFamily: "Montserrat-Bold" },
-  modeOptionTextActive: { color: colors.onBrandPrimary },
-  pinInput: { minHeight: 64, borderRadius: 18, backgroundColor: colors.surfaceTertiary, borderWidth: 1, borderColor: colors.border, textAlign: "center", fontSize: 28, letterSpacing: 12, color: colors.onSurface, fontFamily: "Montserrat-Bold" },
-}));
-
-function Icon({ name, color, size = 22 }: { name: keyof typeof Ionicons.glyphMap; color: string; size?: number }) {
-  return <Ionicons name={name} color={color} size={size} />;
-}
-
-function initials(name: string) {
-  return name.trim().slice(0, 1).toUpperCase() || "?";
-}
-
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "long", year: "numeric" }).format(new Date(value));
-}
-
-function formatDuration(seconds: number) {
-  return `${Math.floor(seconds / 60).toString().padStart(2, "0")}:${(seconds % 60).toString().padStart(2, "0")}`;
+/** Une capsule peut perdre son fichier local sans risque seulement si le serveur en a la copie. */
+function safelyStored(capsule: Capsule) {
+  return capsule.synced && !isLocalId(capsule.id) && (!capsule.audio_uri || !!capsule.audio_stored);
 }
 
 export default function Index() {
   const styles = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
-  const recorderState = useAudioRecorderState(recorder) as { isRecording?: boolean; durationMillis?: number };
+  const base = { styles, colors, insets };
+
+  const [notice, setNotice] = useState<string | null>(null);
+  const store = useCarnetStore(setNotice);
+  const { state, stateRef, update, patchCapsule, settings, questions } = store;
+  const features = settings.features;
+
   const [screen, setScreen] = useState<Screen>("home");
-  const [state, setState] = useState<LocalState>({ residents: [], capsules: [], usage: { total_ms: 0, by_resident_ms: {} }, exports: {}, answered: {} });
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [authChecking, setAuthChecking] = useState(true);
   const [guestMode, setGuestMode] = useState(false);
   const [authMessage, setAuthMessage] = useState<string | null>(null);
   const [rememberedEmail, setRememberedEmail] = useState("");
+  const [loading, setLoading] = useState(true);
   const [professionalPin, setProfessionalPin] = useState<string | null>(null);
-  const [questions, setQuestions] = useState<Question[]>(FALLBACK_QUESTIONS);
-  const [selectedResident, setSelectedResident] = useState<Resident | null>(null);
+  const [selectedResidentId, setSelectedResidentId] = useState<string | null>(null);
+  const [libraryFilter, setLibraryFilter] = useState<LibraryFilter>("all");
+  const [busyCapsuleId, setBusyCapsuleId] = useState<string | null>(null);
+  const [printing, setPrinting] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const isAdmin = authUser?.role === "admin";
+  const selectedResident = state.residents.find((resident) => resident.id === selectedResidentId) ?? null;
+
+  // --- Chronométrage ---------------------------------------------------------
+  const usageResidentId = screen === "profile" || screen === "workshop" ? selectedResidentId : null;
+  const usage = useUsageTracking(stateRef, store.setState, usageResidentId, !loading && (!!authUser || guestMode));
+
+  useEffect(() => {
+    if (!notice) return;
+    const timeout = setTimeout(() => setNotice(null), 7000);
+    return () => clearTimeout(timeout);
+  }, [notice]);
+
+  // --- Session ---------------------------------------------------------------
+  const onResidentSynced = useCallback((fromId: string, resident: Resident) => {
+    setSelectedResidentId((current) => (current === fromId ? resident.id : current));
+    setLibraryFilter((current) => (current === fromId ? resident.id : current));
+  }, []);
+
+  const openCarnet = useCallback(async (user: AuthUser | null) => {
+    setLocalScope(user?.tenant_id ?? null);
+    setProfessionalPin(await readProfessionalPin(user?.tenant_id ?? null));
+    setLoading(true);
+    // Le carnet local s'ouvre immédiatement, sans attendre le réseau ; le
+    // serveur le complète ensuite.
+    await store.loadLocal();
+    usage.reset();
+    setLoading(false);
+    if (user) api.track("session_start");
+    await store.syncWithServer(user, onResidentSynced);
+  }, [onResidentSynced, store, usage]);
+
+  useEffect(() => {
+    let active = true;
+    void authApi.rememberedUser().then(async (user) => {
+      if (!active) return;
+      setAuthUser(user);
+      setRememberedEmail(user?.email ?? "");
+      setAuthChecking(false);
+      await openCarnet(user);
+    });
+    authApi.onSessionExpired(() => {
+      setAuthMessage("Votre session a expiré par sécurité. Connectez-vous à nouveau : vos souvenirs restent sur l’appareil.");
+      setAuthUser(null);
+      setGuestMode(false);
+    });
+    return () => {
+      active = false;
+      authApi.onSessionExpired(null);
+    };
+    // Lecture unique au lancement.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Retour au premier plan : on renvoie ce qui attend (réseau revenu).
+  const { syncPending } = store;
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (status) => {
+      if (status === "active" && authUser) void syncPending(authUser, onResidentSynced);
+    });
+    return () => subscription.remove();
+  }, [authUser, onResidentSynced, syncPending]);
+
+  const activateSession = async (session: AuthSession) => {
+    setAuthUser(session.user);
+    setRememberedEmail(session.user.email);
+    setGuestMode(false);
+    setAuthMessage(null);
+    setScreen("home");
+    await openCarnet(session.user);
+  };
+
+  const continueLocally = async () => {
+    setAuthUser(null);
+    setGuestMode(true);
+    setAuthMessage(null);
+    setScreen("home");
+    await openCarnet(null);
+  };
+
+  const logout = async () => {
+    usage.stop();
+    await authApi.logout();
+    setAuthUser(null);
+    setGuestMode(false);
+    store.clear();
+    setSelectedResidentId(null);
+    setScreen("home");
+    setLocalScope(null);
+    setAuthMessage("Vous êtes déconnecté. Les enregistrements restent conservés sur l’appareil.");
+  };
+
+  // --- Lecture audio (souvenirs, réécoute, lecture vocale) ------------------
+  const [playSource, setPlaySource] = useState<string | null>(null);
+  const [playingKey, setPlayingKey] = useState<string | null>(null);
+  const player = useAudioPlayer(playSource);
+  const playerStatus = useAudioPlayerStatus(player);
+  const wantPlay = useRef(false);
+
+  useEffect(() => {
+    if (wantPlay.current && playSource) {
+      wantPlay.current = false;
+      player.play();
+    }
+  }, [playSource, player]);
+
+  const playUri = async (uri: string, key: string) => {
+    // Sortie haut-parleur : après un enregistrement, la session iOS reste en
+    // mode play-and-record et la réécoute partirait dans l'écouteur.
+    await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false });
+    setPlayingKey(key);
+    if (playSource === uri) {
+      player.seekTo(0);
+      player.play();
+      return;
+    }
+    wantPlay.current = true;
+    setPlaySource(uri);
+  };
+
+  const playingCapsuleId = playerStatus.playing && playingKey?.startsWith("c-") ? playingKey.slice(2) : null;
+  const speakingKey = playerStatus.playing && playingKey && !playingKey.startsWith("c-") ? playingKey : null;
+
+  const togglePlay = async (capsule: Capsule) => {
+    if (playingCapsuleId === capsule.id) {
+      player.pause();
+      return;
+    }
+    let uri = capsule.audio_uri ?? null;
+    if (!uri && capsule.audio_stored && authUser) {
+      setBusyCapsuleId(capsule.id);
+      try {
+        uri = await api.capsuleAudioUri(capsule.id);
+      } catch {
+        setNotice("Lecture impossible : la copie serveur n’est pas accessible pour le moment.");
+      } finally {
+        setBusyCapsuleId(null);
+      }
+    }
+    if (uri) await playUri(uri, `c-${capsule.id}`);
+  };
+
+  const speakText = async (key: string, text: string) => {
+    if (!authUser) {
+      setNotice("Connectez-vous à l’établissement pour utiliser la lecture vocale.");
+      return;
+    }
+    if (speakingKey === key) {
+      player.pause();
+      return;
+    }
+    try {
+      const { path } = await api.tts(text);
+      const uri = await api.fetchFileUri(path.replace(/^\/api/, ""), `tts-${key.replace(/[^a-z0-9-]/gi, "")}.mp3`);
+      await playUri(uri, key);
+    } catch (reason) {
+      setNotice(reason instanceof ApiError && reason.status === 429 ? "Quota quotidien de lectures vocales atteint." : "La lecture vocale est indisponible pour le moment.");
+    }
+  };
+
+  // --- Atelier : parcours guidé et mode spontané ----------------------------
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorderState = useAudioRecorderState(recorder) as { isRecording?: boolean };
+  const [workshopStep, setWorkshopStep] = useState<WorkshopStep>("record");
   const [workshopMode, setWorkshopMode] = useState<WorkshopMode>("free");
-  const [questionIndex, setQuestionIndex] = useState(0);
+  const [workshopTheme, setWorkshopTheme] = useState<string | null>(null);
+  const [question, setQuestion] = useState<Question | null>(null);
   const [recorderStatus, setRecorderStatus] = useState<RecorderStatus>("idle");
   const [recordedUri, setRecordedUri] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [showAdd, setShowAdd] = useState(false);
-  const [draftName, setDraftName] = useState("");
-  const [draftPhoto, setDraftPhoto] = useState<string | null>(null);
-  const [photoDenied, setPhotoDenied] = useState(false);
-  const [consent, setConsent] = useState(true);
-  const [archiveResidentId, setArchiveResidentId] = useState<string | null>(null);
-  const [archiveQuery, setArchiveQuery] = useState("");
-  const [busyCapsuleId, setBusyCapsuleId] = useState<string | null>(null);
-  const player = useAudioPlayer(recordedUri);
-  // Chronométrage précis, basé sur l'horloge (pause/reprise incluses) :
-  // recorderState.durationMillis n'est pas fiable sur toutes les plateformes.
+  // Chronométrage basé sur l'horloge (pause/reprise incluses), sans limite de durée.
   const [elapsedSec, setElapsedSec] = useState(0);
   const elapsedBaseMs = useRef(0);
   const recordStartMs = useRef<number | null>(null);
   const finalDurationSec = useRef(0);
-  const durationSeconds = elapsedSec;
+
+  const available = useMemo(() => availableQuestions(questions, features), [questions, features]);
+  const themes = useMemo(() => themeCards(questions, features), [questions, features]);
+  const answeredFor = (residentId: string | null) => state.answered?.[residentId ?? "none"] ?? [];
 
   useEffect(() => {
     if (recorderStatus !== "recording") return;
@@ -245,210 +277,83 @@ export default function Index() {
     return () => clearInterval(interval);
   }, [recorderStatus]);
 
-  // Les messages d'information s'effacent seuls pour ne pas masquer les boutons.
+  // Écran allumé pendant tout l'enregistrement : sans cela, la mise en veille
+  // d'Android (30 s à 2 min) couperait un long récit (BT-09).
   useEffect(() => {
-    if (!notice) return;
-    const timeout = setTimeout(() => setNotice(null), 6000);
-    return () => clearTimeout(timeout);
-  }, [notice]);
-  // Les 10 questions du jour, figées au démarrage de l'atelier : les questions
-  // sans réponse sont proposées en priorité et reproposées plus tard.
-  const [sessionQuestions, setSessionQuestions] = useState<Question[]>([]);
-  const currentQuestion = sessionQuestions[questionIndex] ?? FALLBACK_QUESTIONS[0];
-  const stateRef = useRef(state);
-  const usageSession = useRef<UsageSession>({ startedAt: usageClockNow(), residentId: null, active: AppState.currentState === "active" });
-  const [displayedUsage, setDisplayedUsage] = useState(state.usage);
+    if (recorderStatus !== "recording" && recorderStatus !== "paused") return;
+    void activateKeepAwakeAsync(KEEP_AWAKE_TAG).catch(() => null);
+    return () => { void deactivateKeepAwake(KEEP_AWAKE_TAG).catch(() => null); };
+  }, [recorderStatus]);
 
+  // Application mise en arrière-plan (appel, autre application) : le récit est
+  // mis en pause proprement, la durée reste juste et rien n'est perdu.
+  const recorderStatusRef = useRef<RecorderStatus>("idle");
   useEffect(() => {
-    stateRef.current = state;
-  }, [state]);
-
-  const persist = useCallback(async (next: LocalState) => {
-    stateRef.current = next;
-    setState(next);
-    await writeLocalState(next);
-  }, []);
-
-  // Transcription automatique : tout souvenir synchronisé avec un audio mais
-  // sans transcription est (re)transcrit en arrière-plan — y compris ceux dont
-  // la transcription a échoué hors connexion. Retenté à chaque ouverture.
-  const autoTranscribe = useCallback(async (capsules: Capsule[]) => {
-    const pending = capsules
-      .filter((capsule) => capsule.synced && capsule.audio_uri && !capsule.transcription && !capsule.id.startsWith("local-"))
-      .slice(0, 5);
-    for (const capsule of pending) {
-      try {
-        const { transcription } = await api.transcribeCapsule(capsule.id, capsule.audio_uri!);
-        const current = stateRef.current;
-        await persist({
-          ...current,
-          capsules: current.capsules.map((item) => (item.id === capsule.id ? { ...item, transcription } : item)),
-        });
-      } catch {
-        // Réseau ou service indisponible : sera retenté au prochain lancement.
-      }
-    }
-  }, [persist]);
-
-  const refresh = useCallback(async (sessionUser: AuthUser | null = authUser) => {
-    const local = await readLocalState();
-    setState(local);
-    if (!sessionUser) {
-      setLoading(false);
-      return;
-    }
-    try {
-      const [remoteResidents, remoteCapsules, remoteQuestions] = await Promise.all([api.residents(), api.capsules(), api.questions()]);
-      const next = {
-        ...local,
-        residents: mergeResidents(local.residents, remoteResidents),
-        capsules: mergeCapsules(local.capsules, remoteCapsules),
-      };
-      setState(next);
-      await writeLocalState(next);
-      if (remoteQuestions.length) setQuestions(remoteQuestions);
-      void autoTranscribe(next.capsules);
-    } catch {
-      setNotice("Mode local actif : les données restent sur cet appareil.");
-    } finally {
-      setLoading(false);
-    }
-  }, [authUser, autoTranscribe]);
-
-  useEffect(() => {
-    let active = true;
-    void authApi.rememberedUser().then(async (user) => {
-      if (!active) return;
-      setLocalScope(user?.tenant_id ?? null);
-      usageSession.current = { startedAt: usageClockNow(), residentId: null, active: AppState.currentState === "active" };
-      setAuthUser(user);
-      setRememberedEmail(user?.email ?? "");
-      setProfessionalPin(await readProfessionalPin(user?.tenant_id ?? null));
-      setState(await readLocalState());
-      setLoading(false);
-      setAuthChecking(false);
-    });
-    authApi.onSessionExpired(() => {
-      setAuthMessage("Votre session a expiré par sécurité. Connectez-vous à nouveau.");
-      setAuthUser(null);
-      setGuestMode(false);
-      setLoading(false);
-      setLocalScope(null);
-      usageSession.current = { startedAt: usageClockNow(), residentId: null, active: false };
-    });
-    return () => {
-      active = false;
-      authApi.onSessionExpired(null);
-    };
-  }, []);
-
-  const activateSession = async (session: AuthSession) => {
-    setLocalScope(session.user.tenant_id);
-    usageSession.current = { startedAt: usageClockNow(), residentId: null, active: AppState.currentState === "active" };
-    setProfessionalPin(await readProfessionalPin(session.user.tenant_id));
-    setAuthUser(session.user);
-    setRememberedEmail(session.user.email);
-    setGuestMode(false);
-    setAuthMessage(null);
-    setLoading(true);
-    await refresh(session.user);
-  };
-
-  const continueLocally = async () => {
-    setLocalScope(null);
-    usageSession.current = { startedAt: usageClockNow(), residentId: null, active: AppState.currentState === "active" };
-    setProfessionalPin(await readProfessionalPin(null));
-    setAuthUser(null);
-    setGuestMode(true);
-    setAuthMessage(null);
-    setLoading(true);
-    await refresh(null);
-  };
-
-  const logout = async () => {
-    commitUsageSegment({ usageSession, stateRef, residentId: null, active: false, setState, setDisplayedUsage });
-    await authApi.logout();
-    setAuthUser(null);
-    setGuestMode(false);
-    setLocalScope(null);
-    setProfessionalPin(await readProfessionalPin(null));
-    setAuthMessage("Vous êtes déconnecté. Les enregistrements locaux restent conservés.");
-  };
-
-  // Chronométrage réel : chaque milliseconde au premier plan est comptée, sans
-  // seuil ni arrondi. Le temps résident correspond à sa fiche + son atelier.
-  useEffect(() => {
-    const residentId = screen === "profile" || screen === "workshop" ? selectedResident?.id ?? null : null;
-    if (residentId !== usageSession.current.residentId) {
-      commitUsageSegment({ usageSession, stateRef, residentId, setState, setDisplayedUsage });
-    }
-  }, [screen, selectedResident]);
-
+    recorderStatusRef.current = recorderStatus;
+  }, [recorderStatus]);
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (status) => {
-      if (status === "active") {
-        usageSession.current = { ...usageSession.current, startedAt: usageClockNow(), active: true };
-      } else if (usageSession.current.active) {
-        commitUsageSegment({ usageSession, stateRef, residentId: usageSession.current.residentId, active: false, setState, setDisplayedUsage });
+      if (status === "active" || recorderStatusRef.current !== "recording") return;
+      elapsedBaseMs.current += Date.now() - (recordStartMs.current ?? Date.now());
+      recordStartMs.current = null;
+      try {
+        recorder.pause();
+      } catch {
+        // L'enregistreur a déjà été suspendu par le système.
       }
+      setRecorderStatus("paused");
+      setNotice("Enregistrement mis en pause : l’application a été quittée. Touchez le bouton pour reprendre.");
     });
     return () => subscription.remove();
-  }, []);
+  }, [recorder]);
 
-  // L'affichage avance chaque seconde et un point de contrôle est persisté
-  // toutes les 10 secondes afin de limiter toute perte en cas d'arrêt brutal.
-  useEffect(() => {
-    const ticker = setInterval(() => {
-      const stored = stateRef.current.usage ?? { total_ms: 0, by_resident_ms: {} };
-      const session = usageSession.current;
-      const elapsedMs = session.active ? Math.max(0, usageClockNow() - session.startedAt) : 0;
-      setDisplayedUsage({
-        total_ms: stored.total_ms + elapsedMs,
-        by_resident_ms: session.residentId
-          ? { ...stored.by_resident_ms, [session.residentId]: (stored.by_resident_ms[session.residentId] ?? 0) + elapsedMs }
-          : stored.by_resident_ms,
-      });
-    }, 1000);
-    const checkpoint = setInterval(() => {
-      if (usageSession.current.active) {
-        commitUsageSegment({ usageSession, stateRef, residentId: usageSession.current.residentId, active: true, setState, setDisplayedUsage });
-      }
-    }, 10000);
-    return () => {
-      clearInterval(ticker);
-      clearInterval(checkpoint);
-    };
-  }, []);
-
-  const beginWorkshop = (resident: Resident | null, mode: WorkshopMode) => {
-    if (resident && resident.consent_status !== "obtained") {
-      setNotice("Le consentement est nécessaire avant tout enregistrement.");
-      return;
-    }
-    // 10 questions du jour : d'abord celles jamais répondues par la personne ;
-    // les questions passées restent non répondues et seront reproposées plus tard.
-    const bank = questions.length ? questions : FALLBACK_QUESTIONS;
-    const answeredIds = new Set(state.answered?.[resident?.id ?? "none"] ?? []);
-    let remaining = bank.filter((question) => !answeredIds.has(question.id));
-    if (!remaining.length) remaining = bank;
-    setSessionQuestions(remaining.slice(0, 10));
-    setSelectedResident(resident);
-    setWorkshopMode(mode);
-    setQuestionIndex(0);
-    setRecorderStatus("idle");
+  const resetRecording = () => {
     setRecordedUri(null);
     setElapsedSec(0);
     elapsedBaseMs.current = 0;
     recordStartMs.current = null;
     finalDurationSec.current = 0;
+    setRecorderStatus("idle");
+  };
+
+  const openWorkshop = (resident: Resident | null, mode: WorkshopMode) => {
+    if (resident && resident.consent_status !== "obtained") {
+      setNotice("Le consentement doit être obtenu avant tout enregistrement.");
+      return;
+    }
+    resetRecording();
+    setSelectedResidentId(resident?.id ?? null);
+    setWorkshopMode(mode);
+    setWorkshopTheme(null);
+    setQuestion(null);
+    setWorkshopStep(mode === "question" ? (resident ? "theme" : "resident") : "record");
     setScreen("workshop");
+  };
+
+  const chooseQuestion = (theme: string | null, surprise: boolean) => {
+    const next = pickQuestion(available, answeredFor(selectedResidentId), theme, question?.id ?? null);
+    if (!next) {
+      setNotice("Aucune question disponible pour ce thème.");
+      return;
+    }
+    setQuestion(next);
+    setWorkshopTheme(surprise ? next.theme : theme);
+    setWorkshopMode("question");
+    setWorkshopStep("record");
+  };
+
+  const leaveWorkshop = (to: Screen) => {
+    if (recorderStatus !== "idle") {
+      api.track("recording_abandoned", { question_id: question?.id });
+      if (recorderState.isRecording || recorderStatus === "paused") void recorder.stop().catch(() => null);
+    }
+    resetRecording();
+    setScreen(to);
   };
 
   const handleRecordPress = async () => {
     try {
-      if (recorderStatus === "done") return;
-      if (recorderState.isRecording) {
-        // Pause : le temps écoulé est figé dans la base.
+      if (recorderStatus === "recording") {
         elapsedBaseMs.current += Date.now() - (recordStartMs.current ?? Date.now());
         recordStartMs.current = null;
         recorder.pause();
@@ -463,7 +368,8 @@ export default function Index() {
       }
       const permission = await AudioModule.requestRecordingPermissionsAsync();
       if (!permission.granted) {
-        setNotice("L’accès au microphone est nécessaire pour enregistrer.");
+        api.track("mic_denied");
+        setNotice("Le micro n’est pas autorisé. Ouvrez les réglages du téléphone et autorisez le micro pour Racontelle Care.");
         return;
       }
       await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
@@ -475,466 +381,133 @@ export default function Index() {
       recorder.record();
       setRecorderStatus("recording");
     } catch {
-      setNotice("Impossible d’accéder au microphone. Vérifiez les autorisations.");
+      api.track("recording_failed");
+      setNotice("L’enregistrement n’a pas pu démarrer. Vérifiez que le micro n’est pas utilisé par une autre application, puis réessayez.");
     }
   };
 
   const stopRecording = async () => {
-    // Durée réelle figée à l'arrêt (sans attendre un tick du chrono).
     if (recordStartMs.current) {
       elapsedBaseMs.current += Date.now() - recordStartMs.current;
       recordStartMs.current = null;
     }
     finalDurationSec.current = Math.max(1, Math.round(elapsedBaseMs.current / 1000));
     setElapsedSec(finalDurationSec.current);
-    await recorder.stop();
-    setRecordedUri(recorder.uri ?? null);
-    setRecorderStatus("done");
-  };
-
-  const resetRecording = () => {
-    setRecordedUri(null);
-    setElapsedSec(0);
-    elapsedBaseMs.current = 0;
-    recordStartMs.current = null;
-    finalDurationSec.current = 0;
-    setRecorderStatus("idle");
+    try {
+      await recorder.stop();
+      setRecordedUri(recorder.uri ?? null);
+      setRecorderStatus("done");
+    } catch {
+      api.track("recording_failed");
+      setNotice("L’enregistrement n’a pas pu être finalisé. Réessayez.");
+      resetRecording();
+    }
   };
 
   const saveRecording = async () => {
+    const now = new Date();
+    const resident = selectedResident;
+    const guided = workshopMode === "question" && !!question && !!resident;
     const capsule: Capsule = {
-      id: `local-${Date.now()}`,
-      resident_id: selectedResident?.id ?? null,
-      question_id: workshopMode === "question" ? currentQuestion.id : null,
-      mode: workshopMode,
-      theme: workshopMode === "question" ? currentQuestion.theme : null,
-      title: workshopMode === "question" ? currentQuestion.text : "Souvenir libre",
-      duration_sec: finalDurationSec.current || durationSeconds,
-      recorded_at: new Date().toISOString(),
-      status: selectedResident ? "assigned" : "unclassified",
+      id: `local-${now.getTime()}`,
+      resident_id: resident?.id ?? null,
+      question_id: guided ? question!.id : null,
+      mode: guided ? "question" : "free",
+      theme: guided ? question!.theme : null,
+      title: guided ? question!.text : resident ? `Récit libre — ${spontaneousTitle(now).replace("Souvenir spontané — ", "")}` : spontaneousTitle(now),
+      duration_sec: finalDurationSec.current || elapsedSec,
+      recorded_at: now.toISOString(),
+      status: resident ? "assigned" : "unclassified",
       synced: false,
-      audio_uri: null,
+      audio_uri: recordedUri,
     };
-    // Conservation précieuse : l'enregistrement quitte le cache (nettoyable par
-    // le système) pour le stockage document permanent de l'appareil.
-    let keptUri = recordedUri;
+    // Conservation précieuse : l'enregistrement quitte le cache (nettoyable
+    // par le système) pour le stockage document permanent de l'appareil.
     if (recordedUri && Platform.OS !== "web") {
       try {
         const dir = `${FileSystem.documentDirectory}recordings/`;
         await FileSystem.makeDirectoryAsync(dir, { intermediates: true }).catch(() => {});
         const target = `${dir}${capsule.id}.m4a`;
         await FileSystem.copyAsync({ from: recordedUri, to: target });
-        keptUri = target;
+        capsule.audio_uri = target;
       } catch {
-        keptUri = recordedUri;
+        api.track("save_failed");
       }
     }
-    capsule.audio_uri = keptUri;
-    const optimistic = { ...state, capsules: [capsule, ...state.capsules] };
-    await persist(optimistic);
-    if (authUser) try {
-      const remote = await api.saveCapsule({
-        resident_id: capsule.resident_id,
-        question_id: capsule.question_id,
-        mode: capsule.mode,
-        theme: capsule.theme,
-        title: capsule.title,
-        duration_sec: capsule.duration_sec,
-        recorded_at: capsule.recorded_at,
-        audio_uri: capsule.audio_uri,
-      });
-      const synced: Capsule = { ...remote, audio_uri: keptUri, synced: true };
-      await persist({ ...optimistic, capsules: [synced, ...state.capsules] });
-      // Copie de sauvegarde côté serveur (stockage objet), silencieuse hors-ligne.
-      if (keptUri) {
-        void api.uploadCapsuleAudio(remote.id, keptUri).catch((reason) => {
-          if (reason instanceof ApiError && reason.status === 429) setNotice("Quota quotidien d’envois audio atteint. Le souvenir reste conservé localement.");
-        });
-        // Transcription automatique du souvenir, visible dans l'espace de la personne.
-        void api.transcribeCapsule(remote.id, keptUri)
-          .then(async ({ transcription }) => {
-            const current = stateRef.current;
-            await persist({
-              ...current,
-              capsules: current.capsules.map((item) => (item.id === remote.id ? { ...item, transcription } : item)),
-            });
-          })
-          .catch((reason) => {
-            if (reason instanceof ApiError && reason.status === 429) setNotice("Quota quotidien de 30 transcriptions atteint. L’audio reste conservé.");
-          });
-      }
-    } catch {
-      setNotice("Souvenir conservé sur l’appareil. La copie serveur sera retentée plus tard.");
-    } else {
-      setNotice("Souvenir conservé sur cet appareil. Connectez-vous pour le synchroniser.");
-    }
+    await update((current) => ({
+      ...current,
+      capsules: [capsule, ...current.capsules],
+      answered: guided
+        ? { ...current.answered, [resident!.id]: [...new Set([...(current.answered?.[resident!.id] ?? []), question!.id])] }
+        : current.answered,
+    }));
     resetRecording();
-    if (workshopMode === "question") {
-      // La réponse est mémorisée : la question ne sera pas reposée, les autres
-      // questions non traitées seront reproposées ultérieurement.
-      const key = selectedResident?.id ?? "none";
-      const previous = stateRef.current.answered?.[key] ?? [];
-      await persist({
-        ...stateRef.current,
-        answered: { ...stateRef.current.answered, [key]: [...new Set([...previous, currentQuestion.id])] },
+    setWorkshopStep("saved");
+    if (authUser) {
+      void store.syncPending(authUser, onResidentSynced).then((ok) => {
+        if (ok) void store.autoTranscribe();
+        else setNotice("Réseau faible : la capsule est gardée sur l’appareil et sera envoyée automatiquement.");
       });
-    }
-    if (workshopMode === "free") {
-      setWorkshopMode("question");
-      setQuestionIndex(0);
-      setNotice("Souvenir libre sauvegardé. Les questions du jour sont prêtes.");
-    } else if (questionIndex < sessionQuestions.length - 1) {
-      setQuestionIndex((value) => value + 1);
-      setNotice("Réponse sauvegardée. Passons à la prochaine question.");
-    } else {
-      setScreen(selectedResident ? "profile" : "home");
-      setNotice("Les questions du jour sont terminées. Les questions restantes seront reproposées plus tard.");
     }
   };
 
-  const pickPhoto = async (target: "draft" | "profile") => {
-    // Permission demandée au moment du geste, avec sortie de secours vers les
-    // réglages si l'accès a été refusé définitivement.
-    let permission = await ImagePicker.getMediaLibraryPermissionsAsync();
-    if (!permission.granted && permission.canAskAgain) {
-      permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  const nextInWorkshop = () => {
+    resetRecording();
+    if (workshopMode === "question") chooseQuestion(workshopTheme, false);
+    else setWorkshopStep("record");
+  };
+
+  // --- Profils -----------------------------------------------------------------
+  const [residentForm, setResidentForm] = useState<{ open: boolean; residentId: string | null }>({ open: false, residentId: null });
+  // Le sélecteur de photos du système ne demande aucune autorisation (Android
+  // 13+ et iOS). La photo choisie arrive dans un cache que le système peut
+  // vider : elle est recopiée dans le stockage permanent de l'appareil.
+  const pickPhoto = async (): Promise<string | null> => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], allowsEditing: true, aspect: [1, 1], quality: 0.7 });
+      const picked = result.canceled ? null : result.assets[0]?.uri ?? null;
+      if (!picked || Platform.OS === "web") return picked;
+      const dir = `${FileSystem.documentDirectory}photos/`;
+      await FileSystem.makeDirectoryAsync(dir, { intermediates: true }).catch(() => {});
+      const target = `${dir}portrait-${Date.now()}.jpg`;
+      await FileSystem.copyAsync({ from: picked, to: target });
+      return target;
+    } catch {
+      setNotice("La galerie photo n’est pas accessible pour le moment. Réessayez.");
+      return null;
     }
-    if (!permission.granted) {
-      setPhotoDenied(!permission.canAskAgain);
-      setNotice("Autorisez l’accès aux photos pour ajouter un portrait.");
-      return;
-    }
-    setPhotoDenied(false);
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], allowsEditing: true, aspect: [1, 1], quality: 0.7 });
-    const uri = result.canceled ? null : result.assets[0]?.uri ?? null;
-    if (!uri) return;
-    if (target === "draft") {
-      setDraftPhoto(uri);
-      return;
-    }
+  };
+
+  const changeProfilePhoto = async () => {
     if (!selectedResident) return;
-    const updated = { ...selectedResident, photo_uri: uri };
-    await persist({ ...stateRef.current, residents: stateRef.current.residents.map((item) => item.id === updated.id ? updated : item) });
-    setSelectedResident(updated);
-    setNotice("Photo du profil enregistrée sur cet appareil.");
+    const uri = await pickPhoto();
+    if (!uri) return;
+    await update((current) => ({ ...current, residents: current.residents.map((item) => (item.id === selectedResident.id ? { ...item, photo_uri: uri } : item)) }));
+    setNotice("Photo enregistrée sur cet appareil.");
   };
 
-  const transcribeCapsule = async (capsule: Capsule) => {
-    if (!authUser) {
-      setNotice("Connectez-vous à l’établissement pour lancer la transcription.");
+  const submitResident = async (draft: ResidentDraft) => {
+    const displayName = draft.display_name.trim();
+    if (!displayName) {
+      setNotice("Indiquez un prénom ou un pseudonyme.");
       return;
     }
-    if (!capsule.audio_uri || !capsule.synced) {
-      setNotice("La transcription demande la copie serveur du souvenir.");
+    const editing = state.residents.find((resident) => resident.id === residentForm.residentId);
+    if (!editing && state.residents.length >= settings.max_residents) {
+      setNotice(`La bêta accepte ${settings.max_residents} profils au maximum.`);
       return;
     }
-    setBusyCapsuleId(capsule.id);
-    try {
-      const { transcription } = await api.transcribeCapsule(capsule.id, capsule.audio_uri);
-      await persist({ ...stateRef.current, capsules: stateRef.current.capsules.map((item) => item.id === capsule.id ? { ...item, transcription } : item) });
-      setNotice("Transcription prête à relire.");
-    } catch (reason) {
-      setNotice(reason instanceof ApiError && reason.status === 429 ? "Quota quotidien de 30 transcriptions atteint. L’audio reste conservé." : "Transcription momentanément indisponible. Réessayez plus tard.");
-    } finally {
-      setBusyCapsuleId(null);
+    const fields = { display_name: displayName, last_initial: draft.last_initial.trim() || null, unit: draft.unit.trim() || null, consent_status: draft.consent_status, photo_uri: draft.photo_uri };
+    if (editing) {
+      await update((current) => ({ ...current, residents: current.residents.map((item) => (item.id === editing.id ? { ...item, ...fields, pending_sync: !isLocalId(item.id) } : item)) }));
+      setNotice(editing.consent_status !== draft.consent_status ? "Statut de consentement mis à jour et daté." : "Profil mis à jour.");
+    } else {
+      const resident: Resident = { id: `local-${Date.now()}`, ...fields, active: true, created_at: new Date().toISOString() };
+      await update((current) => ({ ...current, residents: [...current.residents, resident] }));
+      setNotice(authUser ? "Profil créé." : "Profil créé sur cet appareil uniquement.");
     }
-  };
-
-  const shareCapsule = async (capsule: Capsule) => {
-    if (!authUser) {
-      setNotice("Connectez-vous à l’établissement pour créer un lien familial.");
-      return;
-    }
-    if (!capsule.audio_uri || !capsule.synced) {
-      setNotice("Le partage demande la copie serveur du souvenir.");
-      return;
-    }
-    setBusyCapsuleId(capsule.id);
-    try {
-      // L'audio est d'abord conservé précieusement côté serveur, puis le lien
-      // privé est créé et copié pour être transmis à la famille.
-      await api.uploadCapsuleAudio(capsule.id, capsule.audio_uri);
-      const share = await api.shareCapsule(capsule.id);
-      await Clipboard.setStringAsync(`${apiBaseUrl}${share.path}`);
-      await persist({
-        ...stateRef.current,
-        capsules: stateRef.current.capsules.map((item) => item.id === capsule.id ? { ...item, share_id: share.share_id, share_expires_at: share.expires_at } : item),
-      });
-      setNotice("Lien copié : il reste valable 30 jours et peut être révoqué.");
-    } catch {
-      setNotice("Partage impossible pour le moment. Réessayez plus tard.");
-    } finally {
-      setBusyCapsuleId(null);
-    }
-  };
-
-  const revokeShare = async (capsule: Capsule) => {
-    if (!authUser || authUser.role !== "admin" || !capsule.share_id) {
-      setNotice("La révocation est réservée à l’administrateur de l’établissement.");
-      return;
-    }
-    setBusyCapsuleId(capsule.id);
-    try {
-      await api.revokeShare(capsule.share_id);
-      await persist({
-        ...stateRef.current,
-        capsules: stateRef.current.capsules.map((item) => item.id === capsule.id ? { ...item, share_id: null, share_expires_at: null } : item),
-      });
-      setNotice("Le lien familial est révoqué et n’est plus accessible.");
-    } catch {
-      setNotice("Impossible de révoquer ce lien pour le moment.");
-    } finally {
-      setBusyCapsuleId(null);
-    }
-  };
-
-  const [showRemove, setShowRemove] = useState(false);
-  const [exporting, setExporting] = useState(false);
-  const playerStatus = useAudioPlayerStatus(player);
-  const wantPlay = useRef(false);
-  // Petit lecteur audio dans les fiches : lecture/pause par souvenir.
-  const playingCapsuleId = playerStatus.playing
-    ? state.capsules.find((item) => item.audio_uri && item.audio_uri === recordedUri)?.id ?? null
-    : null;
-
-  useEffect(() => {
-    if (wantPlay.current && recordedUri) {
-      wantPlay.current = false;
-      player.play();
-    }
-  }, [recordedUri, player]);
-
-  // Lecture vocale (TTS) : questions et transcriptions lues à voix haute.
-  const [ttsUri, setTtsUri] = useState<string | null>(null);
-  const ttsPlayer = useAudioPlayer(ttsUri);
-  const ttsStatus = useAudioPlayerStatus(ttsPlayer);
-  const [speakingId, setSpeakingId] = useState<string | null>(null);
-  const wantSpeak = useRef(false);
-
-  useEffect(() => {
-    if (wantSpeak.current && ttsUri) {
-      wantSpeak.current = false;
-      ttsPlayer.play();
-    }
-  }, [ttsUri, ttsPlayer]);
-
-  useEffect(() => {
-    if (!ttsStatus.didJustFinish) return;
-    const timeout = setTimeout(() => setSpeakingId(null), 0);
-    return () => clearTimeout(timeout);
-  }, [ttsStatus.didJustFinish]);
-
-  const speakText = async (id: string, text: string) => {
-    if (!authUser) {
-      setNotice("Connectez-vous à l’établissement pour utiliser la lecture vocale.");
-      return;
-    }
-    if (speakingId === id && ttsStatus.playing) {
-      ttsPlayer.pause();
-      setSpeakingId(null);
-      return;
-    }
-    setSpeakingId(id);
-    try {
-      const { path } = await api.tts(text);
-      const url = `${apiBaseUrl}${path}`;
-      let uri = url;
-      if (Platform.OS === "web") {
-        const response = await api.download(path);
-        if (!response.ok) throw new Error("audio indisponible");
-        uri = URL.createObjectURL(await response.blob());
-      } else {
-        const target = `${FileSystem.cacheDirectory}tts-${id.replace(/[^a-z0-9-]/gi, "")}.mp3`;
-        const downloaded = await FileSystem.downloadAsync(url, target, { headers: await api.authorizationHeaders() });
-        uri = downloaded.uri;
-      }
-      // Lecture haut-parleur même en mode silencieux ; la session d'enregistrement
-      // est refermée pour que le son ne parte pas dans l'écouteur (iOS).
-      await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false });
-      wantSpeak.current = true;
-      setTtsUri(uri);
-    } catch (reason) {
-      setSpeakingId(null);
-      setNotice(reason instanceof ApiError && reason.status === 429 ? "Quota quotidien de 100 lectures vocales atteint." : "La lecture vocale est indisponible pour le moment.");
-    }
-  };
-
-  const togglePlay = async (capsule: Capsule) => {
-    if (!capsule.audio_uri) return;
-    if (playerStatus.playing && recordedUri === capsule.audio_uri) {
-      player.pause();
-      return;
-    }
-    // Sortie haut-parleur : après un enregistrement, la session iOS reste en
-    // mode play-and-record et la réécoute partirait dans l'écouteur (inaudible).
-    await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false });
-    wantPlay.current = true;
-    setRecordedUri(capsule.audio_uri);
-  };
-
-  // Export équipe soignante : un fichier ZIP (audios + transcriptions).
-  const exportResident = async (resident: Resident) => {
-    if (!authUser || authUser.role !== "admin") {
-      setNotice("L’export est réservé à l’administrateur de l’établissement.");
-      return;
-    }
-    if (resident.id.startsWith("local-")) {
-      setNotice("Synchronisez le profil avec le serveur avant l’export.");
-      return;
-    }
-    setExporting(true);
-    try {
-      const path = api.exportResidentPath(resident.id);
-      const url = `${apiBaseUrl}/api${path}`;
-      if (Platform.OS === "web") {
-        const response = await api.download(path);
-        if (!response.ok) throw new Error("export indisponible");
-        const objectUrl = URL.createObjectURL(await response.blob());
-        (globalThis as any).window?.open?.(objectUrl, "_blank");
-      } else {
-        const target = `${FileSystem.cacheDirectory}racontelle-${resident.id}.zip`;
-        const downloaded = await FileSystem.downloadAsync(url, target, { headers: await api.authorizationHeaders() });
-        if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(downloaded.uri, {
-            mimeType: "application/zip",
-            dialogTitle: `Souvenirs de ${resident.display_name}`,
-          });
-        }
-      }
-      await persist({
-        ...stateRef.current,
-        exports: { ...stateRef.current.exports, [resident.id]: new Date().toISOString() },
-      });
-      setNotice("Export prêt : souvenirs et transcriptions regroupés en un fichier.");
-    } catch {
-      setNotice("Export impossible pour le moment. Vérifiez la connexion et réessayez.");
-    } finally {
-      setExporting(false);
-    }
-  };
-
-  // Retrait d'un profil : uniquement après extraction des souvenirs.
-  const removeResident = async (resident: Resident) => {
-    if (authUser?.role !== "admin") {
-      setNotice("Le retrait d’un profil est réservé à l’administrateur.");
-      return;
-    }
-    if (!stateRef.current.exports?.[resident.id]) {
-      setNotice("Extrayez d’abord les souvenirs avant de retirer le profil.");
-      return;
-    }
-    const residentCapsules = stateRef.current.capsules.filter((item) => item.resident_id === resident.id);
-    for (const capsule of residentCapsules) {
-      if (capsule.audio_uri && Platform.OS !== "web" && capsule.audio_uri.startsWith("file")) {
-        await FileSystem.deleteAsync(capsule.audio_uri, { idempotent: true }).catch(() => {});
-      }
-    }
-    await persist({
-      ...stateRef.current,
-      residents: stateRef.current.residents.filter((item) => item.id !== resident.id),
-      capsules: stateRef.current.capsules.filter((item) => item.resident_id !== resident.id),
-    });
-    if (authUser && !resident.id.startsWith("local-")) {
-      try {
-        await api.deleteResident(resident.id);
-      } catch {
-        setNotice("Profil retiré localement. La copie serveur sera retirée plus tard.");
-      }
-    }
-    setShowRemove(false);
-    setSelectedResident(null);
-    setScreen("home");
-    setNotice(`${resident.display_name} a été retiré(e) du carnet. L’export reste disponible pour le service.`);
-  };
-
-  const [showMerge, setShowMerge] = useState(false);
-  const [mergeGroup, setMergeGroup] = useState<Resident[]>([]);
-  const [mergeKeepId, setMergeKeepId] = useState<string | null>(null);
-  const [printing, setPrinting] = useState(false);
-  const [showRename, setShowRename] = useState(false);
-  const [renameDraft, setRenameDraft] = useState("");
-  const [showAddMember, setShowAddMember] = useState(false);
-  const [memberName, setMemberName] = useState("");
-  const [memberEmail, setMemberEmail] = useState("");
-  const [memberPassword, setMemberPassword] = useState("");
-  const [memberBusy, setMemberBusy] = useState(false);
-
-  // Renommage : un appui sur le prénom dans la fiche permet de le modifier.
-  const renameResident = async () => {
-    const name = renameDraft.trim();
-    if (!name || !selectedResident) {
-      setNotice("Indiquez un prénom pour renommer le profil.");
-      return;
-    }
-    const updated = { ...selectedResident, display_name: name };
-    await persist({
-      ...stateRef.current,
-      residents: stateRef.current.residents.map((item) => (item.id === updated.id ? updated : item)),
-    });
-    setSelectedResident(updated);
-    if (authUser && !updated.id.startsWith("local-")) {
-      try {
-        await api.updateResident(updated.id, name);
-      } catch {
-        setNotice("Prénom modifié sur l’appareil. La copie serveur sera mise à jour plus tard.");
-      }
-    }
-    setShowRename(false);
-    setNotice(`Le profil s’appelle désormais ${name}.`);
-  };
-
-  const addTeamMember = async () => {
-    if (authUser?.role !== "admin") return;
-    if (!memberName.trim() || !memberEmail.trim() || memberPassword.length < 12) {
-      setNotice("Complétez les champs avec un mot de passe d’au moins 12 caractères.");
-      return;
-    }
-    setMemberBusy(true);
-    try {
-      await api.createMember({ full_name: memberName.trim(), email: memberEmail.trim(), password: memberPassword });
-      setMemberName("");
-      setMemberEmail("");
-      setMemberPassword("");
-      setShowAddMember(false);
-      setNotice("Le membre peut maintenant se connecter à cet établissement.");
-    } catch {
-      setNotice("Impossible d’ajouter ce membre. Vérifiez l’adresse email.");
-    } finally {
-      setMemberBusy(false);
-    }
-  };
-
-  // Édition d'un souvenir : renommage sur le vif + rattachement à un profil.
-  const [editingCapsule, setEditingCapsule] = useState<Capsule | null>(null);
-  const [editTitle, setEditTitle] = useState("");
-  const [editResidentId, setEditResidentId] = useState<string | null>(null);
-
-  const openCapsuleEdit = (capsule: Capsule) => {
-    setEditTitle(capsule.title ?? "");
-    setEditResidentId(capsule.resident_id);
-    setEditingCapsule(capsule);
-  };
-
-  const saveCapsuleEdit = async () => {
-    const capsule = editingCapsule;
-    if (!capsule) return;
-    const title = editTitle.trim() || capsule.title;
-    const capsules = stateRef.current.capsules.map((item) =>
-      item.id === capsule.id
-        ? { ...item, title, resident_id: editResidentId, status: (editResidentId ? "assigned" : "unclassified") as Capsule["status"] }
-        : item,
-    );
-    await persist({ ...stateRef.current, capsules });
-    setEditingCapsule(null);
-    if (authUser && capsule.synced && !capsule.id.startsWith("local-")) {
-      try {
-        if (title && title !== capsule.title) await api.updateCapsule(capsule.id, title);
-        if (editResidentId && editResidentId !== capsule.resident_id) await api.assignCapsule(capsule.id, editResidentId);
-      } catch {
-        setNotice("Modification faite sur l’appareil. La copie serveur sera mise à jour plus tard.");
-      }
-    }
-    setNotice("Souvenir mis à jour.");
+    setResidentForm({ open: false, residentId: null });
+    if (authUser) void store.syncPending(authUser, onResidentSynced);
   };
 
   // Doublons : profils portant le même prénom (insensible à la casse).
@@ -946,37 +519,106 @@ export default function Index() {
     });
     return Array.from(groups.values()).filter((group) => group.length > 1);
   }, [state.residents]);
+  const [mergeGroup, setMergeGroup] = useState<Resident[]>([]);
 
-  // Impression du carnet : PDF des transcriptions, prêt à offrir à la famille.
+  const confirmMerge = async (keepId: string) => {
+    const keep = mergeGroup.find((resident) => resident.id === keepId);
+    if (!keep || !isAdmin) return;
+    const duplicateIds = mergeGroup.filter((resident) => resident.id !== keepId).map((resident) => resident.id);
+    const photo = keep.photo_uri ?? mergeGroup.find((resident) => resident.photo_uri)?.photo_uri ?? null;
+    const serverIds = duplicateIds.filter((id) => !isLocalId(id));
+    await update((current) => ({
+      ...current,
+      residents: current.residents.filter((resident) => !duplicateIds.includes(resident.id)).map((resident) => (resident.id === keepId ? { ...resident, photo_uri: photo } : resident)),
+      capsules: current.capsules.map((capsule) => (capsule.resident_id && duplicateIds.includes(capsule.resident_id) ? { ...capsule, resident_id: keepId } : capsule)),
+      pending_merges: serverIds.length ? [...(current.pending_merges ?? []), { keep_id: keepId, merge_ids: serverIds }] : current.pending_merges,
+    }));
+    setMergeGroup([]);
+    setNotice(`Profils fusionnés dans la fiche de ${keep.display_name}.`);
+    if (authUser) void store.syncPending(authUser, onResidentSynced);
+  };
+
+  // --- Retrait, export et suppression RGPD --------------------------------------
+  const [showRemove, setShowRemove] = useState(false);
+  const removalUnsafe = selectedResident ? state.capsules.filter((capsule) => capsule.resident_id === selectedResident.id && !safelyStored(capsule)).length : 0;
+
+  const shareFile = async (path: string, fileName: string, mimeType: string, dialogTitle: string) => {
+    const uri = await api.fetchFileUri(path, fileName);
+    if (Platform.OS === "web") (globalThis as any).window?.open?.(uri, "_blank");
+    else if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri, { mimeType, dialogTitle });
+  };
+
+  const exportResident = async (resident: Resident) => {
+    if (!isAdmin) return setNotice("L’export est réservé à l’administrateur de l’établissement.");
+    if (isLocalId(resident.id)) return setNotice("Connectez l’appareil pour envoyer ce profil au serveur avant l’export.");
+    setExporting(true);
+    try {
+      // Le fichier est vérifié (statut 200) avant d'être considéré comme exporté.
+      await shareFile(api.exportResidentPath(resident.id), `racontelle-${resident.id}.zip`, "application/zip", `Souvenirs de ${resident.display_name}`);
+      await update((current) => ({ ...current, exports: { ...current.exports, [resident.id]: new Date().toISOString() } }));
+      setNotice("Export prêt : souvenirs et informations regroupés en un fichier.");
+    } catch {
+      setNotice("Export impossible pour le moment. Vérifiez la connexion et réessayez.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const deleteLocalFiles = async (capsules: Capsule[]) => {
+    if (Platform.OS === "web") return;
+    for (const capsule of capsules) {
+      if (capsule.audio_uri?.startsWith("file")) await FileSystem.deleteAsync(capsule.audio_uri, { idempotent: true }).catch(() => {});
+    }
+  };
+
+  const removeResident = async (resident: Resident) => {
+    if (!isAdmin) return setNotice("Le retrait d’un profil est réservé à l’administrateur.");
+    if (!stateRef.current.exports?.[resident.id]) return setNotice("Extrayez d’abord les souvenirs avant de retirer le profil.");
+    const own = stateRef.current.capsules.filter((capsule) => capsule.resident_id === resident.id);
+    // Jamais d'effacement d'un audio qui n'a pas de copie sur le serveur.
+    if (own.some((capsule) => !safelyStored(capsule))) return setNotice("Certains souvenirs ne sont pas encore sauvegardés sur le serveur. Attendez « Sauvegardé » avant de retirer le profil.");
+    await deleteLocalFiles(own);
+    await update((current) => ({
+      ...current,
+      residents: current.residents.filter((item) => item.id !== resident.id),
+      capsules: current.capsules.filter((item) => item.resident_id !== resident.id),
+      pending_removals: [...(current.pending_removals ?? []), resident.id],
+    }));
+    setShowRemove(false);
+    setSelectedResidentId(null);
+    setScreen("home");
+    setNotice(`${resident.display_name} a été retiré(e) du carnet. Les souvenirs restent conservés sur le serveur.`);
+    if (authUser) void store.syncPending(authUser, onResidentSynced);
+  };
+
+  const purgeResident = async (resident: Resident) => {
+    if (!isAdmin && authUser) return setNotice("La suppression est réservée à l’administrateur.");
+    if (!isLocalId(resident.id)) {
+      try {
+        await api.purgeResident(resident.id);
+      } catch {
+        setNotice("Suppression impossible hors connexion : rien n’a été effacé. Réessayez une fois connecté.");
+        return;
+      }
+    }
+    const own = stateRef.current.capsules.filter((capsule) => capsule.resident_id === resident.id);
+    await deleteLocalFiles(own);
+    await update((current) => ({
+      ...current,
+      residents: current.residents.filter((item) => item.id !== resident.id),
+      capsules: current.capsules.filter((item) => item.resident_id !== resident.id),
+    }));
+    setShowRemove(false);
+    setSelectedResidentId(null);
+    setScreen("home");
+    setNotice("Les données du profil ont été supprimées définitivement. L’opération est journalisée.");
+  };
+
   const printCarnet = async (resident: Resident) => {
-    if (!authUser || authUser.role !== "admin") {
-      setNotice("L’impression du carnet est réservée à l’administrateur.");
-      return;
-    }
-    if (resident.id.startsWith("local-")) {
-      setNotice("Synchronisez le profil avec le serveur avant d’imprimer le carnet.");
-      return;
-    }
+    if (isLocalId(resident.id)) return setNotice("Connectez l’appareil pour envoyer ce profil au serveur.");
     setPrinting(true);
     try {
-      const path = api.carnetResidentPath(resident.id);
-      const url = `${apiBaseUrl}/api${path}`;
-      if (Platform.OS === "web") {
-        const response = await api.download(path);
-        if (!response.ok) throw new Error("carnet indisponible");
-        const objectUrl = URL.createObjectURL(await response.blob());
-        (globalThis as any).window?.open?.(objectUrl, "_blank");
-      } else {
-        const target = `${FileSystem.cacheDirectory}racontelle-carnet-${resident.id}.pdf`;
-        const downloaded = await FileSystem.downloadAsync(url, target, { headers: await api.authorizationHeaders() });
-        if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(downloaded.uri, {
-            mimeType: "application/pdf",
-            dialogTitle: `Carnet de ${resident.display_name}`,
-          });
-        }
-      }
-      setNotice("Carnet PDF prêt à offrir à la famille.");
+      await shareFile(api.carnetResidentPath(resident.id), `racontelle-carnet-${resident.id}.pdf`, "application/pdf", `Carnet de ${resident.display_name}`);
     } catch {
       setNotice("Impression impossible pour le moment. Vérifiez la connexion et réessayez.");
     } finally {
@@ -984,364 +626,382 @@ export default function Index() {
     }
   };
 
-  // Fusion de doublons : la fiche choisie est conservée, les souvenirs des
-  // autres fiches y sont rattachés.
-  const confirmMerge = async () => {
-    if (authUser?.role !== "admin") {
-      setNotice("La fusion de profils est réservée à l’administrateur.");
-      return;
-    }
-    const keep = mergeGroup.find((resident) => resident.id === mergeKeepId);
-    if (!keep) return;
-    const duplicates = mergeGroup.filter((resident) => resident.id !== keep.id);
-    const duplicateIds = duplicates.map((resident) => resident.id);
-    const photo = keep.photo_uri ?? duplicates.find((resident) => resident.photo_uri)?.photo_uri ?? null;
-    await persist({
-      ...stateRef.current,
-      residents: stateRef.current.residents
-        .filter((resident) => !duplicateIds.includes(resident.id))
-        .map((resident) => (resident.id === keep.id ? { ...resident, photo_uri: photo } : resident)),
-      capsules: stateRef.current.capsules.map((capsule) =>
-        capsule.resident_id && duplicateIds.includes(capsule.resident_id)
-          ? { ...capsule, resident_id: keep.id }
-          : capsule,
-      ),
+  // --- Souvenirs : classement, suppression, partage, transcription -------------
+  const [editingCapsule, setEditingCapsule] = useState<Capsule | null>(null);
+  const [confirm, setConfirm] = useState<Confirm | null>(null);
+
+  // Retour depuis l'atelier : jamais de perte silencieuse d'un enregistrement.
+  const workshopBack = () => {
+    if (workshopStep === "record" && workshopMode === "question" && recorderStatus === "idle") return setWorkshopStep("theme");
+    const target: Screen = selectedResident ? "profile" : "home";
+    if (recorderStatus === "idle") return leaveWorkshop(target);
+    setConfirm({
+      title: "Quitter sans sauvegarder ?",
+      message: recorderStatus === "done"
+        ? "Cet enregistrement n’a pas encore été sauvegardé. Si vous quittez maintenant, il sera perdu."
+        : "Un enregistrement est en cours. Si vous quittez maintenant, il sera perdu.",
+      confirmLabel: "Quitter sans sauvegarder",
+      action: () => {
+        setConfirm(null);
+        leaveWorkshop(target);
+      },
     });
-    const syncedDuplicateIds = duplicateIds.filter((id) => !id.startsWith("local-"));
-    if (authUser && !keep.id.startsWith("local-") && syncedDuplicateIds.length) {
+  };
+
+  // Bouton « retour » d'Android : revient à l'écran précédent au lieu de
+  // fermer l'application (les fenêtres se ferment d'elles-mêmes).
+  const hardwareBack = useRef<() => boolean>(() => false);
+  useEffect(() => {
+    hardwareBack.current = () => {
+      if (screen === "home") return false;
+      if (screen === "workshop") workshopBack();
+      else if (screen === "questions" || screen === "quizAdmin") setScreen("pro");
+      else setScreen("home");
+      return true;
+    };
+  });
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => hardwareBack.current());
+    return () => subscription.remove();
+  }, []);
+
+  const saveCapsuleEdit = async (changes: { title: string; resident_id: string | null; theme: string | null }) => {
+    const capsule = editingCapsule;
+    if (!capsule) return;
+    const title = changes.title || capsule.title;
+    await patchCapsule(capsule.id, {
+      title,
+      resident_id: changes.resident_id,
+      theme: capsule.mode === "question" ? capsule.theme : changes.theme,
+      status: changes.resident_id ? "assigned" : "unclassified",
+      classified_at: changes.resident_id && !capsule.resident_id ? new Date().toISOString() : capsule.classified_at,
+      pending_update: capsule.synced && !isLocalId(capsule.id),
+    });
+    setEditingCapsule(null);
+    setNotice(changes.resident_id && !capsule.resident_id ? "Souvenir classé : il rejoint la bibliothèque du résident avec sa date d’origine." : "Souvenir mis à jour.");
+    if (authUser) void store.syncPending(authUser, onResidentSynced);
+  };
+
+  const deleteCapsule = async (capsule: Capsule) => {
+    setConfirm(null);
+    if (capsule.synced && !isLocalId(capsule.id)) {
       try {
-        await api.mergeResidents(keep.id, syncedDuplicateIds);
-      } catch {
-        setNotice("Fusion faite sur l’appareil. La copie serveur sera mise à jour plus tard.");
+        await api.deleteCapsule(capsule.id);
+      } catch (reason) {
+        setNotice(reason instanceof ApiError && reason.status === 403 ? "La suppression est réservée à l’administrateur." : "Suppression impossible hors connexion : rien n’a été effacé.");
+        return;
       }
     }
-    setShowMerge(false);
-    setMergeGroup([]);
-    setMergeKeepId(null);
-    setNotice(`Profils fusionnés dans la fiche de ${keep.display_name}.`);
+    await deleteLocalFiles([capsule]);
+    await update((current) => ({ ...current, capsules: current.capsules.filter((item) => item.id !== capsule.id) }));
+    setNotice("Souvenir supprimé. L’audio n’est plus accessible.");
   };
 
-  const addResident = async () => {
-    const displayName = draftName.trim();
-    if (!displayName) {
-      setNotice("Indiquez un prénom pour créer le profil.");
-      return;
+  const transcribeCapsule = async (capsule: Capsule) => {
+    if (!capsule.audio_uri || !capsule.synced) return setNotice("La transcription demande que le souvenir soit envoyé au serveur.");
+    setBusyCapsuleId(capsule.id);
+    try {
+      const { transcription } = await api.transcribeCapsule(capsule.id, capsule.audio_uri);
+      await patchCapsule(capsule.id, { transcription });
+      setNotice("Transcription prête à relire.");
+    } catch (reason) {
+      setNotice(reason instanceof ApiError && reason.status === 429 ? "Quota quotidien de transcriptions atteint." : "Transcription momentanément indisponible.");
+    } finally {
+      setBusyCapsuleId(null);
     }
-    if (!consent) {
-      setNotice("Le consentement est requis pour enregistrer un souvenir.");
-      return;
+  };
+
+  const shareCapsule = async (capsule: Capsule) => {
+    if (!capsule.resident_id) return setNotice("Classez d’abord ce souvenir : un souvenir « À classer » ne peut pas être partagé.");
+    if (!capsule.synced) return setNotice("Le partage demande que le souvenir soit envoyé au serveur.");
+    setBusyCapsuleId(capsule.id);
+    try {
+      if (!capsule.audio_stored && capsule.audio_uri) {
+        await api.uploadCapsuleAudio(capsule.id, capsule.audio_uri);
+        await patchCapsule(capsule.id, { audio_stored: true });
+      }
+      const share = await api.shareCapsule(capsule.id);
+      await Clipboard.setStringAsync(`${apiBaseUrl}${share.path}`);
+      await patchCapsule(capsule.id, { share_id: share.share_id, share_expires_at: share.expires_at });
+      setNotice("Lien copié : il reste valable 30 jours et peut être révoqué.");
+    } catch (reason) {
+      setNotice(reason instanceof ApiError ? reason.message : "Partage impossible pour le moment.");
+    } finally {
+      setBusyCapsuleId(null);
     }
-    if (state.residents.length >= 10) {
-      setNotice("Les 10 profils sont déjà créés.");
-      return;
-    }
-    const localResident: Resident = { id: `local-${Date.now()}`, display_name: displayName, consent_status: "obtained", active: true, created_at: new Date().toISOString(), photo_uri: draftPhoto };
-    const optimistic = { ...state, residents: [...state.residents, localResident] };
-    await persist(optimistic);
-    if (authUser) try {
-      const remote = await api.createResident(displayName);
-      await persist({ ...optimistic, residents: optimistic.residents.map((item) => item.id === localResident.id ? { ...remote, photo_uri: draftPhoto } : item) });
+  };
+
+  const revokeShare = async (capsule: Capsule) => {
+    if (!capsule.share_id) return;
+    setBusyCapsuleId(capsule.id);
+    try {
+      await api.revokeShare(capsule.share_id);
+      await patchCapsule(capsule.id, { share_id: null, share_expires_at: null });
+      setNotice("Le lien familial est révoqué.");
     } catch {
-      setNotice("Profil conservé localement. La copie serveur sera retentée plus tard.");
-    } else {
-      setNotice("Profil conservé uniquement sur cet appareil.");
+      setNotice("Impossible de révoquer ce lien pour le moment.");
+    } finally {
+      setBusyCapsuleId(null);
     }
-    setDraftName("");
-    setDraftPhoto(null);
-    setPhotoDenied(false);
-    setConsent(true);
-    setShowAdd(false);
   };
 
-  const visibleCapsules = useMemo(() => {
-    // « Tous » n'affiche plus les souvenirs libres déjà réattribués à un profil :
-    // ils sont consultables depuis la fiche du membre (ou son filtre).
-    let list = archiveResidentId
-      ? state.capsules.filter((item) => item.resident_id === archiveResidentId)
-      : state.capsules.filter((item) => !(item.mode === "free" && item.resident_id));
-    const query = archiveQuery.trim().toLowerCase();
-    if (query) {
-      list = list.filter((item) => {
-        const residentName = state.residents.find((resident) => resident.id === item.resident_id)?.display_name ?? "";
-        return [item.title, item.transcription, item.theme, residentName].some((field) => field?.toLowerCase().includes(query));
-      });
-    }
-    return list;
-  }, [archiveResidentId, archiveQuery, state.capsules, state.residents]);
+  const capsuleActions = (capsule: Capsule): CapsuleActions => ({
+    onPlay: capsule.audio_uri || capsule.audio_stored ? () => void togglePlay(capsule) : undefined,
+    onEdit: () => setEditingCapsule(capsule),
+    onListen: features.voice_reading && capsule.transcription ? () => void speakText(`t-${capsule.id}`, capsule.transcription!) : undefined,
+    onTranscribe: features.transcription && authUser ? () => void transcribeCapsule(capsule) : undefined,
+    onShare: features.family_share && authUser && capsule.resident_id ? () => void shareCapsule(capsule) : undefined,
+    onRevokeShare: isAdmin && capsule.share_id ? () => void revokeShare(capsule) : undefined,
+    onDelete: isAdmin || !authUser ? () => setConfirm({
+      title: "Supprimer ce souvenir ?",
+      message: "L’enregistrement sera effacé de cet appareil et du serveur. Cette action est définitive et sera journalisée.",
+      confirmLabel: "Supprimer définitivement",
+      action: () => void deleteCapsule(capsule),
+    }) : undefined,
+  });
 
-  // Verrou professionnel : code à 4 chiffres exigé pour l'espace pro, la
-  // fusion de doublons et le retrait d'un profil. Créé à la première utilisation.
+  // --- Espace professionnel --------------------------------------------------------
   const [pinPrompt, setPinPrompt] = useState<{ mode: "create" | "unlock"; onSuccess: () => void } | null>(null);
-  const [pinDraft, setPinDraft] = useState("");
   const [pinError, setPinError] = useState(false);
+  const pinFailures = useRef(0);
+  const [pinLockedUntil, setPinLockedUntil] = useState(0);
+  const [pinLockSeconds, setPinLockSeconds] = useState(0);
+
+  useEffect(() => {
+    if (!pinLockedUntil) return;
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((pinLockedUntil - Date.now()) / 1000));
+      setPinLockSeconds(remaining);
+      if (!remaining) setPinLockedUntil(0);
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [pinLockedUntil]);
 
   const requirePin = (onSuccess: () => void) => {
-    setPinDraft("");
     setPinError(false);
     setPinPrompt({ mode: professionalPin ? "unlock" : "create", onSuccess });
   };
 
   const submitPin = async (value: string) => {
-    if (value.length !== 4 || !pinPrompt) return;
+    if (!pinPrompt || pinLockSeconds) return;
     if (pinPrompt.mode === "create") {
       await writeProfessionalPin(authUser?.tenant_id ?? null, value);
       setProfessionalPin(value);
-      const action = pinPrompt.onSuccess;
-      setPinPrompt(null);
       setNotice("Code professionnel créé.");
-      action();
+    } else if (value !== professionalPin) {
+      pinFailures.current += 1;
+      setPinError(true);
+      if (pinFailures.current >= PIN_MAX_ATTEMPTS) {
+        pinFailures.current = 0;
+        setPinLockedUntil(Date.now() + PIN_LOCK_SECONDS * 1000);
+      }
       return;
     }
-    if (value === professionalPin) {
-      const action = pinPrompt.onSuccess;
-      setPinPrompt(null);
-      action();
-    } else {
-      setPinError(true);
-      setPinDraft("");
+    pinFailures.current = 0;
+    const action = pinPrompt.onSuccess;
+    setPinPrompt(null);
+    action();
+  };
+
+  const [showAddMember, setShowAddMember] = useState(false);
+  const [memberBusy, setMemberBusy] = useState(false);
+  const addTeamMember = async (body: { full_name: string; email: string; password: string }) => {
+    if (!body.full_name || !body.email || body.password.length < 12) return setNotice("Complétez les champs avec un mot de passe d’au moins 12 caractères.");
+    setMemberBusy(true);
+    try {
+      await api.createMember(body);
+      setShowAddMember(false);
+      setNotice("Le membre peut maintenant se connecter à cet établissement.");
+    } catch (reason) {
+      setNotice(reason instanceof ApiError && reason.status === 409 ? "Cette adresse email est déjà utilisée." : "Impossible d’ajouter ce membre pour le moment.");
+    } finally {
+      setMemberBusy(false);
     }
   };
 
-  if (authChecking) {
-    return <View testID="auth-session-loading" style={[styles.root, styles.center]}><ActivityIndicator size="large" color={colors.brandPrimary} /><Text style={styles.body}>Vérification de la session sécurisée…</Text></View>;
-  }
+  const updateFeatures = async (changes: Partial<FeatureFlags>) => {
+    try {
+      const next = await api.updateSettings(changes);
+      await update((current) => ({ ...current, settings_cache: next }));
+      if ("sensitive_themes" in changes) {
+        const nextQuestions = await api.questions().catch(() => null);
+        if (nextQuestions) await update((current) => ({ ...current, questions_cache: nextQuestions }));
+      }
+    } catch {
+      setNotice("Réglage impossible hors connexion.");
+    }
+  };
 
+  const reloadQuestions = useCallback(() => {
+    void api.questions().then((next) => update((current) => ({ ...current, questions_cache: next }))).catch(() => null);
+  }, [update]);
+
+  // --- Retours des testeurs ------------------------------------------------------
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [feedbackBusy, setFeedbackBusy] = useState(false);
+  const sendFeedback = async (category: FeedbackCategory, message: string) => {
+    if (!authUser) return setNotice("Connectez-vous pour envoyer un retour à l’équipe Racontelle.");
+    setFeedbackBusy(true);
+    try {
+      await api.sendFeedback({ category, message: message || undefined, screen });
+      setShowFeedback(false);
+      setNotice("Merci ! Votre retour a bien été transmis.");
+    } catch {
+      setNotice("Envoi impossible pour le moment. Réessayez une fois la connexion revenue.");
+    } finally {
+      setFeedbackBusy(false);
+    }
+  };
+
+  // --- Affichage -----------------------------------------------------------------
+  if (authChecking) {
+    return <View testID="auth-session-loading" style={[styles.root, styles.center]}><ActivityIndicator size="large" color={colors.brandPrimary} /><Text style={styles.body}>Ouverture de la session sécurisée…</Text></View>;
+  }
   if (!authUser && !guestMode) {
     return <AuthScreen onAuthenticated={(session) => void activateSession(session)} onContinueLocal={() => void continueLocally()} initialMessage={authMessage} initialEmail={rememberedEmail} />;
   }
-
   if (loading) {
     return <View style={[styles.root, styles.center]}><ActivityIndicator size="large" color={colors.brandPrimary} /><Text style={styles.body}>Ouverture du carnet…</Text></View>;
   }
 
-  return (
-    <View style={styles.root}>
-      {screen === "home" && <HomeScreen styles={styles} colors={colors} insets={insets} state={state} authUser={authUser} onAuthAction={() => authUser ? void logout() : setGuestMode(false)} onAdd={() => setShowAdd(true)} onProfile={(resident: Resident) => { setSelectedResident(resident); setScreen("profile"); }} onFree={() => beginWorkshop(null, "free")} onArchive={() => setScreen("archive")} onStats={() => requirePin(() => setScreen("stats"))} />}
-      {screen === "profile" && selectedResident && <ProfileScreen styles={styles} colors={colors} insets={insets} resident={selectedResident} capsules={state.capsules.filter((item) => item.resident_id === selectedResident.id)} busyCapsuleId={busyCapsuleId} playingCapsuleId={playingCapsuleId} printing={printing} isAdmin={authUser?.role === "admin"} onBack={() => setScreen("home")} onStart={() => beginWorkshop(selectedResident, "free")} onArchive={() => { setArchiveResidentId(selectedResident.id); setScreen("archive"); }} onPhoto={() => void pickPhoto("profile")} onTranscribe={transcribeCapsule} onShare={shareCapsule} onRevokeShare={revokeShare} onPlay={togglePlay} onListen={(capsule: Capsule) => capsule.transcription && void speakText(`t-${capsule.id}`, capsule.transcription)} speakingCapsuleId={speakingId} onPrintCarnet={() => void printCarnet(selectedResident)} onRemoveRequest={() => requirePin(() => setShowRemove(true))} onRename={() => { setRenameDraft(selectedResident.display_name); setShowRename(true); }} onEditCapsule={openCapsuleEdit} />}
-      {screen === "workshop" && <WorkshopScreen styles={styles} colors={colors} insets={insets} resident={selectedResident} mode={workshopMode} questionIndex={questionIndex} questionTotal={Math.max(sessionQuestions.length, 1)} question={currentQuestion} recorderStatus={recorderStatus} durationSeconds={durationSeconds} speakingQuestion={speakingId === `q-${currentQuestion.id}`} onListenQuestion={() => void speakText(`q-${currentQuestion.id}`, currentQuestion.text)} onBack={() => setScreen(selectedResident ? "profile" : "home")} onRecord={handleRecordPress} onStop={stopRecording} onReset={resetRecording} onPlay={async () => { await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false }); player.play(); }} onSave={saveRecording} onModeChange={(nextMode: WorkshopMode) => { setWorkshopMode(nextMode); resetRecording(); }} onSkip={() => { if (questionIndex < sessionQuestions.length - 1) setQuestionIndex((value) => value + 1); else { setScreen(selectedResident ? "profile" : "home"); setNotice("Atelier terminé. Les questions passées seront reproposées ultérieurement."); } }} />}
-      {screen === "archive" && <ArchiveScreen styles={styles} colors={colors} insets={insets} residents={state.residents} capsules={visibleCapsules} selectedId={archiveResidentId} busyCapsuleId={busyCapsuleId} playingCapsuleId={playingCapsuleId} speakingCapsuleId={speakingId} isAdmin={authUser?.role === "admin"} searchQuery={archiveQuery} onSearch={setArchiveQuery} onSelect={setArchiveResidentId} onBack={() => setScreen("home")} onPlay={togglePlay} onTranscribe={transcribeCapsule} onShare={shareCapsule} onRevokeShare={revokeShare} onListen={(capsule: Capsule) => capsule.transcription && void speakText(`t-${capsule.id}`, capsule.transcription)} onEditCapsule={openCapsuleEdit} />}
-      {screen === "stats" && <StatsScreen styles={styles} colors={colors} insets={insets} state={state} usage={displayedUsage} authUser={authUser} duplicateGroups={authUser?.role === "admin" ? duplicateGroups : []} onAddMember={() => setShowAddMember(true)} onMergeGroup={(group: Resident[]) => { setMergeGroup(group); setMergeKeepId(null); setShowMerge(true); }} onBack={() => setScreen("home")} />}
-      {notice && <Pressable accessibilityRole="button" onPress={() => setNotice(null)} style={[styles.notice, { bottom: insets.bottom + 16 }]}><Icon name="information-circle-outline" color={colors.onInfo} size={18} /><Text style={styles.noticeText}>{notice}</Text><Icon name="close" color={colors.onInfo} size={18} /></Pressable>}
-      <Modal testID="add-resident-modal" visible={showAdd} transparent animationType="slide" onRequestClose={() => setShowAdd(false)}>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <KeyboardAwareScrollView bottomOffset={86} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 18, paddingBottom: 16 }}>
-            <View style={styles.sectionHeader}><Text style={styles.heading}>Nouveau profil</Text><Pressable testID="resident-cancel" onPress={() => setShowAdd(false)} style={styles.backButton}><Icon name="close" color={colors.onSurface} /></Pressable></View>
-            <Text style={styles.body}>Un prénom ou un pseudonyme suffit. Les données restent dans le carnet de l’atelier.</Text>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
-              <View style={styles.largeAvatar}>{draftPhoto ? <Image testID="resident-photo-preview" source={{ uri: draftPhoto }} style={{ width: 80, height: 80, borderRadius: 40 }} contentFit="cover" /> : <Icon name="camera-outline" color={colors.onBrandSecondary} size={28} />}</View>
-              <View style={{ flex: 1, gap: 6 }}>
-                <Pressable testID="resident-photo-button" accessibilityRole="button" onPress={() => void pickPhoto("draft")} style={({ pressed }) => [styles.secondaryButton, { minHeight: 48 }, pressed && styles.pressed]}><Icon name="image-outline" color={colors.onSurface} size={20} /><Text style={[styles.secondaryText, { fontSize: 14 }]}>{draftPhoto ? "Changer la photo" : "Ajouter une photo"}</Text></Pressable>
-                <Text style={styles.small}>Le portrait aide l’équipe à repérer le carnet.</Text>
-                {photoDenied && <Pressable testID="resident-photo-settings" accessibilityRole="button" onPress={() => void Linking.openSettings()} style={styles.textButton}><Text style={styles.textButtonLabel}>Ouvrir les réglages</Text></Pressable>}
-              </View>
-            </View>
-            <TextInput testID="resident-name-input" value={draftName} onChangeText={setDraftName} autoFocus placeholder="Prénom ou pseudonyme" placeholderTextColor={colors.muted} style={styles.input} maxLength={80} returnKeyType="done" blurOnSubmit={false} onSubmitEditing={() => void addResident()} />
-            <View style={styles.switchRow}><View style={{ flex: 1, gap: 4 }}><Text style={styles.actionTitle}>Consentement obtenu</Text><Text style={styles.small}>Nécessaire avant tout enregistrement.</Text></View><Switch testID="resident-consent-switch" value={consent} onValueChange={setConsent} trackColor={{ false: colors.borderStrong, true: colors.success }} thumbColor={colors.onBrandPrimary} /></View>
-            </KeyboardAwareScrollView>
-            <KeyboardStickyView style={{ paddingBottom: insets.bottom + 8 }}>
-              <Pressable testID="resident-create-button" accessibilityRole="button" onPress={() => void addResident()} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}><Icon name="person-add-outline" color={colors.onBrandPrimary} /><Text style={styles.primaryText}>Créer le profil</Text></Pressable>
-            </KeyboardStickyView>
-          </View>
-        </View>
-      </Modal>
-      <Modal testID="remove-profile-modal" visible={showRemove && !!selectedResident} transparent animationType="slide" onRequestClose={() => setShowRemove(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingBottom: insets.bottom + 20 }}>
-              <View style={styles.sectionHeader}><Text style={styles.heading}>Retirer {selectedResident?.display_name}</Text><Pressable testID="remove-cancel" onPress={() => setShowRemove(false)} style={styles.backButton}><Icon name="close" color={colors.onSurface} /></Pressable></View>
-              <Text style={styles.body}>Départ de l’établissement : extrayez d’abord l’ensemble des souvenirs. Le fichier regroupe les enregistrements audio et leurs transcriptions pour les transmissions du service.</Text>
-              <Pressable testID="export-button" accessibilityRole="button" disabled={exporting} onPress={() => selectedResident && void exportResident(selectedResident)} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}>{exporting ? <ActivityIndicator color={colors.onBrandPrimary} /> : <Icon name="download-outline" color={colors.onBrandPrimary} />}<Text style={styles.primaryText}>1 · Extraire les souvenirs</Text></Pressable>
-              {selectedResident && state.exports?.[selectedResident.id] ? <Text testID="export-done" style={styles.consent}>Export réalisé le {formatDate(state.exports[selectedResident.id])}</Text> : <Text style={styles.small}>Le retrait sera possible une fois l’extraction réalisée.</Text>}
-              <Pressable testID="confirm-remove-button" accessibilityRole="button" disabled={!selectedResident || !state.exports?.[selectedResident.id]} onPress={() => selectedResident && void removeResident(selectedResident)} style={({ pressed }) => [styles.dangerButton, (!selectedResident || !state.exports?.[selectedResident.id]) && { opacity: 0.45 }, pressed && styles.pressed]}><Icon name="person-remove-outline" color={colors.onError} /><Text style={styles.primaryText}>2 · Retirer le profil</Text></Pressable>
-              <Text style={styles.small}>Les audios et transcriptions conservés sur le serveur ne sont pas effacés.</Text>
-            </ScrollView>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-      <Modal testID="merge-modal" visible={showMerge && mergeGroup.length > 0} transparent animationType="slide" onRequestClose={() => setShowMerge(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 14, paddingBottom: insets.bottom + 20 }}>
-              <View style={styles.sectionHeader}><Text style={styles.heading}>Fusionner les « {mergeGroup[0]?.display_name} »</Text><Pressable testID="merge-cancel" onPress={() => setShowMerge(false)} style={styles.backButton}><Icon name="close" color={colors.onSurface} /></Pressable></View>
-              <Text style={styles.body}>Choisissez la fiche à conserver. Les souvenirs des autres fiches y seront rattachés, rien ne sera perdu.</Text>
-              {mergeGroup.map((resident) => {
-                const selected = mergeKeepId === resident.id;
-                const count = state.capsules.filter((capsule) => capsule.resident_id === resident.id).length;
-                return <Pressable testID={`merge-keep-${resident.id}`} key={resident.id} accessibilityRole="button" onPress={() => setMergeKeepId(resident.id)} style={[styles.statRow, selected && { borderColor: colors.brandPrimary, borderWidth: 2 }]}>
-                  <View style={styles.avatar}>{resident.photo_uri ? <Image source={{ uri: resident.photo_uri }} style={{ width: 44, height: 44, borderRadius: 22 }} contentFit="cover" /> : <Text style={styles.avatarText}>{initials(resident.display_name)}</Text>}</View>
-                  <View style={{ flex: 1, gap: 2 }}><Text style={styles.profileName}>{resident.display_name}</Text><Text style={styles.small}>Créée le {formatDate(resident.created_at)} · {count} souvenir{count > 1 ? "s" : ""}</Text></View>
-                  <Icon name={selected ? "radio-button-on" : "radio-button-off"} color={selected ? colors.brandPrimary : colors.muted} size={22} />
-                </Pressable>;
-              })}
-              <Pressable testID="merge-confirm" accessibilityRole="button" disabled={!mergeKeepId} onPress={() => void confirmMerge()} style={({ pressed }) => [styles.primaryButton, !mergeKeepId && { opacity: 0.45 }, pressed && styles.pressed]}><Icon name="git-merge-outline" color={colors.onBrandPrimary} /><Text style={styles.primaryText}>Conserver cette fiche</Text></Pressable>
-              <Text style={styles.small}>Les fiches non conservées seront retirées de l’accueil.</Text>
-            </ScrollView>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-      <Modal testID="rename-modal" visible={showRename && !!selectedResident} transparent animationType="slide" onRequestClose={() => setShowRename(false)}>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <KeyboardAwareScrollView bottomOffset={86} keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 16, paddingBottom: 16 }}>
-              <View style={styles.sectionHeader}><Text style={styles.heading}>Renommer le profil</Text><Pressable testID="rename-cancel" onPress={() => setShowRename(false)} style={styles.backButton}><Icon name="close" color={colors.onSurface} /></Pressable></View>
-              <TextInput testID="rename-input" value={renameDraft} onChangeText={setRenameDraft} autoFocus placeholder="Prénom ou pseudonyme" placeholderTextColor={colors.muted} style={styles.input} maxLength={80} returnKeyType="done" blurOnSubmit={false} onSubmitEditing={() => void renameResident()} />
-            </KeyboardAwareScrollView>
-            <KeyboardStickyView style={{ paddingBottom: insets.bottom + 8 }}>
-              <Pressable testID="rename-save" accessibilityRole="button" onPress={() => void renameResident()} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}><Icon name="checkmark" color={colors.onBrandPrimary} /><Text style={styles.primaryText}>Enregistrer</Text></Pressable>
-            </KeyboardStickyView>
-          </View>
-        </View>
-      </Modal>
-      <Modal testID="add-member-modal" visible={showAddMember && authUser?.role === "admin"} transparent animationType="slide" onRequestClose={() => setShowAddMember(false)}>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <KeyboardAwareScrollView bottomOffset={86} keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 14, paddingBottom: 16 }}>
-              <View style={styles.sectionHeader}><Text style={styles.heading}>Ajouter un membre</Text><Pressable testID="add-member-cancel" accessibilityRole="button" onPress={() => setShowAddMember(false)} style={styles.backButton}><Icon name="close" color={colors.onSurface} /></Pressable></View>
-              <Text style={styles.body}>Ce compte membre pourra enregistrer et consulter les souvenirs de {authUser?.establishment_name}. Les exports et suppressions restent réservés aux administrateurs.</Text>
-              <TextInput testID="add-member-name-input" value={memberName} onChangeText={setMemberName} placeholder="Nom du professionnel" placeholderTextColor={colors.muted} style={styles.input} autoCapitalize="words" />
-              <TextInput testID="add-member-email-input" value={memberEmail} onChangeText={setMemberEmail} placeholder="Adresse email professionnelle" placeholderTextColor={colors.muted} style={styles.input} autoCapitalize="none" keyboardType="email-address" />
-              <TextInput testID="add-member-password-input" value={memberPassword} onChangeText={setMemberPassword} placeholder="Mot de passe temporaire · 12 caractères" placeholderTextColor={colors.muted} style={styles.input} secureTextEntry autoCapitalize="none" />
-            </KeyboardAwareScrollView>
-            <KeyboardStickyView style={{ paddingBottom: insets.bottom + 8 }}>
-              <Pressable testID="add-member-submit" accessibilityRole="button" disabled={memberBusy} onPress={() => void addTeamMember()} style={({ pressed }) => [styles.primaryButton, memberBusy && { opacity: 0.6 }, pressed && styles.pressed]}>{memberBusy ? <ActivityIndicator color={colors.onBrandPrimary} /> : <Icon name="person-add-outline" color={colors.onBrandPrimary} />}<Text style={styles.primaryText}>Créer le compte membre</Text></Pressable>
-            </KeyboardStickyView>
-          </View>
-        </View>
-      </Modal>
-      <Modal testID="edit-capsule-modal" visible={!!editingCapsule} transparent animationType="slide" onRequestClose={() => setEditingCapsule(null)}>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <KeyboardAwareScrollView bottomOffset={86} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 16, paddingBottom: 16 }}>
-              <View style={styles.sectionHeader}><Text style={styles.heading}>Modifier le souvenir</Text><Pressable testID="edit-capsule-cancel" onPress={() => setEditingCapsule(null)} style={styles.backButton}><Icon name="close" color={colors.onSurface} /></Pressable></View>
-              <Text style={styles.body}>Renommez le souvenir et rattachez-le au profil de la personne qui raconte.</Text>
-              <TextInput testID="edit-capsule-title" value={editTitle} onChangeText={setEditTitle} placeholder="Titre du souvenir" placeholderTextColor={colors.muted} style={styles.input} maxLength={200} returnKeyType="done" />
-              <Text style={styles.eyebrow}>Rattaché à</Text>
-              {state.residents.map((resident) => { const active = editResidentId === resident.id; return <Pressable testID={`edit-capsule-resident-${resident.id}`} key={resident.id} accessibilityRole="button" onPress={() => setEditResidentId(resident.id)} style={[styles.statRow, active && { borderColor: colors.brandPrimary, borderWidth: 2 }]}>
-                <View style={styles.avatar}>{resident.photo_uri ? <Image source={{ uri: resident.photo_uri }} style={{ width: 44, height: 44, borderRadius: 22 }} contentFit="cover" /> : <Text style={styles.avatarText}>{initials(resident.display_name)}</Text>}</View>
-                <View style={{ flex: 1 }}><Text style={styles.profileName}>{resident.display_name}</Text></View>
-                <Icon name={active ? "radio-button-on" : "radio-button-off"} color={active ? colors.brandPrimary : colors.muted} size={22} />
-              </Pressable>; })}
-              {state.residents.length === 0 && <Text style={styles.small}>Créez d’abord un profil pour y rattacher ce souvenir.</Text>}
-            </KeyboardAwareScrollView>
-            <KeyboardStickyView style={{ paddingBottom: insets.bottom + 8 }}>
-              <Pressable testID="edit-capsule-save" accessibilityRole="button" onPress={() => void saveCapsuleEdit()} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}><Icon name="checkmark" color={colors.onBrandPrimary} /><Text style={styles.primaryText}>Enregistrer les modifications</Text></Pressable>
-            </KeyboardStickyView>
-          </View>
-        </View>
-      </Modal>
-      <Modal testID="pin-modal" visible={!!pinPrompt} transparent animationType="fade" onRequestClose={() => setPinPrompt(null)}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <View style={{ gap: 16, paddingBottom: insets.bottom + 12 }}>
-              <View style={styles.sectionHeader}><Text style={styles.heading}>{pinPrompt?.mode === "create" ? "Créer le code professionnel" : "Code professionnel"}</Text><Pressable testID="pin-cancel" onPress={() => setPinPrompt(null)} style={styles.backButton}><Icon name="close" color={colors.onSurface} /></Pressable></View>
-              <Text style={styles.body}>{pinPrompt?.mode === "create" ? "Choisissez un code à 4 chiffres. Il protégera l’espace professionnel, la fusion et le retrait des profils." : "Saisissez le code à 4 chiffres pour continuer."}</Text>
-              <TextInput testID="pin-input" value={pinDraft} onChangeText={(value) => { const clean = value.replace(/\D/g, "").slice(0, 4); setPinDraft(clean); setPinError(false); if (clean.length === 4) void submitPin(clean); }} keyboardType="number-pad" maxLength={4} autoFocus secureTextEntry placeholder="••••" placeholderTextColor={colors.muted} style={styles.pinInput} />
-              {pinError && <Text testID="pin-error" style={[styles.small, { color: colors.error }]}>Code incorrect. Réessayez.</Text>}
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-    </View>
-  );
-}
+  const openLibrary = (filter: LibraryFilter) => {
+    setLibraryFilter(filter);
+    setScreen("library");
+  };
 
-function HomeScreen({ styles, colors, insets, state, authUser, onAuthAction, onAdd, onProfile, onFree, onArchive, onStats }: any) {
-  return <ScrollView testID="home-screen" contentContainerStyle={[styles.screen, { paddingTop: insets.top + 22, paddingBottom: insets.bottom + 32 }]}>
-    <View style={styles.header}><View><Text style={styles.eyebrow}>Carnet de l’atelier</Text><Image testID="home-logo" source={require("../assets/images/racontelle-logo.webp")} style={styles.logo} contentFit="contain" /></View><View style={styles.avatar}><Icon name="leaf-outline" color={colors.onBrandSecondary} /></View></View>
-    <View style={styles.status}><Icon name={authUser ? "shield-checkmark-outline" : "cloud-offline-outline"} color={colors.onBrandTertiary} size={18} /><Text testID="home-sync-status" style={styles.statusText}>{authUser ? "Espace établissement sécurisé" : "Mode local actif"}</Text></View>
-    <EstablishmentBanner user={authUser} onAuthAction={onAuthAction} />
-    <View style={styles.hero}><Text style={styles.heroTitle}>Les voix que l’on aime racontent les plus belles histoires.</Text><Text style={styles.body}>Un espace simple pour écouter, préserver et transmettre les souvenirs de l’atelier.</Text></View>
-    <View style={styles.actionRow}><Pressable testID="home-free-mode" accessibilityRole="button" onPress={onFree} style={({ pressed }) => [styles.actionCard, styles.actionPrimary, pressed && styles.pressed]}><Icon name="mic-outline" color={colors.onBrandPrimary} size={26} /><View><Text style={[styles.actionTitle, styles.actionTitleLight]}>Mode spontané</Text><Text style={[styles.actionText, styles.actionTextLight]}>Enregistrer sans choisir de personne</Text></View></Pressable><Pressable testID="home-archive" accessibilityRole="button" onPress={onArchive} style={({ pressed }) => [styles.actionCard, styles.actionSecondary, pressed && styles.pressed]}><Icon name="albums-outline" color={colors.onBrandTertiary} size={26} /><View><Text style={styles.actionTitle}>Mes souvenirs</Text><Text style={styles.actionText}>Retrouver le carnet audio</Text></View></Pressable></View>
-    <Pressable testID="home-stats" accessibilityRole="button" onPress={onStats} style={({ pressed }) => [styles.statsCard, pressed && styles.pressed]}><Icon name="stats-chart-outline" color={colors.onBrandSecondary} size={24} /><View style={{ flex: 1 }}><Text style={styles.actionTitle}>Espace professionnel</Text><Text style={styles.actionText}>Temps d’utilisation global et par personne</Text></View><Icon name="chevron-forward" color={colors.onBrandSecondary} size={20} /></Pressable>
-    <View style={styles.sectionHeader}><Text style={styles.heading}>Vos personnes</Text><Pressable testID="home-add-profile" accessibilityRole="button" onPress={onAdd} style={styles.textButton}><Text style={styles.textButtonLabel}>Ajouter</Text></Pressable></View>
-    {state.residents.length ? <View style={styles.profileGrid}>{state.residents.map((resident: Resident) => <Pressable testID={`home-profile-${resident.id}`} key={resident.id} accessibilityRole="button" onPress={() => onProfile(resident)} style={({ pressed }) => [styles.profileCard, pressed && styles.pressed]}><View style={styles.avatar}>{resident.photo_uri ? <Image source={{ uri: resident.photo_uri }} style={{ width: 44, height: 44, borderRadius: 22 }} contentFit="cover" /> : <Text style={styles.avatarText}>{initials(resident.display_name)}</Text>}</View><View><Text style={styles.profileName}>{resident.display_name}</Text><Text style={styles.consent}>Consentement obtenu</Text></View></Pressable>)}</View> : <View style={styles.empty}><Icon name="people-outline" color={colors.brand} size={32} /><Text style={styles.heading}>Le carnet commence ici</Text><Text style={[styles.body, { textAlign: "center" }]}>Créez un profil pour associer les prochains souvenirs à la bonne personne.</Text><Pressable testID="home-create-first" accessibilityRole="button" onPress={onAdd} style={styles.secondaryButton}><Text style={styles.secondaryText}>Créer le premier profil</Text></Pressable></View>}
-    <Text style={styles.small}>{state.residents.length}/10 profils créés · stockage local sur cet appareil</Text>
-  </ScrollView>;
-}
+  return <View style={styles.root}>
+    {screen === "home" && <HomeScreen {...base}
+      residents={state.residents}
+      maxResidents={settings.max_residents}
+      unclassifiedCount={state.capsules.filter((capsule) => !capsule.resident_id).length}
+      pendingUploads={store.pendingUploads}
+      authUser={authUser}
+      quizEnabled={features.quiz && !!authUser}
+      onAuthAction={() => (authUser ? void logout() : setGuestMode(false))}
+      onAdd={() => setResidentForm({ open: true, residentId: null })}
+      onProfile={(resident) => { setSelectedResidentId(resident.id); setScreen("profile"); }}
+      onGuided={() => openWorkshop(null, "question")}
+      onSpontaneous={() => openWorkshop(null, "free")}
+      onQuiz={() => setScreen("quiz")}
+      onToClassify={() => openLibrary("unclassified")}
+      onLibrary={() => openLibrary("all")}
+      onPro={() => requirePin(() => setScreen("pro"))}
+      onFeedback={() => setShowFeedback(true)} />}
 
-function ProfileScreen({ styles, colors, insets, resident, capsules, busyCapsuleId, playingCapsuleId, speakingCapsuleId, printing, isAdmin, onBack, onStart, onArchive, onPhoto, onTranscribe, onShare, onRevokeShare, onPlay, onListen, onPrintCarnet, onRemoveRequest, onRename, onEditCapsule }: any) {
-  const guidedAnswers = capsules.filter((capsule: Capsule) => capsule.mode === "question");
-  const freeMemories = capsules.filter((capsule: Capsule) => capsule.mode === "free");
-  const renderCapsule = (capsule: Capsule) => <CapsuleRow key={capsule.id} styles={styles} colors={colors} capsule={capsule} resident={resident} busy={busyCapsuleId === capsule.id} playing={playingCapsuleId === capsule.id} speaking={speakingCapsuleId === `t-${capsule.id}`} onPlay={capsule.audio_uri ? () => onPlay(capsule) : undefined} onListen={capsule.transcription ? () => onListen(capsule) : undefined} onEdit={() => onEditCapsule(capsule)} onTranscribe={() => onTranscribe(capsule)} onShare={() => onShare(capsule)} onRevokeShare={isAdmin && capsule.share_id ? () => onRevokeShare(capsule) : undefined} />;
-  return <ScrollView testID="profile-screen" contentContainerStyle={[styles.screen, { paddingTop: insets.top + 18, paddingBottom: insets.bottom + 32 }]}>
-    <View style={styles.header}><Pressable testID="profile-back" accessibilityRole="button" onPress={onBack} style={styles.backButton}><Icon name="arrow-back" color={colors.onSurface} /></Pressable><Text style={styles.eyebrow}>Fiche personne</Text><View style={{ width: 48 }} /></View>
-    <View style={styles.profileHeader}><Pressable testID="profile-photo-button" accessibilityRole="button" onPress={onPhoto} style={({ pressed }) => pressed && styles.pressed}><View style={styles.largeAvatar}>{resident.photo_uri ? <Image source={{ uri: resident.photo_uri }} style={{ width: 80, height: 80, borderRadius: 40 }} contentFit="cover" /> : <Text style={styles.largeAvatarText}>{initials(resident.display_name)}</Text>}</View></Pressable><Pressable testID="profile-rename" accessibilityRole="button" accessibilityLabel="Renommer le profil" onPress={onRename} style={({ pressed }) => [{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 44 }, pressed && styles.pressed]}><Text style={styles.title}>{resident.display_name}</Text><Icon name="pencil-outline" color={colors.muted} size={18} /></Pressable><Text style={styles.small}>Consentement obtenu · profil local</Text><Pressable testID="profile-change-photo" accessibilityRole="button" onPress={onPhoto} style={styles.textButton}><Text style={styles.textButtonLabel}>{resident.photo_uri ? "Changer la photo" : "Ajouter une photo"}</Text></Pressable></View>
-    <Pressable testID="profile-start-workshop" accessibilityRole="button" onPress={onStart} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}><Icon name="mic" color={colors.onBrandPrimary} /><Text style={styles.primaryText}>Démarrer l’atelier</Text></Pressable>
-    <View testID="profile-guided-answers-section" style={{ gap: 14 }}>
-      <View style={styles.sectionHeader}><Text style={styles.heading}>Réponses aux questions</Text><Text testID="profile-guided-answers-count" style={styles.small}>{guidedAnswers.length}</Text></View>
-      {guidedAnswers.length ? guidedAnswers.map(renderCapsule) : <View testID="profile-guided-answers-empty" style={styles.empty}><Icon name="chatbubble-ellipses-outline" color={colors.brand} size={28} /><Text style={styles.body}>Aucune réponse pour le moment.</Text><Text style={styles.small}>Les réponses guidées de {resident.display_name} apparaîtront ici.</Text></View>}
-    </View>
-    {freeMemories.length ? <View testID="profile-free-memories-section" style={{ gap: 14 }}>
-      <View style={styles.sectionHeader}><Text style={styles.heading}>Souvenirs libres</Text><Text testID="profile-free-memories-count" style={styles.small}>{freeMemories.length}</Text></View>
-      {freeMemories.slice(0, 5).map(renderCapsule)}
-    </View> : null}
-    {freeMemories.length > 5 && <Pressable testID="profile-open-archive" accessibilityRole="button" onPress={onArchive} style={styles.secondaryButton}><Text style={styles.secondaryText}>Voir tous les souvenirs libres</Text></Pressable>}
-    {isAdmin && <><Pressable testID="profile-print-carnet" accessibilityRole="button" disabled={printing} onPress={onPrintCarnet} style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}>{printing ? <ActivityIndicator color={colors.brandPrimary} /> : <Icon name="book-outline" color={colors.brandPrimary} />}<Text style={styles.secondaryText}>Imprimer le carnet (PDF)</Text></Pressable><View style={{ height: 1, backgroundColor: colors.divider }} /><Pressable testID="profile-remove" accessibilityRole="button" onPress={onRemoveRequest} style={({ pressed }) => [styles.textButton, { alignSelf: "center" }, pressed && styles.pressed]}><Text style={[styles.textButtonLabel, { color: colors.error }]}>Retirer le profil (départ de l’établissement)</Text></Pressable></>}
-  </ScrollView>;
-}
+    {screen === "profile" && selectedResident && <ProfileScreen {...base}
+      resident={selectedResident}
+      capsules={state.capsules.filter((capsule) => capsule.resident_id === selectedResident.id)}
+      isAdmin={isAdmin}
+      carnetEnabled={features.carnet_pdf}
+      printing={printing}
+      busyCapsuleId={busyCapsuleId}
+      playingCapsuleId={playingCapsuleId}
+      speakingCapsuleId={speakingKey}
+      capsuleActions={capsuleActions}
+      onBack={() => setScreen("home")}
+      onGuided={() => openWorkshop(selectedResident, "question")}
+      onFree={() => openWorkshop(selectedResident, "free")}
+      onPhoto={() => void changeProfilePhoto()}
+      onEditProfile={() => setResidentForm({ open: true, residentId: selectedResident.id })}
+      onPrintCarnet={() => void printCarnet(selectedResident)}
+      onRemoveRequest={() => requirePin(() => setShowRemove(true))} />}
 
-function WorkshopScreen({ styles, colors, insets, resident, mode, questionIndex, questionTotal = 10, question, recorderStatus, durationSeconds, speakingQuestion, onListenQuestion, onBack, onRecord, onStop, onReset, onPlay, onSave, onSkip, onModeChange }: any) {
-  const isQuestion = mode === "question";
-  return <ScrollView contentContainerStyle={[styles.screen, { paddingTop: insets.top + 18, paddingBottom: insets.bottom + 32 }]}>
-    <View style={styles.header}><Pressable testID="workshop-back" accessibilityRole="button" onPress={onBack} style={styles.backButton}><Icon name="arrow-back" color={colors.onSurface} /></Pressable><Text style={styles.eyebrow}>L’atelier vocal</Text><View style={{ width: 48 }} /></View>
-    {recorderStatus === "idle" && <View style={styles.modeSwitch}>
-      <Pressable testID="workshop-mode-question" accessibilityRole="button" onPress={() => onModeChange("question")} style={({ pressed }) => [styles.modeOption, isQuestion && styles.modeOptionActive, pressed && styles.pressed]}><Icon name="chatbubble-ellipses-outline" color={isQuestion ? colors.onBrandPrimary : colors.onSurfaceSecondary} size={20} /><Text style={[styles.modeOptionText, isQuestion && styles.modeOptionTextActive]}>Question guidée</Text></Pressable>
-      <Pressable testID="workshop-mode-free" accessibilityRole="button" onPress={() => onModeChange("free")} style={({ pressed }) => [styles.modeOption, !isQuestion && styles.modeOptionActive, pressed && styles.pressed]}><Icon name="mic-outline" color={!isQuestion ? colors.onBrandPrimary : colors.onSurfaceSecondary} size={20} /><Text style={[styles.modeOptionText, !isQuestion && styles.modeOptionTextActive]}>Enregistrement libre</Text></Pressable>
-    </View>}
-    <View style={styles.workshopTop}><Text style={styles.title}>{resident ? resident.display_name : "Souvenir spontané"}</Text><Text style={styles.body}>{isQuestion ? "Une question à la fois, au rythme de la personne." : "Laissez la parole venir librement."}</Text>{isQuestion && <><View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${((questionIndex + 1) / Math.max(questionTotal, 1)) * 100}%` }]} /></View><Text style={styles.small}>Question {questionIndex + 1} sur {questionTotal} · {question.theme}</Text></>}</View>
-    {isQuestion && <View style={styles.questionCard}><Text style={styles.eyebrow}>Question du jour</Text><Text style={styles.questionText}>{question.text}</Text><Pressable testID="workshop-listen-question" accessibilityRole="button" onPress={onListenQuestion} style={({ pressed }) => [styles.capsuleAction, pressed && styles.pressed]}><Icon name={speakingQuestion ? "stop-circle-outline" : "volume-high-outline"} color={colors.brandPrimary} size={20} /><Text style={styles.capsuleActionText}>{speakingQuestion ? "Lecture en cours…" : "Écouter la question"}</Text></Pressable></View>}
-    {!isQuestion && <View style={styles.hero}><Text style={styles.heroTitle}>Souvenir libre</Text><Text style={styles.body}>Appuyez sur le bouton quand la personne est prête, puis laissez-la raconter.</Text></View>}
-    <View style={styles.recorderPanel}><Text style={styles.timer}>{formatDuration(durationSeconds)}</Text><Waveform active={recorderStatus === "recording"} /><Pressable testID="workshop-record" accessibilityRole="button" accessibilityLabel={recorderStatus === "recording" ? "Mettre en pause" : "Enregistrer"} onPress={onRecord} style={({ pressed }) => [styles.recordButton, recorderStatus === "recording" && styles.recordButtonActive, pressed && styles.pressed]}>{recorderStatus === "recording" ? <Icon name="pause" color={colors.onError} size={34} /> : <Icon name="mic" color={colors.onError} size={38} />}</Pressable><Text style={styles.small}>{recorderStatus === "recording" ? "Enregistrement en cours" : recorderStatus === "paused" ? "En pause" : recorderStatus === "done" ? "Prêt à réécouter" : "Appuyez pour commencer"}</Text></View>
-    {recorderStatus === "recording" || recorderStatus === "paused" ? <View style={styles.actionRow}><Pressable testID="workshop-stop" accessibilityRole="button" onPress={onStop} style={[styles.primaryButton, { flex: 1 }]}><Icon name="stop" color={colors.onBrandPrimary} /><Text style={styles.primaryText}>Terminer</Text></Pressable><Pressable testID="workshop-pause" accessibilityRole="button" onPress={onRecord} style={[styles.secondaryButton, { flex: 1 }]}><Text style={styles.secondaryText}>{recorderStatus === "paused" ? "Reprendre" : "Pause"}</Text></Pressable></View> : recorderStatus === "done" ? <><View style={styles.actionRow}><Pressable testID="workshop-play" accessibilityRole="button" onPress={onPlay} style={[styles.secondaryButton, { flex: 1 }]}><Icon name="play" color={colors.brandPrimary} /><Text style={styles.secondaryText}>Réécouter</Text></Pressable><Pressable testID="workshop-reset" accessibilityRole="button" onPress={onReset} style={[styles.secondaryButton, { flex: 1 }]}><Text style={styles.secondaryText}>Recommencer</Text></Pressable></View><Pressable testID="workshop-save" accessibilityRole="button" onPress={onSave} style={styles.primaryButton}><Icon name="bookmark" color={colors.onBrandPrimary} /><Text style={styles.primaryText}>Sauvegarder le souvenir</Text></Pressable></> : null}
-    {isQuestion && <Pressable testID="workshop-skip" accessibilityRole="button" onPress={onSkip} style={styles.textButton}><Text style={styles.textButtonLabel}>Passer cette question</Text></Pressable>}
-  </ScrollView>;
-}
+    {screen === "workshop" && <WorkshopScreen {...base}
+      step={workshopStep}
+      mode={workshopMode}
+      resident={selectedResident}
+      residents={state.residents}
+      themes={themes}
+      theme={workshopTheme}
+      question={question}
+      recorderStatus={recorderStatus}
+      durationSeconds={elapsedSec}
+      voiceEnabled={features.voice_reading && !!authUser}
+      speakingQuestion={!!question && speakingKey === `q-${question.id}`}
+      onBack={workshopBack}
+      onPickResident={(resident) => {
+        if (resident.consent_status !== "obtained") return setNotice("Le consentement doit être obtenu avant tout enregistrement.");
+        setSelectedResidentId(resident.id);
+        setWorkshopStep("theme");
+      }}
+      onPickTheme={(theme) => { api.track("theme_selected", { theme }); chooseQuestion(theme, false); }}
+      onSurprise={() => { api.track("question_surprise"); chooseQuestion(null, true); }}
+      onAnotherQuestion={() => { api.track("question_change", { question_id: question?.id }); chooseQuestion(workshopTheme, false); }}
+      onChangeTheme={() => setWorkshopStep("theme")}
+      onListenQuestion={() => question && void speakText(`q-${question.id}`, question.text)}
+      onModeChange={(mode) => {
+        resetRecording();
+        setWorkshopMode(mode);
+        if (mode === "question" && !question) setWorkshopStep("theme");
+        else setWorkshopStep("record");
+      }}
+      onRecord={() => void handleRecordPress()}
+      onStop={() => void stopRecording()}
+      onReset={resetRecording}
+      onPlay={() => recordedUri && void playUri(recordedUri, "review")}
+      onSave={() => void saveRecording()}
+      onNext={nextInWorkshop}
+      onFinish={() => leaveWorkshop(selectedResident ? "profile" : "home")} />}
 
-function ArchiveScreen({ styles, colors, insets, residents, capsules, selectedId, busyCapsuleId, playingCapsuleId, speakingCapsuleId, isAdmin, searchQuery = "", onSearch, onSelect, onBack, onPlay, onTranscribe, onShare, onRevokeShare, onListen, onEditCapsule }: any) {
-  return <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.screen, { paddingTop: insets.top + 18, paddingBottom: insets.bottom + 32 }]}>
-    <View style={styles.header}><Pressable testID="archive-back" accessibilityRole="button" onPress={onBack} style={styles.backButton}><Icon name="arrow-back" color={colors.onSurface} /></Pressable><Text style={styles.eyebrow}>Archive locale</Text><View style={{ width: 48 }} /></View>
-    <View><Text style={styles.title}>Mes souvenirs</Text><Text style={styles.body}>Les capsules restent disponibles sur cet appareil, même sans réseau.</Text></View>
-    <TextInput testID="archive-search" value={searchQuery} onChangeText={onSearch} placeholder="Rechercher un mot, un souvenir…" placeholderTextColor={colors.muted} style={styles.input} returnKeyType="search" autoCorrect={false} />
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.archiveFilter}><Pressable testID="archive-filter-all" onPress={() => onSelect(null)} style={[styles.filter, selectedId === null && styles.filterActive]}><Text style={[styles.filterText, selectedId === null && styles.filterTextActive]}>Tous</Text></Pressable>{residents.map((resident: Resident) => <Pressable testID={`archive-filter-${resident.id}`} key={resident.id} onPress={() => onSelect(resident.id)} style={[styles.filter, selectedId === resident.id && styles.filterActive]}><Text style={[styles.filterText, selectedId === resident.id && styles.filterTextActive]}>{resident.display_name}</Text></Pressable>)}</ScrollView>
-    {capsules.length ? capsules.map((capsule: Capsule) => <CapsuleRow key={capsule.id} styles={styles} colors={colors} capsule={capsule} resident={residents.find((item: Resident) => item.id === capsule.resident_id)} busy={busyCapsuleId === capsule.id} playing={playingCapsuleId === capsule.id} speaking={speakingCapsuleId === `t-${capsule.id}`} onPlay={capsule.audio_uri ? () => onPlay(capsule) : undefined} onListen={capsule.transcription ? () => onListen(capsule) : undefined} onEdit={() => onEditCapsule(capsule)} onTranscribe={() => onTranscribe(capsule)} onShare={() => onShare(capsule)} onRevokeShare={isAdmin && capsule.share_id ? () => onRevokeShare(capsule) : undefined} />) : <View style={styles.empty}><Icon name="albums-outline" color={colors.brand} size={30} /><Text style={styles.heading}>{searchQuery.trim() ? "Aucun souvenir trouvé" : "Votre archive est vide"}</Text><Text style={[styles.body, { textAlign: "center" }]}>{searchQuery.trim() ? `Aucune transcription ne contient « ${searchQuery.trim()} ».` : "Les souvenirs sauvegardés pendant l’atelier apparaîtront ici."}</Text></View>}
-  </ScrollView>;
-}
+    {screen === "library" && <LibraryScreen {...base}
+      residents={state.residents}
+      capsules={state.capsules}
+      filter={libraryFilter}
+      busyCapsuleId={busyCapsuleId}
+      playingCapsuleId={playingCapsuleId}
+      speakingCapsuleId={speakingKey}
+      capsuleActions={capsuleActions}
+      onFilter={setLibraryFilter}
+      onBack={() => setScreen("home")} />}
 
-function formatTrackedTime(totalMilliseconds: number) {
-  const totalSeconds = Math.max(0, Math.floor(totalMilliseconds / 1000));
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  if (hours > 0) return `${hours} h ${minutes} min ${seconds} s`;
-  if (minutes > 0) return `${minutes} min ${seconds} s`;
-  return `${seconds} s`;
-}
+    {screen === "pro" && <ProScreen {...base}
+      residents={state.residents}
+      capsules={state.capsules}
+      usage={usage.displayedUsage}
+      authUser={authUser}
+      features={features}
+      maxResidents={settings.max_residents}
+      duplicateGroups={isAdmin ? duplicateGroups : []}
+      onFeatures={updateFeatures}
+      onAddMember={() => setShowAddMember(true)}
+      onMergeGroup={setMergeGroup}
+      onQuestionBank={() => setScreen("questions")}
+      onQuizAdmin={() => setScreen("quizAdmin")}
+      onFeedback={() => setShowFeedback(true)}
+      onNotice={setNotice}
+      onBack={() => setScreen("home")} />}
 
-function StatsScreen({ styles, colors, insets, state, usage, authUser, duplicateGroups = [], onAddMember, onMergeGroup, onBack }: any) {
-  const recordedTotal = state.capsules.reduce((sum: number, capsule: Capsule) => sum + (capsule.duration_sec || 0), 0);
-  const rows = state.residents
-    .map((resident: Resident) => ({
-      resident,
-      usageMs: usage.by_resident_ms[resident.id] ?? 0,
-      capsules: state.capsules.filter((capsule: Capsule) => capsule.resident_id === resident.id),
-    }))
-    .sort((a: any, b: any) => b.usageMs - a.usageMs);
-  return <ScrollView testID="stats-screen" contentContainerStyle={[styles.screen, { paddingTop: insets.top + 18, paddingBottom: insets.bottom + 32 }]}>
-    <View style={styles.header}><Pressable testID="stats-back" accessibilityRole="button" onPress={onBack} style={styles.backButton}><Icon name="arrow-back" color={colors.onSurface} /></Pressable><Text style={styles.eyebrow}>Espace professionnel</Text><View style={{ width: 48 }} /></View>
-    <View><Text style={styles.title}>Temps d’utilisation</Text><Text testID="stats-establishment" style={styles.body}>{authUser ? `${authUser.establishment_name} · ${authUser.role === "admin" ? "Administrateur" : "Membre"}` : "Mode local"}</Text><Text testID="stats-timing-description" style={styles.body}>Chronométrage réel au premier plan : temps total dans l’application, puis temps passé sur la fiche et l’atelier de chaque résident.</Text></View>
-    {authUser?.role === "admin" && <Pressable testID="stats-add-member" accessibilityRole="button" onPress={onAddMember} style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}><Icon name="person-add-outline" color={colors.brandPrimary} /><Text style={styles.secondaryText}>Ajouter un membre à l’équipe</Text></Pressable>}
-    <View testID="stats-global" style={styles.statHero}><Text style={styles.statHeroLabel}>Temps total d’utilisation</Text><Text testID="stats-global-time" style={styles.statHeroValue}>{formatTrackedTime(usage.total_ms)}</Text><Text style={[styles.small, { color: colors.onBrandPrimary, opacity: 0.85 }]}>{state.capsules.length} souvenir{state.capsules.length > 1 ? "s" : ""} · {formatTrackedTime(recordedTotal * 1000)} d’audio conservé</Text></View>
-    <View style={styles.sectionHeader}><Text style={styles.heading}>Par personne</Text><Text style={styles.small}>{state.residents.length}/10</Text></View>
-    {rows.length ? rows.map(({ resident, usageMs, capsules }: any) => <View testID={`stats-row-${resident.id}`} key={resident.id} style={styles.statRow}><View style={styles.avatar}>{resident.photo_uri ? <Image source={{ uri: resident.photo_uri }} style={{ width: 44, height: 44, borderRadius: 22 }} contentFit="cover" /> : <Text style={styles.avatarText}>{initials(resident.display_name)}</Text>}</View><View style={{ flex: 1, gap: 2 }}><Text style={styles.profileName}>{resident.display_name}</Text><Text style={styles.small}>{capsules.length} souvenir{capsules.length > 1 ? "s" : ""} · {formatTrackedTime(capsules.reduce((sum: number, capsule: Capsule) => sum + (capsule.duration_sec || 0), 0) * 1000)} d’audio</Text></View><View style={{ alignItems: "flex-end", gap: 2 }}><Text style={styles.small}>Temps d’utilisation</Text><Text testID={`stats-time-${resident.id}`} style={styles.statValue}>{formatTrackedTime(usageMs)}</Text></View></View>) : <View style={styles.empty}><Icon name="stats-chart-outline" color={colors.brand} size={30} /><Text style={styles.body}>Créez un profil pour suivre le temps d’atelier par personne.</Text></View>}
-    {duplicateGroups.length ? <>
-      <View style={styles.sectionHeader}><Text style={styles.heading}>Profils en double</Text><Text style={styles.small}>{duplicateGroups.length}</Text></View>
-      {duplicateGroups.map((group: Resident[]) => <Pressable testID={`merge-group-${group[0].display_name.trim().toLowerCase()}`} key={group[0].display_name.trim().toLowerCase()} accessibilityRole="button" onPress={() => onMergeGroup(group)} style={({ pressed }) => [styles.statRow, pressed && styles.pressed]}><View style={styles.avatar}><Icon name="copy-outline" color={colors.onBrandSecondary} size={20} /></View><View style={{ flex: 1, gap: 2 }}><Text style={styles.profileName}>{group[0].display_name}</Text><Text style={styles.small}>{group.length} fiches portent ce prénom</Text></View><Text style={styles.capsuleActionText}>Fusionner</Text></Pressable>)}
-    </> : null}
-    <Text style={styles.small}>Les durées restent conservées sur cet appareil, même hors connexion.</Text>
-  </ScrollView>;
-}
+    {screen === "quiz" && <QuizScreen {...base} onNotice={setNotice} onBack={() => setScreen("home")} />}
+    {screen === "questions" && <QuestionBankScreen {...base} onNotice={setNotice} onChanged={reloadQuestions} onBack={() => setScreen("pro")} />}
+    {screen === "quizAdmin" && <QuizAdminScreen {...base} onNotice={setNotice} onBack={() => setScreen("pro")} />}
 
-function CapsuleRow({ styles, colors, capsule, resident, busy, playing, speaking, onPlay, onListen, onEdit, onTranscribe, onShare, onRevokeShare }: { styles: any; colors: any; capsule: Capsule; resident?: Resident; busy?: boolean; playing?: boolean; speaking?: boolean; onPlay?: () => void; onListen?: () => void; onEdit?: () => void; onTranscribe?: () => void; onShare?: () => void; onRevokeShare?: () => void }) {
-  return <View style={styles.capsule}><View style={styles.capsuleTop}><View style={{ flex: 1, gap: 5 }}><Text style={styles.capsuleTitle}>{capsule.title ?? "Souvenir vocal"}</Text><Text style={styles.capsuleDate}>{formatDate(capsule.recorded_at)} · {formatDuration(capsule.duration_sec)}</Text></View>{onPlay && <Pressable testID={`capsule-play-${capsule.id}`} accessibilityRole="button" accessibilityLabel={playing ? "Pause" : "Écouter"} onPress={onPlay} style={styles.backButton}><Icon name={playing ? "pause" : "play"} color={colors.brandPrimary} size={20} /></Pressable>}</View>{capsule.transcription ? <Text testID={`capsule-transcription-${capsule.id}`} style={styles.transcription}>« {capsule.transcription} »</Text> : capsule.synced && capsule.audio_uri ? <Text testID={`capsule-transcription-pending-${capsule.id}`} style={styles.small}>Transcription automatique en cours…</Text> : null}<View style={styles.capsuleMeta}><View style={styles.tag}><Text style={styles.tagText}>{capsule.mode === "question" ? capsule.theme : resident?.display_name ?? "À classer"}</Text></View><Text style={styles.small}>{capsule.synced ? "Copie serveur" : "Conservé sur l’appareil"}</Text></View>{capsule.share_expires_at && <Text testID={`capsule-share-expiry-${capsule.id}`} style={styles.small}>Lien familial actif jusqu’au {formatDate(capsule.share_expires_at)}</Text>}{busy ? <ActivityIndicator testID={`capsule-busy-${capsule.id}`} size="small" color={colors.brandPrimary} /> : <View style={styles.capsuleActions}>{onEdit && <Pressable testID={`capsule-edit-${capsule.id}`} accessibilityRole="button" onPress={onEdit} style={({ pressed }) => [styles.capsuleAction, pressed && styles.pressed]}><Icon name="pencil-outline" color={colors.brandPrimary} size={16} /><Text style={styles.capsuleActionText}>Modifier</Text></Pressable>}{onListen && <Pressable testID={`capsule-listen-${capsule.id}`} accessibilityRole="button" onPress={onListen} style={({ pressed }) => [styles.capsuleAction, pressed && styles.pressed]}><Icon name={speaking ? "stop-circle-outline" : "volume-high-outline"} color={colors.brandPrimary} size={16} /><Text style={styles.capsuleActionText}>{speaking ? "Lecture…" : "Écouter"}</Text></Pressable>}{onTranscribe && <Pressable testID={`capsule-transcribe-${capsule.id}`} accessibilityRole="button" onPress={onTranscribe} style={({ pressed }) => [styles.capsuleAction, pressed && styles.pressed]}><Icon name="text-outline" color={colors.brandPrimary} size={16} /><Text style={styles.capsuleActionText}>{capsule.transcription ? "Retranscrire" : "Transcrire"}</Text></Pressable>}{onShare && <Pressable testID={`capsule-share-${capsule.id}`} accessibilityRole="button" onPress={onShare} style={({ pressed }) => [styles.capsuleAction, pressed && styles.pressed]}><Icon name="share-social-outline" color={colors.brandPrimary} size={16} /><Text style={styles.capsuleActionText}>{capsule.share_id ? "Remplacer le lien" : "Partager à la famille"}</Text></Pressable>}{onRevokeShare && <Pressable testID={`capsule-revoke-share-${capsule.id}`} accessibilityRole="button" onPress={onRevokeShare} style={({ pressed }) => [styles.capsuleAction, pressed && styles.pressed]}><Icon name="link-outline" color={colors.error} size={16} /><Text style={[styles.capsuleActionText, { color: colors.error }]}>Révoquer le lien</Text></Pressable>}</View>}</View>;
+    {notice && <Pressable testID="notice" accessibilityRole="alert" onPress={() => setNotice(null)} style={[styles.notice, { bottom: insets.bottom + 16 }]}>
+      <Icon name="information-circle-outline" color={colors.onInfo} size={20} /><Text style={styles.noticeText}>{notice}</Text><Icon name="close" color={colors.onInfo} size={18} />
+    </Pressable>}
+
+    <ResidentFormModal {...base}
+      visible={residentForm.open}
+      resident={state.residents.find((resident) => resident.id === residentForm.residentId) ?? null}
+      onPickPhoto={pickPhoto}
+      onClose={() => setResidentForm({ open: false, residentId: null })}
+      onSubmit={(draft) => void submitResident(draft)} />
+    <RemoveProfileModal {...base}
+      visible={showRemove}
+      resident={selectedResident}
+      exportedAt={selectedResident ? state.exports?.[selectedResident.id] ?? null : null}
+      exporting={exporting}
+      unsafeCount={removalUnsafe}
+      onExport={() => selectedResident && void exportResident(selectedResident)}
+      onRemove={() => selectedResident && void removeResident(selectedResident)}
+      onPurge={() => selectedResident && void purgeResident(selectedResident)}
+      onClose={() => setShowRemove(false)} />
+    <MergeModal {...base} visible={mergeGroup.length > 0} group={mergeGroup} capsules={state.capsules} onConfirm={(keepId) => void confirmMerge(keepId)} onClose={() => setMergeGroup([])} />
+    <AddMemberModal {...base} visible={showAddMember && isAdmin} establishment={authUser?.establishment_name ?? ""} busy={memberBusy} onSubmit={(body) => void addTeamMember(body)} onClose={() => setShowAddMember(false)} />
+    <EditCapsuleModal {...base} visible={!!editingCapsule} capsule={editingCapsule} residents={state.residents} themes={THEME_ORDER} onSubmit={(changes) => void saveCapsuleEdit(changes)} onClose={() => setEditingCapsule(null)} />
+    <ConfirmModal {...base} visible={!!confirm} title={confirm?.title ?? ""} message={confirm?.message ?? ""} confirmLabel={confirm?.confirmLabel ?? "Confirmer"} onConfirm={() => confirm?.action()} onClose={() => setConfirm(null)} />
+    <FeedbackModal {...base} visible={showFeedback} busy={feedbackBusy} onSubmit={(category, message) => void sendFeedback(category, message)} onClose={() => setShowFeedback(false)} />
+    <PinModal {...base} visible={!!pinPrompt} mode={pinPrompt?.mode ?? "unlock"} error={pinError} lockedSeconds={pinLockSeconds} onSubmit={(pin) => void submitPin(pin)} onClose={() => setPinPrompt(null)} />
+  </View>;
 }

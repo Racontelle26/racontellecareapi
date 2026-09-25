@@ -65,13 +65,20 @@ Clarifications utilisateur : offline-first avec stockage local (smartphones/tabl
 - `testID` sur les éléments interactifs ; réponses HTTP `201` conformes.
 - Tests end-to-end validés par le testing agent (2 itérations) et script pytest backend vert.
 
-## Backlog priorisé
-- **P0 — Intégration externe** : la clé gérée actuelle fonctionne pour Object Storage mais ne possède pas l'autorisation `whisper-1`. La transcription automatique reste indisponible jusqu'à l'activation de l'entitlement STT/Whisper ; aucun fallback simulé n'est utilisé.
-- **P1** : Refactor `app/index.tsx` (> 1 300 lignes) en écrans/composants séparés (`src/components`).
-- **P2** : Segmentation des longs récits en chapitres.
-- **P2** : Invitation par email et réinitialisation autonome du mot de passe.
+## Mise à niveau bêta (25 sept. 2026) — cahier des charges Bêta Test du 15/09/2026
+Détail critère par critère : `docs/CONFORMITE_CAHIER_DES_CHARGES.md`.
+- **Corrections critiques** : plus aucune perte d'audio au retrait d'un profil (export vérifié, retrait bloqué tant qu'un audio n'est pas « Sauvegardé ») ; types audio contrôlés + `nosniff` + CSP sur les liens de partage (faille de vol de session fermée) ; un membre ne peut plus retirer/réactiver un profil par `PATCH` ; `audio_base64` n'est plus stocké ; cache TTS privé.
+- **Hors connexion réel** : file d'attente rejouée automatiquement (profils, renommages, consentements, retraits, fusions, souvenirs, classements, copies audio) ; indicateur « En attente d'envoi » / « Sauvegardé ».
+- **Périmètre bêta** : 5 profils max ; 400 questions (annexe A) embarquées et sur le serveur, thèmes sensibles désactivés par défaut ; parcours résident → thème / Question surprise → question → « Une autre question » → enregistrer → « Capsule sauvegardée » ; rubrique « À classer » ; date + heure ; consentement à 3 états journalisé ; champs initiale/unité.
+- **Quiz « Qui a dit ça ? »** (`backend/quiz.py`) : citations + musique, import CSV/JSON (annexe B), droits contrôlés, score de session facultatif.
+- **Pilotage** (`backend/beta.py`) : interrupteurs de fonctions par établissement (transcription, partage famille, carnet PDF désactivés par défaut), journal d'audit, retours testeurs avec version, événements et indicateurs exportables en CSV.
+- **Récupération du mot de passe** : code email 30 min / 5 essais, sessions révoquées ; mot de passe temporaire défini par l'admin.
+- **Refactor** : `app/index.tsx` réduit à l'orchestration ; écrans dans `src/screens`, fenêtres dans `src/components/modals.tsx`, données dans `src/hooks`.
+- **Charte** : bleu encre #2F3E52 couleur prioritaire de Racontelle Care.
 
-## Prochaines tâches
-1. Refactorer les écrans frontend en composants modulaires.
-2. Ajouter l'invitation par email et la récupération de mot de passe.
-3. Concevoir un journal d'audit administrateur des opérations sensibles.
+## Backlog priorisé
+- **P0** : Recette complète sur l'environnement de test (le code n'a pas pu être exécuté lors de la mise à niveau) ; configurer SMTP ; importer des extraits musicaux autorisés.
+- **P0 — Intégration externe** : l'accès `whisper-1` manque sur la clé gérée (transcription, désormais hors bêta et désactivée par défaut).
+- **P1** : Hébergement UE, sauvegardes automatiques, environnements recette/bêta, builds iOS/Android privés, suivi des crashs.
+- **P1** : Message « niveau sonore insuffisant » (mesure du volume pendant l'enregistrement).
+- **P2** : Base relationnelle (PostgreSQL) demandée par le cahier des charges ; segmentation des longs récits ; invitation par email.
