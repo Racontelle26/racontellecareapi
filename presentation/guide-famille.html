@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Racontelle en famille</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Allura&family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Montserrat:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ground:#FFFFFF; --ground-2:#FBF6F4; --line:#EFE6E2; --line-strong:#DCCFC9;
+  --ink:#2F3E52; --ink-2:#4E5A69; --muted:#6F6660;
+  --rose:#AE5856; --rose-soft:#F9E6E5; --rose-ink:#7E3F3E;
+  --sage:#5F7359; --sage-soft:#EEF2EC; --brun:#A67C63; --on-rose:#FFFFFF;
+  --display:"Cormorant Garamond",Georgia,"Times New Roman",serif;
+  --script:"Allura","Brush Script MT",cursive;
+  --body:"Montserrat",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --ground:#1C2330; --ground-2:#253041; --line:#334055; --line-strong:#46546B;
+    --ink:#F4EEEA; --ink-2:#D5CCC6; --muted:#A99F98;
+    --rose:#E7A7A5; --rose-soft:#3A2C33; --rose-ink:#F2C9C7;
+    --sage:#B9C5B3; --sage-soft:#26302A; --brun:#C9A48D; --on-rose:#2A1F24;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --ground:#1C2330; --ground-2:#253041; --line:#334055; --line-strong:#46546B;
+  --ink:#F4EEEA; --ink-2:#D5CCC6; --muted:#A99F98;
+  --rose:#E7A7A5; --rose-soft:#3A2C33; --rose-ink:#F2C9C7;
+  --sage:#B9C5B3; --sage-soft:#26302A; --brun:#C9A48D; --on-rose:#2A1F24;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--body);font-size:17px;line-height:1.65;padding-inline:16px}
+.wrap{max-width:720px;margin:0 auto;padding-block:40px 56px}
+h1,h2,h3{font-family:var(--display);font-weight:600;line-height:1.12;text-wrap:balance;margin:0}
+p{margin:0}
+a{color:var(--rose-ink)}
+:focus-visible{outline:2px solid var(--rose);outline-offset:3px;border-radius:4px}
+.script{font-family:var(--script);font-size:36px;line-height:1.2;color:var(--rose)}
+.eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:500}
+
+header h1{font-size:clamp(40px,9vw,60px);margin-top:8px}
+header h1 em{color:var(--rose);font-weight:500}
+.lede{color:var(--ink-2);font-size:18px;margin-top:14px;max-width:34em}
+
+.trio{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:26px}
+.trio a{display:block;text-decoration:none;color:inherit;background:var(--ground-2);border:1px solid var(--line);border-radius:16px;padding:14px 16px}
+.trio a:hover{border-color:var(--rose)}
+.trio b{display:block;font-family:var(--display);font-size:30px;line-height:1;color:var(--rose)}
+.trio span{font-size:15px;font-weight:500}
+.trio small{display:block;color:var(--muted);font-size:13px}
+
+section{padding-top:52px;scroll-margin-top:16px}
+.kicker{font-family:var(--script);font-size:30px;color:var(--rose);line-height:1}
+section h2{font-size:clamp(30px,6vw,40px);margin-top:2px;padding-bottom:10px;border-bottom:2px solid var(--rose);margin-bottom:20px}
+.intro{color:var(--ink-2);margin:-6px 0 18px}
+
+.btn{display:inline-block;background:var(--rose);color:var(--on-rose);font-weight:600;font-size:.86em;border-radius:999px;padding:1px 10px;white-space:nowrap}
+.scr{font-style:italic;color:var(--rose-ink)}
+
+ol.steps{list-style:none;counter-reset:s;padding:0;margin:0}
+ol.steps>li{counter-increment:s;position:relative;padding:0 0 16px 48px}
+ol.steps>li::before{content:counter(s);position:absolute;left:0;top:-2px;width:32px;height:32px;border-radius:50%;background:var(--rose-soft);color:var(--rose-ink);font-family:var(--display);font-weight:600;font-size:20px;display:grid;place-items:center}
+ol.steps>li:not(:last-child)::after{content:"";position:absolute;left:15.5px;top:34px;bottom:4px;width:1px;background:var(--line-strong)}
+ol.steps b{font-weight:600}
+
+.link-box{border:2px dashed var(--rose);border-radius:16px;padding:14px 18px;margin-bottom:22px;background:var(--rose-soft);color:var(--rose-ink)}
+.link-box b{font-weight:600}
+.tip{background:var(--sage-soft);border-radius:14px;padding:14px 18px;margin-top:14px;font-size:16px}
+.tip b{color:var(--sage)}
+
+/* missions */
+.progress{display:flex;align-items:center;gap:14px;margin-bottom:18px}
+.bar{flex:1;height:10px;border-radius:999px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--sage);border-radius:inherit;transition:width .35s ease}
+.count{font-weight:600;font-size:15px;white-space:nowrap}
+.missions{list-style:none;padding:0;margin:0;display:grid;gap:12px}
+.mission{display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:start;background:var(--ground-2);border:1px solid var(--line);border-radius:18px;padding:16px 18px;transition:border-color .2s,background .2s}
+.mission input{appearance:none;-webkit-appearance:none;width:28px;height:28px;margin:2px 0 0;border:2px solid var(--line-strong);border-radius:50%;cursor:pointer;display:grid;place-items:center;background:var(--ground)}
+.mission input::after{content:"";width:9px;height:15px;border:solid var(--on-rose);border-width:0 3px 3px 0;transform:rotate(45deg) translate(-1px,-1px);opacity:0}
+.mission input:checked{background:var(--sage);border-color:var(--sage)}
+.mission input:checked::after{opacity:1;border-color:#fff}
+.mission.done{border-color:var(--sage);background:var(--sage-soft)}
+.mission label{cursor:pointer}
+.mission .tag{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:500}
+.mission h3{font-size:24px;margin:2px 0 6px}
+.mission p{color:var(--ink-2);font-size:16px}
+.bravo{display:none;text-align:center;margin-top:18px;padding:18px;border-radius:18px;background:var(--rose-soft);color:var(--rose-ink)}
+.bravo.show{display:block}
+.bravo .script{font-size:40px}
+
+dl.faq{margin:0}
+dl.faq dt{font-weight:600;margin-top:16px}
+dl.faq dt:first-child{margin-top:0}
+dl.faq dd{margin:4px 0 0;color:var(--ink-2)}
+
+.avis{background:var(--rose-soft);color:var(--rose-ink);border-radius:18px;padding:22px 24px}
+.avis h2{border:0;padding:0;margin:0 0 8px;color:var(--rose-ink)}
+.avis p{color:var(--rose-ink)}
+.copy{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px}
+.copy code{font-family:var(--body);font-weight:600;user-select:all;overflow-wrap:anywhere}
+.copy button{font:500 13px var(--body);background:var(--ground);color:var(--rose-ink);border:1px solid currentColor;border-radius:999px;padding:4px 12px;cursor:pointer}
+
+footer{margin-top:40px;color:var(--muted);font-size:14px;border-top:1px solid var(--line);padding-top:18px}
+
+@media (max-width:560px){
+  body{font-size:16px}
+  .trio{grid-template-columns:1fr}
+  .trio a{display:flex;align-items:baseline;gap:12px}
+}
+@media print{
+  :root{--ground:#fff;--ground-2:#fff}
+  body{font-size:12pt;padding:0}
+  .wrap{padding:0;max-width:none}
+  .progress,.copy button,.bravo{display:none!important}
+  section{padding-top:22pt;break-inside:auto}
+  .mission,.link-box,.tip,ol.steps>li,dl.faq dt,dl.faq dd{break-inside:avoid}
+  #missions{break-before:page}
+  .mission input{border-color:#999}
+  a{text-decoration:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="script">Une question. Une voix. Un souvenir.</p>
+    <p class="eyebrow" style="margin-top:4px">Racontelle Famille · guide de la bêta</p>
+    <h1>Vos souvenirs ont <em>une voix</em>.</h1>
+    <p class="lede">Bienvenue dans l’aventure ! Pendant quelques semaines, votre famille teste Racontelle avant tout le monde. Trois étapes pour commencer, puis six petites missions à relever ensemble.</p>
+    <nav class="trio" aria-label="Les étapes">
+      <a href="#installer"><b>1</b><span>Installer</span><small>2 minutes</small></a>
+      <a href="#compte"><b>2</b><span>Se retrouver</span><small>3 minutes</small></a>
+      <a href="#missions"><b>3</b><span>Les missions</span><small>à votre rythme</small></a>
+    </nav>
+  </header>
+
+  <section id="installer">
+    <p class="kicker">Étape 1</p>
+    <h2>Installer l’application</h2>
+    <div class="link-box"><b>Le lien de téléchargement</b> vous est envoyé par message. Ouvrez-le <b>directement sur votre téléphone Android</b>, pas sur un ordinateur.</div>
+    <ol class="steps">
+      <li><b>Touchez le lien</b>, puis <span class="btn">Install</span> (ou <span class="btn">Télécharger</span>). Le fichier <span class="scr">Racontelle</span> se télécharge.</li>
+      <li><b>Ouvrez le fichier</b> téléchargé (dans la notification, ou dans <span class="scr">Fichiers → Téléchargements</span>).</li>
+      <li>Le téléphone demande d’<b>autoriser l’installation depuis cette source</b> ? Touchez <span class="scr">Paramètres</span>, activez l’interrupteur, puis revenez en arrière. C’est normal : l’application n’est pas encore sur le Play Store.</li>
+      <li>Touchez <span class="btn">Installer</span>. Si <span class="scr">Play Protect</span> s’inquiète, choisissez <span class="scr">Plus de détails → Installer quand même</span>.</li>
+      <li>Le <b>R rose de Racontelle</b> apparaît parmi vos applications. Touchez-le : c’est parti !</li>
+    </ol>
+    <div class="tip"><b>Sur iPhone ?</b> Pas encore disponible pendant cette bêta. Vous pouvez raconter sur le téléphone Android d’un proche : chaque souvenir est attribué à la personne qui parle.</div>
+  </section>
+
+  <section id="compte">
+    <p class="kicker">Étape 2</p>
+    <h2>Se retrouver en famille</h2>
+    <ol class="steps">
+      <li><b>Créez votre compte :</b> <span class="btn">Créer mon espace famille</span>, puis votre prénom, votre e-mail et un mot de passe. L’<b>œil</b> à côté du mot de passe permet de vérifier ce que vous tapez.</li>
+      <li><b>Une seule fois !</b> Ensuite l’application se souvient de vous : plus besoin de vous reconnecter. Votre e-mail reste pré-rempli si jamais vous vous déconnectez.</li>
+      <li><b>La personne qui lance la famille</b> touche <span class="scr">Créer</span>, donne un nom (« La famille Martin ») et peut ajouter jusqu’à trois proches sans e-mail, par exemple Papi qui n’a pas de smartphone.</li>
+      <li><b>Les autres proches</b> reçoivent une invitation par e-mail avec un <b>code</b>. Ils créent leur compte, touchent <span class="scr">Rejoindre</span> et tapent le code.</li>
+      <li><b>Autorisez le micro</b> la première fois qu’on vous le demande. Sans lui, pas de voix !</li>
+    </ol>
+    <div class="tip"><b>Avant d’enregistrer quelqu’un,</b> demandez-lui son accord : ses souvenirs seront partagés avec toute la famille, et personne d’autre.</div>
+  </section>
+
+  <section id="missions">
+    <p class="kicker">Étape 3</p>
+    <h2>Six missions pour la famille</h2>
+    <p class="intro">Cochez au fur et à mesure. Pas de chrono, pas de note : chaque mission nous dit si l’application est simple pour vous.</p>
+    <div class="progress" aria-live="polite"><div class="bar"><i id="bar"></i></div><span class="count" id="count">0 / 6</span></div>
+    <ul class="missions">
+      <li class="mission"><input type="checkbox" id="m1"><label for="m1"><span class="tag">Mission 1 · Le portrait</span><h3>Mettez votre visage</h3><p>Dans <b>Profil</b>, touchez le rond avec vos initiales et choisissez une photo, ou prenez-en une. Vous pouvez aussi le faire pour les proches sans e-mail, depuis la liste des membres.</p></label></li>
+      <li class="mission"><input type="checkbox" id="m2"><label for="m2"><span class="tag">Mission 2 · La première voix</span><h3>Répondez à la question du jour</h3><p>Sur l’<b>Accueil</b>, touchez <span class="btn">Répondre</span>, puis le grand micro rose, et racontez. Pause possible, et jusqu’à 2 heures : personne ne vous coupe. Terminez par <span class="btn">Enregistrer cette réponse</span>.</p></label></li>
+      <li class="mission"><input type="checkbox" id="m3"><label for="m3"><span class="tag">Mission 3 · La voix d’un aîné</span><h3>Faites raconter Mamie ou Papi</h3><p>Asseyez-vous à côté, choisissez son prénom dans <span class="scr">Qui raconte ?</span> et laissez-le parler. Une odeur, un prénom, un lieu : les détails rendent le souvenir vivant.</p></label></li>
+      <li class="mission"><input type="checkbox" id="m4"><label for="m4"><span class="tag">Mission 4 · L’album</span><h3>Écoutez un proche et ajoutez une photo</h3><p>Onglet <b>Album</b> : ouvrez le souvenir de quelqu’un d’autre, écoutez-le, puis ajoutez une photo d’époque ou un petit texte.</p></label></li>
+      <li class="mission"><input type="checkbox" id="m5"><label for="m5"><span class="tag">Mission 5 · Le livre</span><h3>Faites naître un chapitre</h3><p>Sur l’Accueil, <b>Votre livre romancé</b> → <span class="btn">Générer un chapitre</span>. Une minute de patience, et vos souvenirs deviennent un récit à lire ensemble.</p></label></li>
+      <li class="mission"><input type="checkbox" id="m6"><label for="m6"><span class="tag">Mission 6 · Votre voix compte</span><h3>Dites-nous tout</h3><p><b>Profil</b> → <b>Donner mon avis (bêta)</b>. Un bug, une idée, une émotion : une phrase suffit.</p></label></li>
+    </ul>
+    <div class="bravo" id="bravo" role="status"><p class="script">Bravo, mission accomplie !</p><p>Votre arbre de famille a grandi. Continuez à raconter : chaque souvenir enrichit le livre.</p></div>
+  </section>
+
+  <section id="secours">
+    <p class="kicker">Pas de panique</p>
+    <h2>Petits secours</h2>
+    <dl class="faq">
+      <dt>Le micro ne marche pas.</dt>
+      <dd>Sur l’écran d’enregistrement, touchez <span class="btn">Ouvrir les réglages</span> et autorisez le micro pour Racontelle.</dd>
+      <dt>J’ai supprimé un souvenir par erreur ?</dt>
+      <dd>Impossible sans le vouloir : l’application vous demande toujours de confirmer avant de supprimer.</dd>
+      <dt>Mon souvenir ne part pas.</dt>
+      <dd>Le réseau est faible ? L’écran affiche « En attente d’envoi » et garde votre enregistrement. Touchez <span class="btn">Réessayer l’envoi</span> quand le réseau revient.</dd>
+      <dt>Je ne vois pas le souvenir de ma sœur.</dt>
+      <dd>Tirez l’écran vers le bas pour l’actualiser.</dd>
+      <dt>Mon code d’invitation ne marche pas.</dt>
+      <dd>Il est valable 7 jours. Demandez à la personne qui a créé la famille de vous le renvoyer.</dd>
+      <dt>J’ai oublié mon mot de passe.</dt>
+      <dd><span class="scr">Mot de passe oublié ?</span> sur l’écran de connexion : un code arrive par e-mail.</dd>
+      <dt>Qui peut écouter nos souvenirs ?</dt>
+      <dd>Seulement les membres de votre famille dans Racontelle. Personne d’autre.</dd>
+    </dl>
+  </section>
+
+  <section id="avis">
+    <div class="avis">
+      <h2>Merci d’écrire l’histoire avec nous</h2>
+      <p>Vos retours font grandir Racontelle. Dans l’application, <b>Profil → Donner mon avis (bêta)</b>, ou par e-mail :</p>
+      <div class="copy"><code id="mail">laracontelle@gmail.com</code><button type="button" id="copy-mail">Copier l’adresse</button></div>
+    </div>
+  </section>
+
+  <footer>Racontelle Famille · version bêta · une question, une voix, un souvenir.</footer>
+</div>
+
+<script>
+(function () {
+  var KEY = "racontelle-missions";
+  var boxes = Array.prototype.slice.call(document.querySelectorAll(".mission input"));
+  var saved = {};
+  try { saved = JSON.parse(localStorage.getItem(KEY) || "{}") || {}; } catch (e) {}
+  function refresh() {
+    var n = 0;
+    boxes.forEach(function (b) { b.closest(".mission").classList.toggle("done", b.checked); if (b.checked) n++; });
+    document.getElementById("bar").style.width = (n / boxes.length * 100) + "%";
+    document.getElementById("count").textContent = n + " / " + boxes.length;
+    document.getElementById("bravo").classList.toggle("show", n === boxes.length);
+  }
+  boxes.forEach(function (b) {
+    b.checked = !!saved[b.id];
+    b.addEventListener("change", function () {
+      saved[b.id] = b.checked;
+      try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {}
+      refresh();
+    });
+  });
+  refresh();
+
+  document.getElementById("copy-mail").addEventListener("click", function () {
+    var btn = this, text = document.getElementById("mail").textContent;
+    function done() { btn.textContent = "Adresse copiée"; setTimeout(function () { btn.textContent = "Copier l’adresse"; }, 2000); }
+    function fallback() { var r = document.createRange(); r.selectNodeContents(document.getElementById("mail")); var s = getSelection(); s.removeAllRanges(); s.addRange(r); btn.textContent = "Sélectionnée : Ctrl+C"; }
+    try { navigator.clipboard.writeText(text).then(done, fallback); } catch (e) { fallback(); }
+  });
+})();
+</script>
+</body>
+</html>
