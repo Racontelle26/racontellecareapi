@@ -54,6 +54,16 @@ def test_invitation_code_is_hashed_and_rotated_on_resend(base_url, session, full
     assert session.post(f"{base_url}/invitations/accept", headers=jh, json={"code": new_code}).status_code == 200
 
 
+def test_beta_invitation_open_without_direct_profiles(base_url, session):
+    r = _register(session, base_url)
+    headers = {"Authorization": f"Bearer {r.json()['access_token']}"}
+    assert session.post(f"{base_url}/circles", headers=headers, json={"name": "Petite famille"}).status_code == 200
+    inv = session.post(f"{base_url}/circle/invitations", headers=headers,
+                       json={"display_name": "Sœur", "email": "TEST_conf_soeur@racontelle-test.fr"})
+    assert inv.status_code == 200, inv.text
+    assert inv.json()["code"]
+
+
 def test_daily_questions_are_unique_and_skip_is_per_member(base_url, session, full_circle):
     daily = session.get(f"{base_url}/daily-question", headers=full_circle["headers"]).json()
     ids = [i["question"]["id"] for i in daily["items"]]

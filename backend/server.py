@@ -1038,9 +1038,7 @@ async def create_invitation(body: InviteIn, user=Depends(get_current_user)):
     if not member or member.get("role") != "owner":
         raise HTTPException(403, "Seul le créateur du cercle peut inviter")
     circle_id = member["circle_id"]
-    current_count = await db.members.count_documents({"circle_id": circle_id, "status": "active", "role": {"$in": ["owner", "profile"]}})
-    if current_count < 4:
-        raise HTTPException(400, "Créez d’abord vos 4 profils familiaux, puis invitez les membres suivants par e-mail")
+    # Beta: e-mail invitations are open from the start, without filling the 4 direct profiles first
     circle = await db.circles.find_one({"id": circle_id})
     # create pending member profile
     new_member = {"id": oid(), "circle_id": circle_id, "user_id": None,

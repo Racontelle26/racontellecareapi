@@ -126,7 +126,7 @@ export default function Members() {
       <KeyboardAwareScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + spacing.xxl }]} bottomOffset={20} showsVerticalScrollIndicator={false}>
         <Card style={styles.counterCard} testID="members-direct-counter">
           <View><Label style={styles.counterLabel}>PROFILS FAMILIAUX</Label><Title style={styles.counterTitle}>{Math.min(directCount, 4)}/4 créés directement</Title></View>
-          <Body muted>{directCount < 4 ? `${4 - directCount} profil${4 - directCount > 1 ? "s" : ""} encore disponible${4 - directCount > 1 ? "s" : ""} sans e-mail.` : "Les prochains membres seront invités par e-mail."}</Body>
+          <Body muted>{directCount < 4 ? `${4 - directCount} profil${4 - directCount > 1 ? "s" : ""} encore disponible${4 - directCount > 1 ? "s" : ""} sans e-mail. Les proches qui ont un smartphone peuvent être invités par e-mail à tout moment.` : "Les prochains membres seront invités par e-mail."}</Body>
         </Card>
 
         {membersQ.isLoading ? <ActivityIndicator color={colors.brandSecondary} style={{ marginTop: spacing.xl }} /> : (
@@ -171,10 +171,13 @@ export default function Members() {
               <Pressable onPress={resetForm} testID="member-form-cancel" style={styles.cancelButton}><Label style={styles.cancel}>Annuler</Label></Pressable>
             </Card> : null}
 
-            {isOwner && !formMode ? directCount < 4 ? (
-              <Pressable style={styles.addButton} testID="members-add-profile" onPress={() => setFormMode("direct")}><UserPlus color={colors.brandPrimary} size={22} /><Body style={styles.addText}>Ajouter un profil sans e-mail</Body></Pressable>
-            ) : (
-              <Pressable style={styles.addButton} testID="members-invite-open" onPress={() => setFormMode("invite")}><PaperPlaneTilt color={colors.brandPrimary} size={22} /><Body style={styles.addText}>Inviter un membre par e-mail</Body></Pressable>
+            {isOwner && !formMode ? (
+              <>
+                <Pressable style={styles.addButton} testID="members-invite-open" onPress={() => setFormMode("invite")}><PaperPlaneTilt color={colors.brandPrimary} size={22} /><Body style={styles.addText}>Inviter un membre par e-mail</Body></Pressable>
+                {directCount < 4 ? (
+                  <Pressable style={styles.addButton} testID="members-add-profile" onPress={() => setFormMode("direct")}><UserPlus color={colors.brandPrimary} size={22} /><Body style={styles.addText}>Ajouter un profil sans e-mail</Body></Pressable>
+                ) : null}
+              </>
             ) : null}
           </>
         )}
