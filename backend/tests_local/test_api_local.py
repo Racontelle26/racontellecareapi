@@ -159,3 +159,54 @@ def test_offline_capsule_keeps_original_recording_time(base_url):
     capsule = requests.post(f"{base_url}/api/capsules", headers=headers, json={"resident_id": resident["id"], "mode": "free", "duration_sec": 12, "recorded_at": recorded}, timeout=20).json()
     assert capsule["recorded_at"] == recorded and capsule["created_at"] > recorded
     assert capsule["created_by_name"] == "Admin Bêta"
+
+
+# ---------------------------------------------------------------------------
+# Renouvellement de session sur réseau faible (bug « session expirée » en atelier)
+# ---------------------------------------------------------------------------
+
+def _native_session(base_url):
+    email = f"reseau-{uuid.uuid4().hex[:8]}@racontelle.example.com"
+    return requests.post(f"{base_url}/api/auth/register", headers={"X-Client-Platform": "native"}, json={"email": email, "password": "Racontelle-Reseau-2026!", "full_name": "Animatrice", "establishment_name": "EHPAD Réseau"}, timeout=20).json()
+
+
+def _refresh(base_url, token):
+    return requests.post(f"{base_url}/api/auth/refresh", headers={"X-Client-Platform": "native"}, json={"refresh_token": token}, timeout=20)
+
+
+def test_lost_refresh_response_does_not_end_session(base_url):
+    session = _native_session(base_url)
+    first = _refresh(base_url, session["refresh_token"])
+    assert first.status_code == 200
+    # La réponse s'est perdue : le téléphone renvoie le même jeton.
+    retry = _refresh(base_url, session["refresh_token"])
+    assert retry.status_code == 200, retry.text
+    # Le jeton jamais reçu est annulé, le nouveau fonctionne et continue la session.
+    assert _refresh(base_url, first.json()["refresh_token"]).status_code == 401
+    following = _refresh(base_url, retry.json()["refresh_token"])
+    assert following.status_code == 200
+    me = requests.get(f"{base_url}/api/auth/me", headers={"Authorization": f"Bearer {following.json()['access_token']}"}, timeout=20)
+    assert me.status_code == 200
+
+
+def test_late_replay_closes_the_whole_session(base_url):
+    session = _native_session(base_url)
+    renewed = _refresh(base_url, session["refresh_token"]).json()
+    # Le jeton a été renouvelé il y a plus de 2 minutes : son rejeu ressemble à un vol.
+    from local_env import server as _server  # base simulée partagée
+    import asyncio
+    from datetime import timedelta as _td
+
+    async def age_token():
+        await _server.db.refresh_tokens.update_many({"replaced_by": {"$ne": None}}, {"$set": {"rotated_at": datetime.now(timezone.utc) - _td(minutes=5)}})
+
+    asyncio.run(age_token())
+    assert _refresh(base_url, session["refresh_token"]).status_code == 401
+    assert _refresh(base_url, renewed["refresh_token"]).status_code == 401
+
+
+def test_logged_out_token_is_refused(base_url):
+    session = _native_session(base_url)
+    headers = {"Authorization": f"Bearer {session['access_token']}", "X-Client-Platform": "native"}
+    requests.post(f"{base_url}/api/auth/logout", headers=headers, json={"refresh_token": session["refresh_token"]}, timeout=20)
+    assert _refresh(base_url, session["refresh_token"]).status_code == 401

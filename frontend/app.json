@@ -2,7 +2,7 @@
   "expo": {
     "name": "Racontelle Care",
     "slug": "racontelle-care",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "racontelle-care",
@@ -17,8 +17,13 @@
         "backgroundColor": "#FFFFFF"
       },
       "package": "fr.racontelle.care",
-      "versionCode": 1,
-      "permissions": ["android.permission.RECORD_AUDIO"],
+      "versionCode": 2,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ],
       "blockedPermissions": [
         "android.permission.CAMERA",
         "android.permission.WRITE_EXTERNAL_STORAGE",
@@ -63,6 +68,13 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "bebe9dfe-71cf-4cb0-a1a3-d9e3247ab946"
+      }
+    },
+    "owner": "laracontelle"
   }
 }

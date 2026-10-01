@@ -28,7 +28,7 @@ export const appVersion = `${Constants.expoConfig?.version ?? "1.0.0"}-beta`;
 const SESSION_KEY = "racontelle.auth.session.v1";
 const REMEMBERED_USER_KEY = "racontelle.auth.remembered-user.v1";
 let sessionCache: AuthSession | null = null;
-let refreshPromise: Promise<AuthSession | null> | null = null;
+let refreshPromise: Promise<AuthSession | null | "offline"> | null = null;
 let sessionExpiredHandler: (() => void) | null = null;
 
 export class ApiError extends Error {
@@ -93,7 +93,18 @@ function platformHeaders() {
   return { "X-Client-Platform": Platform.OS === "web" ? "web" : "native" };
 }
 
-async function refreshSession(): Promise<AuthSession | null> {
+/** Le serveur n'a pas pu être joint : la session est conservée telle quelle. */
+const OFFLINE = "offline" as const;
+type RefreshResult = AuthSession | null | typeof OFFLINE;
+
+const OFFLINE_MESSAGE = "Connexion au serveur impossible pour le moment. Vos souvenirs restent sur l’appareil et seront envoyés dès que possible.";
+
+/**
+ * Renouvelle la session. Seul un refus explicite du serveur (401) ferme la
+ * session ; une coupure réseau, une réponse perdue ou un serveur momentanément
+ * indisponible la conservent : l'atelier continue et l'envoi est retenté.
+ */
+async function refreshSession(): Promise<RefreshResult> {
   const existing = await storedSession();
   try {
     const response = await fetch(`${baseUrl}/api/auth/refresh`, {
@@ -102,21 +113,27 @@ async function refreshSession(): Promise<AuthSession | null> {
       headers: { "Content-Type": "application/json", ...platformHeaders() },
       body: JSON.stringify({ refresh_token: existing?.refresh_token ?? null }),
     });
-    if (!response.ok) {
+    if (response.status === 401) {
       await saveSession(null);
       return null;
     }
+    if (!response.ok) return OFFLINE;
     const next = await response.json() as AuthSession;
     await saveSession(next);
     return next;
   } catch {
-    return existing;
+    return OFFLINE;
   }
 }
 
 function sharedRefresh() {
   refreshPromise ??= refreshSession().finally(() => { refreshPromise = null; });
   return refreshPromise;
+}
+
+async function expireSession() {
+  await saveSession(null);
+  sessionExpiredHandler?.();
 }
 
 async function authorizedFetch(path: string, options: RequestInit = {}, retry = true) {
@@ -133,6 +150,7 @@ async function authorizedFetch(path: string, options: RequestInit = {}, retry = 
   });
   if (response.status === 401 && retry) {
     const refreshed = await sharedRefresh();
+    if (refreshed === OFFLINE) throw new ApiError(503, OFFLINE_MESSAGE);
     if (refreshed) {
       headers.set("Authorization", `Bearer ${refreshed.access_token}`);
       response = await fetch(`${baseUrl}/api${path}`, {
@@ -142,10 +160,7 @@ async function authorizedFetch(path: string, options: RequestInit = {}, retry = 
       });
     }
   }
-  if (response.status === 401) {
-    await saveSession(null);
-    sessionExpiredHandler?.();
-  }
+  if (response.status === 401 && retry) await expireSession();
   return response;
 }
 
@@ -165,13 +180,17 @@ async function downloadToFile(path: string, target: string): Promise<string> {
     return FileSystem.downloadAsync(`${baseUrl}/api${path}`, target, { headers });
   };
   let result = await attempt();
-  if (result.status === 401 && await sharedRefresh()) result = await attempt();
+  if (result.status === 401) {
+    const refreshed = await sharedRefresh();
+    if (refreshed === OFFLINE) {
+      await FileSystem.deleteAsync(target, { idempotent: true }).catch(() => {});
+      throw new ApiError(503, OFFLINE_MESSAGE);
+    }
+    if (refreshed) result = await attempt();
+  }
   if (result.status !== 200) {
     await FileSystem.deleteAsync(target, { idempotent: true }).catch(() => {});
-    if (result.status === 401) {
-      await saveSession(null);
-      sessionExpiredHandler?.();
-    }
+    if (result.status === 401) await expireSession();
     throw new ApiError(result.status, "Téléchargement impossible");
   }
   return result.uri;

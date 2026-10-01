@@ -30,6 +30,9 @@ JWT_AUDIENCE = os.environ["JWT_AUDIENCE"]
 ACCESS_MINUTES = int(os.environ["ACCESS_MINUTES"])
 REFRESH_DAYS = int(os.environ["REFRESH_DAYS"])
 COOKIE_NAME = "racontelle_refresh"
+# Délai pendant lequel un jeton tout juste renouvelé peut être présenté à
+# nouveau sans fermer la session (réponse perdue sur un réseau faible).
+REFRESH_GRACE_SECONDS = 120
 
 if len(JWT_SECRET) < 64:
     raise RuntimeError("JWT_SECRET doit contenir au moins 64 caractères")
@@ -42,6 +45,13 @@ db = None
 
 def now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _aware(value: Optional[datetime]) -> Optional[datetime]:
+    """MongoDB renvoie des dates sans fuseau : elles sont en UTC."""
+    if value is None or value.tzinfo is not None:
+        return value
+    return value.replace(tzinfo=timezone.utc)
 
 
 def configure_security(database) -> None:
@@ -365,15 +375,27 @@ async def refresh_session(
     if not raw:
         raise HTTPException(status_code=401, detail="Session expirée")
     old = await db.refresh_tokens.find_one({"token_hash": _refresh_hash(raw)}, {"_id": 0})
-    expires_at = old.get("expires_at") if old else None
-    if expires_at and expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    if not old or old.get("revoked_at") or not expires_at or expires_at <= now():
+    expires_at = _aware(old.get("expires_at")) if old else None
+    if not old or old.get("family_revoked") or not expires_at or expires_at <= now():
         raise HTTPException(status_code=401, detail="Session expirée")
     if old.get("replaced_by"):
-        await db.refresh_tokens.update_many(
-            {"family_id": old["family_id"]}, {"$set": {"revoked_at": now()}}
+        rotated_at = _aware(old.get("rotated_at") or old.get("revoked_at"))
+        if not rotated_at or now() - rotated_at > timedelta(seconds=REFRESH_GRACE_SECONDS):
+            # Rejeu tardif d'un jeton déjà renouvelé : vol possible, toute la
+            # famille de sessions est fermée définitivement.
+            await db.refresh_tokens.update_many(
+                {"family_id": old["family_id"]},
+                {"$set": {"revoked_at": now(), "family_revoked": True}},
+            )
+            raise HTTPException(status_code=401, detail="Session expirée")
+        # Réponse perdue en route (réseau d'EHPAD, téléphone qui renvoie la
+        # requête) : le jeton qui n'a jamais été reçu est annulé et un nouveau
+        # est émis, au lieu de déconnecter quelqu'un en plein atelier.
+        await db.refresh_tokens.update_one(
+            {"token_hash": old["replaced_by"]}, {"$set": {"revoked_at": now(), "superseded": True}}
         )
+    elif old.get("revoked_at"):
+        # Déconnexion volontaire ou mot de passe changé.
         raise HTTPException(status_code=401, detail="Session expirée")
     user = await db.users.find_one(
         {"id": old["user_id"], "tenant_id": old["tenant_id"], "disabled": {"$ne": True}},
@@ -383,12 +405,34 @@ async def refresh_session(
         raise HTTPException(status_code=401, detail="Session expirée")
     replacement = secrets.token_urlsafe(64)
     replacement_hash = _refresh_hash(replacement)
-    updated = await db.refresh_tokens.update_one(
-        {"id": old["id"], "revoked_at": None, "replaced_by": None},
-        {"$set": {"revoked_at": now(), "replaced_by": replacement_hash}},
-    )
-    if not updated.modified_count:
-        raise HTTPException(status_code=401, detail="Session déjà renouvelée")
+    # Deux demandes identiques peuvent arriver en même temps (le téléphone
+    # renvoie la requête) : la seconde remplace le jeton émis par la première,
+    # dans la même fenêtre de grâce, au lieu de fermer la session.
+    expected = old.get("replaced_by")
+    rotated_at = old.get("rotated_at")
+    for _ in range(3):
+        updated = await db.refresh_tokens.update_one(
+            {"id": old["id"], "replaced_by": expected, "family_revoked": {"$ne": True}},
+            {"$set": {"revoked_at": now(), "rotated_at": rotated_at or now(), "replaced_by": replacement_hash}},
+        )
+        if updated.modified_count:
+            break
+        current = await db.refresh_tokens.find_one({"id": old["id"]}, {"_id": 0})
+        current_rotated = _aware((current or {}).get("rotated_at"))
+        if (
+            not current
+            or not current.get("replaced_by")
+            or current.get("family_revoked")
+            or not current_rotated
+            or now() - current_rotated > timedelta(seconds=REFRESH_GRACE_SECONDS)
+        ):
+            raise HTTPException(status_code=401, detail="Session expirée")
+        await db.refresh_tokens.update_one(
+            {"token_hash": current["replaced_by"]}, {"$set": {"revoked_at": now(), "superseded": True}}
+        )
+        expected, rotated_at = current["replaced_by"], current.get("rotated_at")
+    else:
+        raise HTTPException(status_code=401, detail="Session expirée")
     new_doc = {
         **old,
         "id": str(uuid.uuid4()),
@@ -396,7 +440,9 @@ async def refresh_session(
         "created_at": now(),
         "expires_at": now() + timedelta(days=REFRESH_DAYS),
         "revoked_at": None,
+        "rotated_at": None,
         "replaced_by": None,
+        "superseded": False,
     }
     await db.refresh_tokens.insert_one(new_doc)
     tenant = await db.tenants.find_one({"id": user["tenant_id"]}, {"_id": 0})
