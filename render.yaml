@@ -1,0 +1,49 @@
+# Render Blueprint — API Racontelle (région Francfort, UE).
+# Render > New > Blueprint > choisir ce dépôt. Les valeurs "sync: false" se saisissent dans le tableau de bord.
+services:
+  - type: web
+    name: racontelle-api
+    runtime: docker
+    region: frankfurt
+    plan: starter
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/
+    autoDeploy: true
+    envVars:
+      - key: MONGO_URL
+        sync: false
+      - key: DB_NAME
+        value: racontelle
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ADMIN_TOKEN
+        generateValue: true
+      - key: DAILY_EMAIL_HOUR
+        value: "9"
+      - key: APP_PUBLIC_URL
+        sync: false
+      - key: ALLOWED_ORIGINS
+        value: "*"
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ENDPOINT_URL
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: S3_REGION
+        value: auto
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM_ADDRESS
+        sync: false
+      - key: EMAIL_FROM_NAME
+        value: Racontelle
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: BOOK_MODEL
+        value: claude-sonnet-5
+      - key: OPENAI_API_KEY
+        sync: false

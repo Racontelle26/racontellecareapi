@@ -77,8 +77,10 @@ class TestInvitations:
         lst = session.get(f"{base_url}/circle/invitations", headers=owner_ctx["headers"])
         assert lst.status_code == 200
         invs = lst.json()
-        target = next((x for x in invs if x["code"] == code), None)
+        invite_id = inv.json()["invitation"]["id"]
+        target = next((x for x in invs if x["id"] == invite_id), None)
         assert target is not None
+        assert "code" not in target  # only the hash is stored (RG-03)
         # resend
         rs = session.post(f"{base_url}/circle/invitations/{target['id']}/resend", headers=owner_ctx["headers"])
         assert rs.status_code == 200
@@ -140,7 +142,11 @@ class TestDaily:
 
     def test_daily_state_patch(self, base_url, session, owner_ctx):
         r = session.get(f"{base_url}/daily-question", headers=owner_ctx["headers"])
-        dq_id = r.json()["items"][0]["daily_question_id"]
+        # "viewed" never downgrades an answered/skipped question, so use one this member has not handled yet.
+        fresh = [x for x in r.json()["items"] if x["my_state"] in ("new", "viewed")]
+        if not fresh:
+            pytest.skip("every daily question was already answered or skipped by earlier tests")
+        dq_id = fresh[0]["daily_question_id"]
         pr = session.patch(f"{base_url}/daily-question/state",
                            json={"daily_question_id": dq_id, "state": "viewed"},
                            headers=owner_ctx["headers"])

@@ -6,13 +6,13 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Sharing from "expo-sharing";
 import { CaretLeft, BookOpenText, Sparkle, CaretRight, FilePdf } from "phosphor-react-native";
 import { Body, Card, Label, Title } from "@/src/components/ui";
-import { api, getToken } from "@/src/api/client";
+import { api, getToken, BACKEND_ORIGIN } from "@/src/api/client";
 import { useToast } from "@/src/components/toast";
 import { makeStyles, radius, spacing, useTheme } from "@/src/theme";
 import { buildBookHtml, openPrintPreviewWindow, printBookWindow, type PdfPhoto } from "@/src/book/book-pdf";
 import { preparePdfForSharing } from "@/src/book/share-pdf";
 
-type BookStatus = { memory_count: number; transcribed: number; pending: number; unavailable?: number; chapter_count: number; can_generate: boolean };
+type BookStatus = { memory_count: number; transcribed: number; pending: number; unavailable?: number; chapter_count: number; can_generate: boolean; ai_available?: boolean };
 type Chapter = { id: string; title: string; content?: string; memory_count: number; created_at: string };
 type Summary = { circle: { name: string } };
 type Capsule = { id: string; photo_url?: string | null; narrator_name?: string; question_text?: string };
@@ -87,7 +87,7 @@ export default function BookHome() {
         const token = await getToken();
         for (const c of withPhotos) {
           try {
-            const dataUrl = await toDataUrl(`${process.env.EXPO_PUBLIC_BACKEND_URL}${c.photo_url}?token=${token}`);
+            const dataUrl = await toDataUrl(`${BACKEND_ORIGIN}${c.photo_url}?token=${token}`);
             gallery.push({ src: dataUrl, caption: `${c.narrator_name || ""} — ${c.question_text || ""}` });
           } catch {
             /* skip photo */
@@ -179,7 +179,11 @@ export default function BookHome() {
           {generationError ? (
             <Body style={styles.generationError} testID="book-generation-error">{generationError}</Body>
           ) : null}
-          {!status?.can_generate ? (
+          {status?.ai_available === false ? (
+            <Body muted style={styles.hint} testID="book-ai-unavailable">
+              La rédaction des chapitres arrive bientôt. En attendant, continuez d’enregistrer et d’écrire vos souvenirs : ils formeront votre premier chapitre.
+            </Body>
+          ) : !status?.can_generate ? (
             <Body muted style={styles.hint}>Enregistrez au moins un souvenir pour commencer.</Body>
           ) : (status?.pending ?? 0) > 0 || (status?.unavailable ?? 0) > 0 ? (
             <Body muted style={styles.hint}>

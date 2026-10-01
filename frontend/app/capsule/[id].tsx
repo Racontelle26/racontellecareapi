@@ -9,9 +9,10 @@ import * as ImagePicker from "expo-image-picker";
 import { useAudioPlayer, useAudioPlayerStatus, setAudioModeAsync } from "expo-audio";
 import { CaretLeft, Play, Pause, Trash, ImageSquare, X, PencilSimple, Check } from "phosphor-react-native";
 import { Body, Button, Label, TextField, Title, Avatar } from "@/src/components/ui";
-import { api, audioUrl, API_BASE, getToken } from "@/src/api/client";
+import { api, audioUrl, API_BASE, getToken, BACKEND_ORIGIN, localFilePart } from "@/src/api/client";
 import { useAuth } from "@/src/auth/auth-context";
 import { useToast } from "@/src/components/toast";
+import { confirmAction } from "@/src/components/confirm";
 import { makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 type Capsule = {
@@ -20,6 +21,7 @@ type Capsule = {
   title?: string | null;
   narrator_name?: string;
   narrator_color?: string;
+  narrator_avatar_url?: string | null;
   narrator_member_id: string;
   recorded_by_user_id: string;
   question_text?: string;
@@ -31,7 +33,7 @@ type Capsule = {
   photo_url?: string | null;
   photos?: { id: string; url: string }[];
 };
-type Member = { id: string; display_name: string; initials_color?: string; relationship_label?: string | null; status: string };
+type Member = { id: string; display_name: string; initials_color?: string; avatar_url?: string | null; relationship_label?: string | null; status: string };
 const MAX_PHOTOS = 10;
 
 function fmt(sec: number) {
@@ -70,7 +72,7 @@ export default function CapsuleDetail() {
 
   const photoList = capsuleQ.data?.photos ?? [];
   const photoSrcs = token
-    ? photoList.map((p) => ({ id: p.id, uri: `${process.env.EXPO_PUBLIC_BACKEND_URL}${p.url}?token=${token}` }))
+    ? photoList.map((p) => ({ id: p.id, uri: `${BACKEND_ORIGIN}${p.url}?token=${token}` }))
     : [];
 
   const addPhotos = async () => {
@@ -96,7 +98,7 @@ export default function CapsuleDetail() {
           const blob = await (await fetch(asset.uri)).blob();
           form.append("photos", blob, name);
         } else {
-          form.append("photos", { uri: asset.uri, name, type: mime } as any);
+          form.append("photos", localFilePart(asset.uri));
         }
       }
       const tk = await getToken();
@@ -116,6 +118,7 @@ export default function CapsuleDetail() {
   };
 
   const removePhoto = async (photoId: string) => {
+    if (!(await confirmAction("Retirer cette photo ?", "La photo sera retirée de ce souvenir.", "Retirer"))) return;
     try {
       await api.del(`/capsules/${id}/photos/${photoId}`);
       await capsuleQ.refetch();
@@ -138,6 +141,11 @@ export default function CapsuleDetail() {
   };
 
   const remove = async () => {
+    const ok = await confirmAction(
+      "Supprimer ce souvenir ?",
+      "L’enregistrement, ses photos et son texte ne seront plus accessibles à la famille. Cette action est définitive.",
+    );
+    if (!ok) return;
     try {
       await api.del(`/capsules/${id}`);
       qc.invalidateQueries({ queryKey: ["capsules"] });
@@ -181,7 +189,7 @@ export default function CapsuleDetail() {
   };
 
   const c = capsuleQ.data;
-  const canDelete = !!c;
+  const canDelete = !!c && (c.recorded_by_user_id === user?.id || member?.role === "owner");
   const canEditFree = !!c && !c.question_id && (c.recorded_by_user_id === user?.id || member?.role === "owner");
   const activeMembers = membersQ.data?.filter((item) => item.status === "active") ?? [];
 
@@ -213,11 +221,14 @@ export default function CapsuleDetail() {
         ) : (
           <>
             <View style={styles.narratorRow}>
-              <Avatar name={c.narrator_name || "?"} color={c.narrator_color} size={52} />
+              <Avatar name={c.narrator_name || "?"} color={c.narrator_color} photo={c.narrator_avatar_url} size={52} />
               <View>
                 <Body style={styles.narratorName}>{c.narrator_name}</Body>
                 <Label style={styles.date}>
                   {new Date(c.recorded_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}
+                  {" à "}
+                  {new Date(c.recorded_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                  {c.theme ? ` · ${c.theme}` : ""}
                 </Label>
               </View>
             </View>
@@ -231,7 +242,7 @@ export default function CapsuleDetail() {
                   {activeMembers.map((item) => {
                     const selected = editNarratorId === item.id;
                     return <Pressable key={item.id} testID={`sur-le-vif-narrator-${item.id}`} onPress={() => setEditNarratorId(item.id)} style={[styles.pickerItem, selected && styles.pickerSelected]}>
-                      <Avatar name={item.display_name} color={item.initials_color} size={38} />
+                      <Avatar name={item.display_name} color={item.initials_color} photo={item.avatar_url} size={38} />
                       <Label style={styles.pickerName} numberOfLines={1}>{item.display_name}</Label>
                     </Pressable>;
                   })}
@@ -255,9 +266,11 @@ export default function CapsuleDetail() {
                 {photoSrcs.map((p) => (
                   <View key={p.id} style={styles.galleryItem}>
                     <Image source={{ uri: p.uri }} style={styles.galleryImg} contentFit="cover" transition={150} />
-                    <Pressable style={styles.galleryRemove} testID={`capsule-photo-remove-${p.id}`} onPress={() => removePhoto(p.id)}>
-                      <X color={colors.onBrandPrimary} size={13} weight="bold" />
-                    </Pressable>
+                    {canDelete ? (
+                      <Pressable style={styles.galleryRemove} testID={`capsule-photo-remove-${p.id}`} onPress={() => removePhoto(p.id)}>
+                        <X color={colors.onBrandPrimary} size={13} weight="bold" />
+                      </Pressable>
+                    ) : null}
                   </View>
                 ))}
               </ScrollView>

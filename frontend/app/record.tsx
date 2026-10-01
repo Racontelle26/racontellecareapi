@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { View, Pressable, ScrollView, Linking, Platform, ActivityIndicator } from "react-native";
+import { View, Pressable, ScrollView, Linking, Platform, ActivityIndicator, Alert } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -15,14 +15,14 @@ import {
   AudioModule,
   setAudioModeAsync,
 } from "expo-audio";
-import { X, Microphone, Stop, Play, Pause, ArrowClockwise, Check, ImageSquare, Camera } from "phosphor-react-native";
+import { X, Microphone, Stop, Play, Pause, ArrowClockwise, Check, ImageSquare, Camera, Shuffle, CloudArrowUp } from "phosphor-react-native";
 import { Body, Button, Label, TextField, Title, Avatar } from "@/src/components/ui";
-import { api, API_BASE, getToken } from "@/src/api/client";
+import { api, API_BASE, getToken, localFilePart } from "@/src/api/client";
 import { useAuth } from "@/src/auth/auth-context";
 import { useToast } from "@/src/components/toast";
 import { makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
-type Member = { id: string; display_name: string; initials_color?: string; status: string };
+type Member = { id: string; display_name: string; initials_color?: string; avatar_url?: string | null; status: string };
 const MAX_PHOTOS = 10;
 
 function fmt(ms: number) {
@@ -53,6 +53,29 @@ export default function RecordScreen() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [freeTitle, setFreeTitle] = useState("Souvenir sur le vif");
   const [manualTranscript, setManualTranscript] = useState("");
+  const [paused, setPaused] = useState(false);
+  // "pending" = the server has not confirmed the upload yet: the local recording is kept for a retry.
+  const [uploadState, setUploadState] = useState<"idle" | "pending">("idle");
+  const [question, setQuestion] = useState<{ id?: string; text?: string }>({ id: params.questionId, text: params.questionText });
+  const [changingQuestion, setChangingQuestion] = useState(false);
+
+  const logEvent = (event_type: string, extra: Record<string, unknown> = {}) => {
+    api.post("/events", { event_type, question_id: question.id ?? null, ...extra }).catch(() => {});
+  };
+
+  const anotherQuestion = async () => {
+    if (!params.theme || changingQuestion) return;
+    setChangingQuestion(true);
+    try {
+      const q = await api.get<{ id: string; text: string }>(`/questions/surprise?theme=${encodeURIComponent(String(params.theme))}`);
+      setQuestion({ id: q.id, text: q.text });
+      api.post("/events", { event_type: "question_viewed", question_id: q.id, source: "guided" }).catch(() => {});
+    } catch {
+      toast.show("Impossible de charger une autre question", "error");
+    } finally {
+      setChangingQuestion(false);
+    }
+  };
 
   const pickFromLibrary = async () => {
     const remaining = MAX_PHOTOS - photos.length;
@@ -113,28 +136,66 @@ export default function RecordScreen() {
     return false;
   };
 
+  // Android rejects `player.replace(null)` ("Cannot assign null to not nullable type"): only pause here.
+  // The next recording replaces the source with its own file in stopRecording.
+  const stopPreview = () => {
+    try {
+      player.pause();
+    } catch {
+      // nothing loaded in the preview player yet
+    }
+  };
+
   const startRecording = async () => {
     const ok = await ensurePermission();
     if (!ok) {
       toast.show("Micro nécessaire pour enregistrer", "error");
       return;
     }
+    let stage = "audio-mode";
     try {
-      player.pause();
-      player.replace(null);
+      stopPreview();
       setRecordedUri(null);
       setDurationSec(0);
       setPreviewLoading(false);
       await setAudioModeAsync({ playsInSilentMode: true, allowsRecording: true });
-      await recorder.prepareToRecordAsync();
+      stage = "prepare";
+      try {
+        await recorder.prepareToRecordAsync();
+      } catch {
+        // Android refuses to prepare a recorder left "prepared" by an interrupted attempt: release it, retry once.
+        await recorder.stop().catch(() => {});
+        await recorder.prepareToRecordAsync();
+      }
+      stage = "record";
       recorder.record();
+      setPaused(false);
+      setUploadState("idle");
+      logEvent("recording_started");
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
+    } catch (e: any) {
+      const cause = `${stage}:${e?.code || e?.message || "inconnu"}`.slice(0, 40);
+      logEvent("recording_failed", { error_type: cause });
+      toast.show(`Impossible de démarrer l’enregistrement. Fermez les applications qui utilisent le micro, puis réessayez. (${cause})`, "error");
+    }
+  };
+
+  const togglePause = () => {
+    try {
+      if (paused) {
+        recorder.record();
+        setPaused(false);
+      } else {
+        recorder.pause();
+        setPaused(true);
+      }
     } catch {
-      toast.show("Impossible de démarrer l’enregistrement", "error");
+      toast.show("La pause n’est pas disponible sur cet appareil", "error");
     }
   };
 
   const stopRecording = async () => {
+    setPaused(false);
     try {
       const durationBeforeStop = Math.max(recState.durationMillis || 0, recorder.currentTime * 1000);
       await recorder.stop();
@@ -148,6 +209,7 @@ export default function RecordScreen() {
       player.replace({ uri });
       setPreviewLoading(false);
     } catch {
+      logEvent("recording_failed", { error_type: "stop" });
       toast.show("Erreur à l’arrêt de l’enregistrement", "error");
     }
   };
@@ -165,9 +227,25 @@ export default function RecordScreen() {
     }
   };
 
+  // The screen can be the first one in history (opened from a link or after a reload): fall back to home.
+  const leave = () => (router.canGoBack() ? router.back() : router.replace("/(tabs)"));
+
+  const close = () => {
+    if (!recordedUri) return leave();
+    const message = "Votre enregistrement n’est pas encore sauvegardé. Quitter quand même ?";
+    if (Platform.OS === "web") {
+      if (typeof window !== "undefined" && window.confirm(message)) leave();
+      return;
+    }
+    Alert.alert("Quitter sans sauvegarder ?", message, [
+      { text: "Rester", style: "cancel" },
+      { text: "Quitter", style: "destructive", onPress: leave },
+    ]);
+  };
+
   const reRecord = () => {
-    player.pause();
-    player.replace(null);
+    setUploadState("idle");
+    stopPreview();
     setRecordedUri(null);
     setDurationSec(0);
     setPreviewLoading(false);
@@ -189,17 +267,17 @@ export default function RecordScreen() {
       const form = new FormData();
       form.append("narrator_member_id", effectiveNarratorId);
       form.append("duration_sec", String(Math.max(1, durationSec)));
-      if (params.questionId) form.append("question_id", String(params.questionId));
+      if (question.id) form.append("question_id", String(question.id));
       if (params.dailyId) form.append("daily_question_id", String(params.dailyId));
       if (params.theme) form.append("theme", String(params.theme));
-      form.append("title", params.questionText ? String(params.questionText) : (freeTitle.trim() || "Souvenir sur le vif"));
+      form.append("title", question.text ? String(question.text) : (freeTitle.trim() || "Souvenir sur le vif"));
       if (manualTranscript.trim()) form.append("transcript", manualTranscript.trim());
       const name = `memoire-${Date.now()}.${Platform.OS === "web" ? "webm" : "m4a"}`;
       if (Platform.OS === "web") {
         const blob = await (await fetch(recordedUri)).blob();
         form.append("file", blob, name);
       } else {
-        form.append("file", { uri: recordedUri, name, type: "audio/mp4" } as any);
+        form.append("file", localFilePart(recordedUri));
       }
       if (photos.length) {
         for (let i = 0; i < photos.length; i++) {
@@ -210,7 +288,7 @@ export default function RecordScreen() {
             const pblob = await (await fetch(p.uri)).blob();
             form.append("photos", pblob, pname);
           } else {
-            form.append("photos", { uri: p.uri, name: pname, type: p.mime } as any);
+            form.append("photos", localFilePart(p.uri));
           }
         }
       }
@@ -233,13 +311,19 @@ export default function RecordScreen() {
         throw new Error(message);
       }
       const saved = await res.json();
+      setUploadState("idle");
+      setRecordedUri(null);
       qc.invalidateQueries({ queryKey: ["capsules"] });
       qc.invalidateQueries({ queryKey: ["circle"] });
       qc.invalidateQueries({ queryKey: ["daily"] });
-      toast.show("Votre réponse est bien enregistrée", "success");
+      toast.show("Capsule sauvegardée · souvenir ajouté à l’album", "success");
       router.replace(`/capsule/${saved.id}`);
     } catch (e: any) {
-      toast.show(e?.message || "Impossible d’enregistrer le souvenir", "error");
+      setUploadState("pending");
+      logEvent("recording_failed", { error_type: `upload:${e?.message || e}`.slice(0, 40) });
+      console.warn("[racontelle] upload failed", e?.message, recordedUri);
+      const offline = e instanceof TypeError; // fetch() network failure
+      toast.show(offline ? "Connexion faible : l’enregistrement est conservé, réessayez dans un instant." : (e?.message || "Impossible d’enregistrer le souvenir"), "error");
     } finally {
       setUploading(false);
     }
@@ -251,7 +335,7 @@ export default function RecordScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top + spacing.md, paddingBottom: insets.bottom + spacing.lg }]}>
       <View style={styles.topBar}>
-        <Pressable onPress={() => router.back()} hitSlop={12} testID="record-close">
+        <Pressable onPress={close} hitSlop={12} testID="record-close">
           <X color={colors.onSurface} size={26} />
         </Pressable>
         <Label style={styles.topTitle}>{params.theme || "Souvenir libre"}</Label>
@@ -259,9 +343,15 @@ export default function RecordScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {params.questionText ? (
+        {question.text ? (
           <View style={styles.questionBox}>
-            <Title style={styles.question} testID="record-question-text">{params.questionText}</Title>
+            <Title style={styles.question} testID="record-question-text">{question.text}</Title>
+            {params.theme && !params.dailyId && !recordedUri && !isRecording ? (
+              <Pressable style={styles.anotherBtn} testID="record-another-question" onPress={anotherQuestion} disabled={changingQuestion} hitSlop={8}>
+                <Shuffle color={colors.brandPrimary} size={18} />
+                <Label style={styles.anotherText}>{changingQuestion ? "Recherche…" : "Une autre question"}</Label>
+              </Pressable>
+            ) : null}
           </View>
         ) : (
           <Title style={styles.question} testID="record-question-text">Racontez ce que vous voulez transmettre</Title>
@@ -279,12 +369,15 @@ export default function RecordScreen() {
                 onPress={() => setNarratorId(m.id)}
                 style={[styles.narratorItem, active && styles.narratorActive]}
               >
-                <Avatar name={m.display_name} color={m.initials_color} size={40} />
+                <Avatar name={m.display_name} color={m.initials_color} photo={m.avatar_url} size={40} />
                 <Label style={styles.narratorName} numberOfLines={1}>{m.display_name}</Label>
               </Pressable>
             );
           })}
         </ScrollView>
+        <Body muted style={styles.consentHint} testID="record-consent-hint">
+          Assurez-vous que la personne qui raconte est d’accord pour être enregistrée et partagée avec la famille.
+        </Body>
 
         {!params.questionId ? (
           <TextField
@@ -337,13 +430,19 @@ export default function RecordScreen() {
               </Body>
               <Button title="Ouvrir les réglages" variant="secondary" testID="record-open-settings" onPress={() => Linking.openSettings()} />
             </View>
+          ) : !recordedUri && (isRecording || paused) ? (
+            <View style={styles.previewRow}>
+              <Pressable testID="record-pause" onPress={togglePause} style={styles.smallBtn} accessibilityLabel={paused ? "Reprendre" : "Pause"}>
+                {paused ? <Microphone color={colors.onSurface} size={24} weight="fill" /> : <Pause color={colors.onSurface} size={24} weight="fill" />}
+              </Pressable>
+              <Pressable testID="record-toggle" onPress={stopRecording} style={[styles.recBtn, styles.recBtnActive]} accessibilityLabel="Arrêter">
+                <Stop color={colors.onBrandPrimary} size={40} weight="fill" />
+              </Pressable>
+              <View style={styles.smallBtn} />
+            </View>
           ) : !recordedUri ? (
-            <Pressable
-              testID="record-toggle"
-              onPress={isRecording ? stopRecording : startRecording}
-              style={[styles.recBtn, isRecording && styles.recBtnActive]}
-            >
-              {isRecording ? <Stop color={colors.onBrandPrimary} size={40} weight="fill" /> : <Microphone color={colors.onBrandPrimary} size={44} weight="fill" />}
+            <Pressable testID="record-toggle" onPress={startRecording} style={styles.recBtn} accessibilityLabel="Enregistrer">
+              <Microphone color={colors.onBrandPrimary} size={44} weight="fill" />
             </Pressable>
           ) : (
             <View style={styles.previewArea} testID="record-preview">
@@ -368,7 +467,7 @@ export default function RecordScreen() {
           )}
 
           <Body muted style={styles.hint}>
-            {recordedUri ? "Réécoutez, puis enregistrez votre réponse" : isRecording ? "Enregistrement en cours…" : "Appuyez pour commencer à raconter"}
+            {recordedUri ? "Réécoutez, puis enregistrez votre réponse" : paused ? "En pause · touchez le micro pour reprendre" : isRecording ? "Enregistrement en cours…" : "Appuyez pour commencer à raconter"}
           </Body>
         </View>
 
@@ -393,7 +492,13 @@ export default function RecordScreen() {
 
       {recordedUri ? (
         <View style={styles.saveArea}>
-          <Button title="Enregistrer cette réponse" testID="record-save" loading={uploading} onPress={save} icon={<Check color={colors.onBrandPrimary} size={20} weight="bold" />} />
+          {uploadState === "pending" ? (
+            <View style={styles.pendingBox} testID="record-upload-pending">
+              <CloudArrowUp color={colors.warning} size={20} />
+              <Body style={styles.pendingText}>En attente d’envoi · votre enregistrement est conservé sur ce téléphone.</Body>
+            </View>
+          ) : null}
+          <Button title={uploadState === "pending" ? "Réessayer l’envoi" : "Enregistrer cette réponse"} testID="record-save" loading={uploading} onPress={save} icon={<Check color={colors.onBrandPrimary} size={20} weight="bold" />} />
         </View>
       ) : null}
     </View>
@@ -457,9 +562,9 @@ const useStyles = makeStyles((colors) => ({
     alignItems: "center",
     justifyContent: "center",
     ...Platform.select({
-      web: { boxShadow: "0 6px 16px rgba(58, 51, 44, 0.20)" },
+      web: { boxShadow: "0 6px 16px rgba(47, 62, 82, 0.20)" },
       default: {
-        shadowColor: "#3A332C",
+        shadowColor: "#2F3E52",
         shadowOpacity: 0.2,
         shadowRadius: 16,
         shadowOffset: { width: 0, height: 6 },
@@ -474,7 +579,12 @@ const useStyles = makeStyles((colors) => ({
   previewHelp: { textAlign: "center", paddingHorizontal: spacing.md },
   smallBtn: { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceSecondary },
   hint: { textAlign: "center" },
-  saveArea: { paddingTop: spacing.sm },
+  saveArea: { paddingTop: spacing.sm, gap: spacing.sm },
+  anotherBtn: { flexDirection: "row", alignItems: "center", gap: spacing.xs, alignSelf: "flex-start", marginTop: spacing.md, minHeight: 44 },
+  anotherText: { color: colors.onBrandTertiary },
+  consentHint: { fontSize: 13 },
+  pendingBox: { flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceSecondary },
+  pendingText: { flex: 1, fontSize: 14 },
   permBox: { alignItems: "center", gap: spacing.md, paddingHorizontal: spacing.lg },
   permText: { textAlign: "center" },
 }));

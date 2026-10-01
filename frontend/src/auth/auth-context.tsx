@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, clearToken, getToken, setToken } from "@/src/api/client";
+import { storage } from "@/src/utils/storage";
 
 export type User = { id: string; email: string; display_name: string; relationship_label?: string | null };
 export type Member = { id: string; circle_id: string; display_name: string; relationship_label?: string | null; initials_color?: string; role?: string; daily_email?: boolean; status: string };
@@ -10,13 +11,18 @@ type AuthState = {
   member: Member | null;
   hasCircle: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (payload: { email: string; password: string; display_name: string; relationship_label?: string }) => Promise<void>;
+  signUp: (payload: { email: string; password: string; display_name: string; relationship_label?: string; accept_terms: boolean }) => Promise<void>;
   signOut: () => Promise<void>;
   refresh: () => Promise<boolean>;
 };
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
 type MeResponse = { user: User; member: Member | null; has_circle: boolean };
+
+// Last e-mail used on this device, prefilled on the login screen (never the password: the phone's
+// password manager keeps that, encrypted, through the autofill hints on PasswordField).
+export const LAST_EMAIL_KEY = "racontelle_last_email";
+const rememberEmail = (email: string) => storage.setItem(LAST_EMAIL_KEY, email.trim().toLowerCase()).catch(() => false);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
@@ -43,7 +49,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     (async () => {
       const token = await getToken();
       if (!active) return;
-      if (token) await refresh();
+      if (token && (await refresh())) {
+        // Sliding session: each launch swaps the token for a fresh 30-day one, so an active family
+        // never has to sign in again. A failure here is harmless (the current token stays valid).
+        api.post<{ access_token: string }>("/auth/refresh")
+          .then((res) => setToken(res.access_token))
+          .catch(() => {});
+      }
       if (active) setLoading(false);
     })();
     return () => { active = false; };
@@ -54,14 +66,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await queryClient.cancelQueries();
     queryClient.clear();
     await setToken(res.access_token);
+    await rememberEmail(email);
     await refresh();
   }, [queryClient, refresh]);
 
-  const signUp = useCallback(async (payload: { email: string; password: string; display_name: string; relationship_label?: string }) => {
+  const signUp = useCallback(async (payload: { email: string; password: string; display_name: string; relationship_label?: string; accept_terms: boolean }) => {
     const res = await api.post<{ access_token: string; user: User }>("/auth/register", payload);
     await queryClient.cancelQueries();
     queryClient.clear();
     await setToken(res.access_token);
+    await rememberEmail(payload.email);
     await refresh();
   }, [queryClient, refresh]);
 

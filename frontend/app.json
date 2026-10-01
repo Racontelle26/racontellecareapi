@@ -5,11 +5,11 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "frontend",
+    "scheme": "racontelle",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.emergent.familystories.ubz2aq",
+      "bundleIdentifier": "fr.racontelle.famille",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Enregistrer vos souvenirs de famille à voix haute",
         "NSPhotoLibraryUsageDescription": "Illustrer vos souvenirs avec vos photos",
@@ -19,9 +19,10 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#FDFBF7"
+        "backgroundColor": "#FFFFFF"
       },
-      "package": "com.emergent.familystories.ubz2aq",
+      "package": "fr.racontelle.famille",
+      "versionCode": 1,
       "permissions": [
         "RECORD_AUDIO",
         "CAMERA"
@@ -40,7 +41,7 @@
           "image": "./assets/images/racontelle-logo.png",
           "imageWidth": 260,
           "resizeMode": "contain",
-          "backgroundColor": "#FDFBF7"
+          "backgroundColor": "#FFFFFF"
         }
       ],
       "expo-font",

@@ -9,10 +9,11 @@ import { Body, Button, Card, Label, TextField, Title, Avatar } from "@/src/compo
 import { api } from "@/src/api/client";
 import { useAuth } from "@/src/auth/auth-context";
 import { useToast } from "@/src/components/toast";
+import { confirmAction } from "@/src/components/confirm";
 import { makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
-type Member = { id: string; user_id?: string | null; display_name: string; initials_color?: string; relationship_label?: string | null; status: string; role?: string; capsule_count?: number };
-type Invitation = { id: string; member_id: string; email: string; code: string };
+type Member = { id: string; user_id?: string | null; display_name: string; initials_color?: string; avatar_url?: string | null; relationship_label?: string | null; status: string; role?: string; capsule_count?: number };
+type Invitation = { id: string; member_id: string; email: string; code?: string };
 type FormMode = "direct" | "invite" | "edit" | null;
 
 export default function Members() {
@@ -93,14 +94,20 @@ export default function Members() {
 
   const resend = async (invitation: Invitation) => {
     try {
-      await api.post(`/circle/invitations/${invitation.id}/resend`);
-      toast.show("Invitation renvoyée", "info");
+      const res = await api.post<{ code: string }>(`/circle/invitations/${invitation.id}/resend`);
+      toast.show(`Invitation renvoyée · nouveau code ${res.code} (l’ancien ne fonctionne plus)`, "info");
     } catch (e: any) {
       toast.show(e?.message || "Erreur", "error");
     }
   };
 
   const revoke = async (invitation: Invitation) => {
+    const ok = await confirmAction(
+      "Annuler cette invitation ?",
+      `Le code envoyé à ${invitation.email} ne fonctionnera plus.`,
+      "Annuler l’invitation",
+    );
+    if (!ok) return;
     try {
       await api.del(`/circle/invitations/${invitation.id}`);
       await Promise.all([qc.invalidateQueries({ queryKey: ["members"] }), qc.invalidateQueries({ queryKey: ["invitations"] }), qc.invalidateQueries({ queryKey: ["circle"] })]);
@@ -128,7 +135,7 @@ export default function Members() {
               const managed = isOwner && !item.user_id && item.role === "profile";
               return (
                 <Card key={item.id} style={styles.memberCard} testID={`member-${item.id}`}>
-                  <Avatar name={item.display_name} color={item.initials_color} size={48} />
+                  <Avatar name={item.display_name} color={item.initials_color} photo={item.avatar_url} size={48} />
                   <View style={styles.memberInfo}>
                     <Body style={styles.memberName}>{item.display_name}</Body>
                     <Label style={styles.memberSub}>{item.relationship_label || "Membre"}{item.role === "owner" ? " · créateur" : ""} · {item.capsule_count ?? 0} souvenir{(item.capsule_count ?? 0) > 1 ? "s" : ""}</Label>
@@ -146,8 +153,8 @@ export default function Members() {
             {pending.map((item) => {
               const invitation = invitesQ.data?.find((entry) => entry.member_id === item.id);
               return <Card key={item.id} style={styles.memberCard} testID={`pending-${item.id}`}>
-                <Avatar name={item.display_name} color={item.initials_color} size={48} />
-                <View style={styles.memberInfo}><Body style={styles.memberName}>{item.display_name}</Body><Label style={styles.memberSub}>Invitation en attente{invitation ? ` · code ${invitation.code}` : ""}</Label></View>
+                <Avatar name={item.display_name} color={item.initials_color} photo={item.avatar_url} size={48} />
+                <View style={styles.memberInfo}><Body style={styles.memberName}>{item.display_name}</Body><Label style={styles.memberSub}>Invitation en attente</Label></View>
                 {isOwner && invitation ? <View style={styles.memberActions}>
                   <Pressable onPress={() => resend(invitation)} style={styles.iconButton} testID={`resend-${item.id}`}><ArrowsClockwise color={colors.brandPrimary} size={22} /></Pressable>
                   <Pressable onPress={() => revoke(invitation)} style={styles.iconButton} testID={`revoke-${item.id}`}><XCircle color={colors.error} size={22} /></Pressable>

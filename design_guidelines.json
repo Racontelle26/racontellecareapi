@@ -1,188 +1,60 @@
 {
-  "project_title": "Racontelle Family Memory App - Fingerprint Biometric Auth & Quick Unlock",
-  "app_type": "mobile_fullstack_family_memory_app",
-  "theme": {
-    "primary_mode": "light",
-    "style": "warm_editorial_heritage",
-    "description": "Warm, nostalgic, family-heritage aesthetic with soft cream backgrounds (#FDFBF7), vintage muted terracotta/rose accents (#C98B8B, #B57477), sage green highlights (#738A70), and elegant display typography (Cormorant Garamond) combined with legibility body fonts (DM Sans)."
-  },
-  "colors": {
-    "surface": "#FDFBF7",
-    "onSurface": "#3A332C",
-    "surfaceSecondary": "#F5F2EB",
-    "onSurfaceSecondary": "#4A423B",
-    "surfaceTertiary": "#EBE6DC",
-    "onSurfaceTertiary": "#5C5249",
-    "surfaceInverse": "#3A332C",
-    "onSurfaceInverse": "#FDFBF7",
-    "muted": "#8A8177",
-    "brand": "#C98B8B",
-    "onBrand": "#FDFBF7",
-    "brandPrimary": "#B57477",
-    "onBrandPrimary": "#FDFBF7",
-    "brandSecondary": "#738A70",
-    "onBrandSecondary": "#FDFBF7",
-    "brandTertiary": "#F2DADA",
-    "onBrandTertiary": "#824D4D",
-    "biometricGlow": "#C98B8B26",
-    "biometricIcon": "#B57477",
-    "biometricSuccess": "#738A70",
-    "biometricError": "#A85252",
-    "success": "#738A70",
-    "onSuccess": "#FDFBF7",
-    "warning": "#D1A054",
-    "onWarning": "#FDFBF7",
-    "error": "#A85252",
-    "onError": "#FDFBF7",
-    "info": "#8A9691",
-    "onInfo": "#FDFBF7",
-    "border": "#EBE6DC",
-    "borderStrong": "#D6CFC1",
-    "divider": "#EBE6DC"
-  },
-  "typography": {
-    "display": "Cormorant",
-    "displayMedium": "CormorantMedium",
-    "displaySemiBold": "CormorantSemiBold",
-    "body": "DMSans",
-    "bodyMedium": "DMSansMedium",
-    "rules": {
-      "headings": "Use Cormorant Garamond / CormorantSemiBold for high emotional storytelling hierarchy (Titles, Lock Screen Greetings, Security Modal Headings)",
-      "body": "Use DM Sans / DMSansMedium for maximum legibility on mobile screens (Status hints, Error banners, Settings toggles, PIN prompt descriptions)",
-      "max_heading_size": "32px on mobile to avoid layout breaking",
-      "hierarchy": "Header 24px-28px Cormorant, Subtitle 16px DMSansMedium, Label/Caption 12px-14px uppercase tracking-wider"
-    }
-  },
-  "layout_and_spacing": {
-    "spacing_scale": {
-      "xs": 4,
-      "sm": 8,
-      "md": 12,
-      "lg": 16,
-      "xl": 24,
-      "xxl": 32,
-      "xxxl": 48
-    },
-    "border_radius": {
-      "sm": 6,
-      "md": 12,
-      "lg": 20,
-      "pill": 999
-    },
-    "container_padding": "16px horizontal, 24px vertical with safe area insets consideration",
-    "lock_screen_layout": {
-      "hero_avatar": "Centred warm family emblem or user profile avatar surrounded by subtle brand ring (#C98B8B)",
-      "greeting_text": "Cormorant display font: 'Bienvenue, [User]' or 'Déverrouiller Racontelle'",
-      "fingerprint_trigger_card": "Interactive card/button with pulsing biometric fingerprint icon (#B57477) and tactile feedback",
-      "fallback_actions": "Secondary button for 'Utiliser le code / PIN du téléphone' and text link for 'Se connecter avec e-mail et mot de passe'"
-    }
-  },
-  "biometric_unlock_blueprint": {
-    "flow_description": "Enables rapid fingerprint biometric unlock for returning users without re-entering email and password.",
-    "key_functionalities": [
-      {
-        "name": "Hardware & Enrollment Detection",
-        "details": "Verifies hardware support (isEnrolled / hasHardware via expo-local-authentication or navigator.credentials). Sets state to unsupported / not enrolled gracefully."
-      },
-      {
-        "name": "Activation Post First Login",
-        "details": "After successful email/password auth, prompts user to enable fingerprint unlock or automatically registers saved auth token for quick biometric resume."
-      },
-      {
-        "name": "App Resume Lock Screen",
-        "details": "When app returns from background or launches with an active stored session and biometrics enabled, displays the Lock Screen requiring fingerprint/PIN verification."
-      },
-      {
-        "name": "Fallback to Phone PIN",
-        "details": "If fingerprint authentication fails or user requests system backup, triggers phone fallback (fallbackToPin / device passcode authentication)."
-      },
-      {
-        "name": "Email & Password Alternative",
-        "details": "Always provides a direct route back to full credential login ('Se connecter avec e-mail/mot de passe')."
-      },
-      {
-        "name": "Profile Security Toggle",
-        "details": "Dedicated setting in Profile ('Déverrouillage par empreinte digitale') allowing users to enable/disable biometrics anytime."
-      },
-      {
-        "name": "Session Expiration & Cancellation Handling",
-        "details": "Handles cancelled attempts without locking user out; clears biometric session and redirects to full login if auth token is expired."
-      },
-      {
-        "name": "Web Compatibility",
-        "details": "Safely ignores native biometric prompts on web or relies on WebAuthn if supported, ensuring unchanged web functionality."
-      }
-    ]
-  },
-  "key_features_and_components": {
-    "lock_screen_view": {
-      "location": "app/(auth)/lock-screen.tsx or embedded LockScreen overlay in auth navigator",
-      "title": "Déverrouillage Biométrique",
-      "description": "Lock screen rendered when user opens app with an active cached session and biometric unlock enabled.",
-      "test_ids": [
-        "lock-screen-container",
-        "lock-screen-user-name",
-        "biometric-unlock-button",
-        "biometric-fingerprint-icon",
-        "fallback-pin-button",
-        "use-email-password-button",
-        "biometric-status-message",
-        "session-expired-banner"
-      ]
-    },
-    "profile_biometric_settings_section": {
-      "location": "app/(tabs)/profile.tsx",
-      "title": "Sécurité & Biométrie",
-      "description": "Profile tab section providing toggle switch for enabling or disabling fingerprint unlock.",
-      "test_ids": [
-        "profile-security-section",
-        "biometric-toggle-switch",
-        "biometric-status-label",
-        "biometric-hardware-warning"
-      ]
-    },
-    "login_screen_biometric_prompt": {
-      "location": "app/(auth)/login.tsx",
-      "title": "Proposer Empreinte après Connexion",
-      "description": "Post-login prompt or quick biometric setup banner offering user to activate fingerprint unlock for future sessions.",
-      "test_ids": [
-        "enable-biometric-prompt-modal",
-        "enable-biometric-confirm-btn",
-        "enable-biometric-skip-btn"
-      ]
-    }
-  },
-  "image_urls": {
-    "vintage_family_1": {
-      "url": "https://images.unsplash.com/photo-1722173205783-d602329f0743?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NzZ8MHwxfHNlYXJjaHxf331&q=85",
-      "description": "Family photo header background for memory album and lock screen header",
-      "category": "album_header"
-    },
-    "elder_grandmother": {
-      "url": "https://images.pexels.com/photos/7545445/pexels-photo-7545445.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
-      "description": "Elder grandmother reviewing family memories",
-      "category": "member_avatar_fallback"
-    },
-    "vintage_photo_memory": {
-      "url": "https://images.pexels.com/photos/15124798/pexels-photo-15124798.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
-      "description": "Vintage photograph held by hand",
-      "category": "memory_thumbnail"
-    }
-  },
-  "accessibility_and_testing": {
-    "test_id_rules": "All interactive biometric triggers, PIN fallback links, setting toggles, error banners, and password buttons MUST contain explicit data-testid or testID attributes in kebab-case format.",
-    "min_touch_target": "44x44px for touch targets",
-    "contrast_ratio": "Minimum 4.5:1 for body text against warm background #FDFBF7"
-  },
-  "UNIVERSAL GUIDELINES FOR MAIN AGENT": [
-    "Always preserve existing warm Racontelle design tokens (#FDFBF7 surface, #C98B8B brand rose, #738A70 sage green, Cormorant font for titles).",
-    "Integrate fingerprint biometric unlock natively with expo-local-authentication fallback logic.",
-    "Display Lock Screen when reopening app with an existing active token and biometric preference set to true.",
-    "Provide system PIN fallback button ('Utiliser le code / PIN du téléphone') when biometric verification fails.",
-    "Always maintain a clean escape route to full email/password login ('Se connecter avec e-mail et mot de passe').",
-    "Ensure toggle in Profile screen allows enabling and disabling fingerprint unlock seamlessly with state saved to secure storage.",
-    "Gracefully present informative states for: hardware not supported, no fingerprint enrolled, user cancelled, or session token expired.",
-    "Keep Web application flow unchanged and error-free when native biometric modules are absent.",
-    "Maintain complete data-testid attributes across all lock screen and security profile elements for automated testing."
-  ]
+    "project_title":  "Racontelle Family - charte graphique",
+    "app_type":  "mobile_fullstack_family_memory_app",
+    "theme":  {
+                  "primary_mode":  "light",
+                  "style":  "charte_racontelle",
+                  "description":  "Charte Racontelle : Blanc doux #FFFFFF, Rose thé #E7A7A5, Sauge douce #B9C5B3, Brun mémoire #A67C63, Bleu encre doux #2F3E52. Allura pour les accroches, Cormorant Garamond pour les textes, Montserrat pour menus, boutons et petits titres. Les teintes trop claires pour porter du texte sont foncées dans la même teinte (rose #AE5856, sauge #5F7359) afin de garder un contraste de 4,5:1. Source de vérité : frontend/src/theme.ts."
+              },
+    "colors":  {
+                   "surface":  "#FFFFFF",
+                   "onSurface":  "#2F3E52",
+                   "surfaceSecondary":  "#FBF6F4",
+                   "surfaceTertiary":  "#F3EAE6",
+                   "muted":  "#6F6660",
+                   "brand":  "#E7A7A5",
+                   "brandPrimary":  "#AE5856",
+                   "brandSecondary":  "#5F7359",
+                   "brandTertiary":  "#F9E6E5",
+                   "onBrandTertiary":  "#7E3F3E",
+                   "brandSoft":  "#B9C5B3",
+                   "accent":  "#A67C63",
+                   "error":  "#A64542",
+                   "border":  "#EFE6E2",
+                   "borderStrong":  "#DCCFC9"
+               },
+    "typography":  {
+                       "script":  "Allura",
+                       "display":  "Cormorant Garamond",
+                       "text":  "Cormorant Garamond (Medium, 17px minimum)",
+                       "body":  "Montserrat",
+                       "rules":  {
+                                     "accroches":  "Allura, avec parcimonie : slogans et accroches courtes",
+                                     "textes":  "Cormorant Garamond pour titres et textes",
+                                     "interface":  "Montserrat pour boutons, menus, étiquettes et champs"
+                                 }
+                   },
+    "layout_and_spacing":  {
+                               "spacing_scale":  {
+                                                     "xs":  4,
+                                                     "sm":  8,
+                                                     "md":  12,
+                                                     "lg":  16,
+                                                     "xl":  24,
+                                                     "xxl":  32,
+                                                     "xxxl":  48
+                                                 },
+                               "border_radius":  {
+                                                     "sm":  6,
+                                                     "md":  12,
+                                                     "lg":  20,
+                                                     "pill":  999
+                                                 },
+                               "container_padding":  "16px horizontal, 24px vertical with safe area insets consideration"
+                           },
+    "accessibility_and_testing":  {
+                                      "test_id_rules":  "All interactive biometric triggers, PIN fallback links, setting toggles, error banners, and password buttons MUST contain explicit data-testid or testID attributes in kebab-case format.",
+                                      "min_touch_target":  "44x44px for touch targets",
+                                      "contrast_ratio":  "Minimum 4.5:1 pour le texte courant sur fond blanc"
+                                  }
 }

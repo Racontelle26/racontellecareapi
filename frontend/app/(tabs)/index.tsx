@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { ScrollView, View, Pressable, RefreshControl, ActivityIndicator, Image, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -10,7 +11,7 @@ import { usesNativeTabs } from "@/src/navigation";
 import { makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 type TreeLevel = { level: number; max_level: number; count: number; next_at: number | null };
-type Member = { id: string; display_name: string; initials_color?: string; relationship_label?: string | null; status: string };
+type Member = { id: string; display_name: string; initials_color?: string; avatar_url?: string | null; relationship_label?: string | null; status: string };
 type Summary = {
   circle: { name: string };
   members: Member[];
@@ -42,6 +43,18 @@ export default function Home() {
     circleQ.refetch();
     dailyQ.refetch();
   };
+
+  // A question shown for the first time is marked "viewed" for this member (usage journal).
+  useEffect(() => {
+    dailyQ.data?.items
+      .filter((item) => item.my_state === "new")
+      .forEach((item) => {
+        api.patch("/daily-question/state", { daily_question_id: item.daily_question_id, state: "viewed" }).catch(() => {});
+      });
+  }, [dailyQ.data]);
+
+  const visibleDaily = dailyQ.data?.items.filter((item) => item.my_state !== "skipped") ?? [];
+  const skippedCount = (dailyQ.data?.items.length ?? 0) - visibleDaily.length;
 
   const tree = circleQ.data?.tree_level;
   const progressPct = tree && tree.next_at ? Math.min(1, tree.count / tree.next_at) : 1;
@@ -106,7 +119,7 @@ export default function Home() {
           <ActivityIndicator color={colors.brandSecondary} style={{ marginVertical: spacing.lg }} />
         ) : (
           <View style={styles.dailyList}>
-            {dailyQ.data?.items.map((item) => (
+            {visibleDaily.map((item) => (
               <Card key={item.daily_question_id} style={styles.dailyCard} testID={`daily-${item.daily_question_id}`}>
                 <Label style={styles.theme}>{item.theme.toUpperCase()}</Label>
                 <Body style={styles.question}>{item.question?.text}</Body>
@@ -136,6 +149,7 @@ export default function Home() {
                   {item.my_state !== "answered" ? (
                     <Pressable
                       style={styles.skipBtn}
+                      accessibilityLabel="Passer cette question"
                       testID={`daily-skip-${item.daily_question_id}`}
                       onPress={async () => {
                         await api.patch("/daily-question/state", { daily_question_id: item.daily_question_id, state: "skipped" });
@@ -148,6 +162,19 @@ export default function Home() {
                 </View>
               </Card>
             ))}
+            {skippedCount > 0 ? (
+              <Label style={styles.skippedNote} testID="daily-skipped-note">
+                {skippedCount === 1 ? "1 question passée aujourd’hui" : `${skippedCount} questions passées aujourd’hui`}
+              </Label>
+            ) : null}
+            <View style={styles.dailyLinks}>
+              <Pressable onPress={() => router.push("/questions")} hitSlop={8} testID="daily-change-theme" style={styles.dailyLink}>
+                <Label style={styles.dailyLinkText}>Changer de thème</Label>
+              </Pressable>
+              <Pressable onPress={() => router.push("/profile")} hitSlop={8} testID="daily-pause-reminders" style={styles.dailyLink}>
+                <Label style={styles.dailyLinkText}>Mettre les rappels en pause</Label>
+              </Pressable>
+            </View>
           </View>
         )}
 
@@ -161,7 +188,7 @@ export default function Home() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.membersRow}>
           {circleQ.data?.members.map((m) => (
             <View key={m.id} style={styles.memberItem}>
-              <Avatar name={m.display_name} color={m.initials_color} size={58} />
+              <Avatar name={m.display_name} color={m.initials_color} photo={m.avatar_url} size={58} />
               <Label style={styles.memberName} numberOfLines={1}>{m.display_name}</Label>
               {m.status === "pending" ? <Label style={styles.pending}>en attente</Label> : null}
             </View>
@@ -201,9 +228,9 @@ const useStyles = makeStyles((colors) => ({
     paddingVertical: 15,
     borderRadius: radius.pill,
     ...Platform.select({
-      web: { boxShadow: "0 4px 12px rgba(58, 51, 44, 0.20)" },
+      web: { boxShadow: "0 4px 12px rgba(47, 62, 82, 0.20)" },
       default: {
-        shadowColor: "#3A332C",
+        shadowColor: "#2F3E52",
         shadowOpacity: 0.2,
         shadowRadius: 12,
         shadowOffset: { width: 0, height: 4 },
@@ -215,7 +242,7 @@ const useStyles = makeStyles((colors) => ({
   content: { paddingHorizontal: spacing.xl, gap: spacing.lg },
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   hello: { color: colors.muted, marginBottom: 2 },
-  logo: { width: 110, height: 38 },
+  logo: { width: 131, height: 38 },
   loading: { height: 300, alignItems: "center", justifyContent: "center" },
   treeCard: {
     alignItems: "center",
@@ -268,7 +295,11 @@ const useStyles = makeStyles((colors) => ({
     borderRadius: radius.pill,
   },
   answerText: { color: colors.onBrandPrimary },
-  skipBtn: { padding: 8 },
+  skipBtn: { padding: 12, minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center" },
+  skippedNote: { color: colors.muted, textAlign: "center" },
+  dailyLinks: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: spacing.lg },
+  dailyLink: { minHeight: 44, justifyContent: "center" },
+  dailyLinkText: { color: colors.brandPrimary, textDecorationLine: "underline" },
   answered: { color: colors.success, fontSize: 14 },
   membersRow: { gap: spacing.lg, paddingVertical: spacing.xs, paddingRight: spacing.lg },
   memberItem: { alignItems: "center", gap: spacing.xs, width: 66 },

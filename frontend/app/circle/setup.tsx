@@ -152,7 +152,7 @@ const useStyles = makeStyles((colors) => ({
   profilesTitle: { fontSize: 22 },
   profileCard: { gap: spacing.md, backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, padding: spacing.lg },
   profileNumber: { color: colors.brandSecondary },
-  logo: { width: 170, height: 58, alignSelf: "center" },
+  logo: { width: 200, height: 58, alignSelf: "center" },
   title: { fontSize: 28, textAlign: "center" },
   sub: { textAlign: "center", marginBottom: spacing.sm },
   toggle: {

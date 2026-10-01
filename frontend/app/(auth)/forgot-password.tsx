@@ -4,7 +4,7 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CaretLeft } from "phosphor-react-native";
-import { Body, Button, TextField, Title } from "@/src/components/ui";
+import { Body, Button, PasswordField, TextField, Title } from "@/src/components/ui";
 import { api } from "@/src/api/client";
 import { useToast } from "@/src/components/toast";
 import { makeStyles, spacing, useTheme } from "@/src/theme";
@@ -68,6 +68,7 @@ export default function ForgotPassword() {
                 placeholder="vous@exemple.fr"
                 autoCapitalize="none"
                 keyboardType="email-address"
+                autoComplete="email"
               />
               <Button title="Envoyer le code" testID="forgot-request" loading={loading} onPress={requestCode} />
             </View>
@@ -84,13 +85,13 @@ export default function ForgotPassword() {
                 placeholder="Ex : A1B2C3D4"
                 autoCapitalize="characters"
               />
-              <TextField
+              <PasswordField
                 label="NOUVEAU MOT DE PASSE"
                 testID="forgot-password"
                 value={password}
                 onChangeText={setPassword}
                 placeholder="6 caractères minimum"
-                secureTextEntry
+                isNew
               />
               <Button title="Réinitialiser" testID="forgot-submit" loading={loading} onPress={resetPassword} />
             </View>

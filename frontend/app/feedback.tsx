@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { View, Pressable } from "react-native";
+import { View, Pressable, Platform } from "react-native";
+import Constants from "expo-constants";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -28,10 +29,17 @@ export default function Feedback() {
   const [sending, setSending] = useState(false);
 
   const submit = async () => {
-    if (!comment.trim()) return toast.show("Écrivez un petit mot", "error");
+    if (!comment.trim() && !rating) return toast.show("Donnez une note ou écrivez un petit mot", "error");
     setSending(true);
     try {
-      await api.post("/feedback", { category, rating: rating || null, comment: comment.trim(), page_context: "app" });
+      await api.post("/feedback", {
+        category,
+        rating: rating || null,
+        comment: comment.trim() || null,
+        page_context: "app",
+        app_version: Constants.expoConfig?.version ?? null,
+        platform: `${Platform.OS} ${Platform.Version ?? ""}`.trim(),
+      });
       toast.show("Merci pour votre retour 💛", "success");
       router.back();
     } catch (e: any) {

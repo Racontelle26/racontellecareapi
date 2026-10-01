@@ -6,16 +6,17 @@ import { useQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import { Play, BookOpen, MagnifyingGlass } from "phosphor-react-native";
 import { Body, Label, Title, Avatar } from "@/src/components/ui";
-import { api, getToken } from "@/src/api/client";
+import { api, getToken, BACKEND_ORIGIN } from "@/src/api/client";
 import { usesNativeTabs } from "@/src/navigation";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
-type Member = { id: string; display_name: string; initials_color?: string };
+type Member = { id: string; display_name: string; initials_color?: string; avatar_url?: string | null };
 type Summary = { members: Member[] };
 type Capsule = {
   id: string;
   narrator_name?: string;
   narrator_color?: string;
+  narrator_avatar_url?: string | null;
   question_text?: string;
   theme?: string;
   duration_sec: number;
@@ -25,7 +26,9 @@ type Capsule = {
 
 function fmtDate(iso: string) {
   const d = new Date(iso);
-  return d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+  const day = d.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+  const time = d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  return `${day} à ${time}`;
 }
 function fmtDur(s: number) {
   const m = Math.floor(s / 60);
@@ -40,6 +43,7 @@ export default function Album() {
   const { colors } = useTheme();
   const bottomChrome = usesNativeTabs ? insets.bottom : 0;
   const [narrator, setNarrator] = useState<string | null>(null);
+  const [theme, setTheme] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [token, setTok] = useState<string | null>(null);
   useEffect(() => {
@@ -48,17 +52,20 @@ export default function Album() {
 
   const circleQ = useQuery({ queryKey: ["circle"], queryFn: () => api.get<Summary>("/circle") });
   const capsulesQ = useQuery({
-    queryKey: ["capsules", narrator, search],
+    queryKey: ["capsules", narrator, theme, search],
     queryFn: () => {
       const params = new URLSearchParams();
       if (narrator) params.set("narrator", narrator);
+      if (theme) params.set("theme", theme);
       if (search.trim()) params.set("q", search.trim());
       const qs = params.toString();
       return api.get<Capsule[]>(`/capsules${qs ? `?${qs}` : ""}`);
     },
   });
 
+  const themesQ = useQuery({ queryKey: ["themes"], queryFn: () => api.get<{ theme: string }[]>("/themes") });
   const members = circleQ.data?.members?.filter((m) => m) ?? [];
+  const filtered = !!(search.trim() || narrator || theme);
 
   return (
     <View style={styles.container}>
@@ -100,6 +107,19 @@ export default function Album() {
             );
           })}
         </ScrollView>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipsScroll} contentContainerStyle={styles.chipsRow}>
+          <Pressable testID="album-theme-all" onPress={() => setTheme(null)} style={[styles.chip, !theme && styles.chipActive]}>
+            <Label style={[styles.chipText, !theme && styles.chipTextActive]}>Tous les thèmes</Label>
+          </Pressable>
+          {(themesQ.data ?? []).map(({ theme: t }) => {
+            const active = theme === t;
+            return (
+              <Pressable key={t} testID={`album-theme-${t}`} onPress={() => setTheme(t)} style={[styles.chip, active && styles.chipActive]}>
+                <Label style={[styles.chipText, active && styles.chipTextActive]} numberOfLines={1}>{t}</Label>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
       </View>
 
       {capsulesQ.isLoading ? (
@@ -109,10 +129,10 @@ export default function Album() {
           <View style={styles.emptyIcon}>
             <BookOpen color={colors.brand} size={48} weight="thin" />
           </View>
-          <Title style={styles.emptyTitle}>{search.trim() || narrator ? "Aucun résultat" : "Vos souvenirs s’écriront ici"}</Title>
+          <Title style={styles.emptyTitle}>{filtered ? "Aucun résultat" : "Vos souvenirs s’écriront ici"}</Title>
           <Body muted style={styles.emptyText}>
-            {search.trim() || narrator
-              ? "Essayez un autre mot-clé ou une autre personne."
+            {filtered
+              ? "Essayez un autre mot-clé, une autre personne ou un autre thème."
               : "Enregistrez votre première voix depuis l’onglet « Raconter »."}
           </Body>
         </View>
@@ -126,18 +146,18 @@ export default function Album() {
             <Pressable style={styles.card} testID={`capsule-${item.id}`} onPress={() => router.push(`/capsule/${item.id}`)}>
               {item.photo_url && token ? (
                 <Image
-                  source={{ uri: `${process.env.EXPO_PUBLIC_BACKEND_URL}${item.photo_url}?token=${token}` }}
+                  source={{ uri: `${BACKEND_ORIGIN}${item.photo_url}?token=${token}` }}
                   style={styles.thumb}
                   contentFit="cover"
                   transition={200}
                 />
               ) : (
-                <Avatar name={item.narrator_name || "?"} color={item.narrator_color} size={46} />
+                <Avatar name={item.narrator_name || "?"} color={item.narrator_color} photo={item.narrator_avatar_url} size={46} />
               )}
               <View style={styles.cardBody}>
                 <Body style={styles.cardQuestion} numberOfLines={2}>{item.question_text}</Body>
                 <Label style={styles.cardMeta}>
-                  {item.narrator_name} · {fmtDate(item.recorded_at)} · {fmtDur(item.duration_sec)}
+                  {item.narrator_name}{item.theme ? ` · ${item.theme}` : ""} · {fmtDate(item.recorded_at)} · {fmtDur(item.duration_sec)}
                 </Label>
               </View>
               <View style={styles.playBtn}>

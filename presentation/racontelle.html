@@ -1,0 +1,280 @@
+<title>Racontelle Famille</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Allura&family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Montserrat:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ground:#FFFFFF; --ground-2:#FBF6F4; --line:#EFE6E2; --line-strong:#DCCFC9;
+  --ink:#2F3E52; --ink-2:#4E5A69; --muted:#6F6660;
+  --rose:#AE5856; --rose-soft:#F9E6E5; --rose-ink:#7E3F3E;
+  --sage:#5F7359; --sage-soft:#EEF2EC; --brun:#A67C63;
+  --display:"Cormorant Garamond",Georgia,"Times New Roman",serif;
+  --script:"Allura","Brush Script MT",cursive;
+  --body:"Montserrat",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --ground:#1C2330; --ground-2:#253041; --line:#334055; --line-strong:#46546B;
+    --ink:#F4EEEA; --ink-2:#D5CCC6; --muted:#A99F98;
+    --rose:#E7A7A5; --rose-soft:#3A2C33; --rose-ink:#F2C9C7;
+    --sage:#B9C5B3; --sage-soft:#26302A; --brun:#C9A48D;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --ground:#1C2330; --ground-2:#253041; --line:#334055; --line-strong:#46546B;
+    --ink:#F4EEEA; --ink-2:#D5CCC6; --muted:#A99F98;
+    --rose:#E7A7A5; --rose-soft:#3A2C33; --rose-ink:#F2C9C7;
+    --sage:#B9C5B3; --sage-soft:#26302A; --brun:#C9A48D;
+}
+*{box-sizing:border-box}
+body{background:var(--ground);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.6;padding-inline:20px}
+.wrap{max-width:980px;margin:0 auto}
+a{color:var(--rose-ink)}
+a:focus-visible,button:focus-visible{outline:2px solid var(--rose);outline-offset:3px;border-radius:4px}
+h1,h2,h3{font-family:var(--display);font-weight:600;line-height:1.1;text-wrap:balance;margin:0}
+p{margin:0}
+.eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:500}
+
+/* Nav */
+nav{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:color-mix(in srgb,var(--ground) 92%,transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--line);margin-inline:-20px;padding:12px 20px}
+nav .wrap{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.brand{font-family:var(--script);font-size:32px;line-height:1;color:var(--rose);text-decoration:none}
+.script{font-family:var(--script);font-size:clamp(26px,3.4vw,34px);line-height:1.2;color:var(--rose);margin:0}
+.switch{display:flex;gap:4px;background:var(--ground-2);border:1px solid var(--line);border-radius:999px;padding:4px}
+.switch a{text-decoration:none;color:var(--ink-2);font-size:14px;font-weight:500;padding:6px 14px;border-radius:999px}
+.switch a:hover{background:var(--rose-soft);color:var(--rose-ink)}
+
+/* Hero */
+.hero{display:grid;grid-template-columns:1.25fr 1fr;gap:40px;align-items:center;padding-block:56px 40px}
+.hero h1{font-size:clamp(40px,6.4vw,68px);letter-spacing:-.01em}
+.hero h1 em{color:var(--rose);font-style:italic;font-weight:500}
+.hero .lede{font-size:18px;color:var(--ink-2);margin-top:20px;max-width:34em}
+.facts{display:flex;flex-wrap:wrap;gap:8px;margin-top:24px}
+.facts span{font-size:13px;border:1px solid var(--line-strong);border-radius:999px;padding:4px 12px;color:var(--ink-2)}
+.tree-card{background:var(--ground-2);border:1px solid var(--line);border-radius:20px;padding:20px}
+.tree-card svg{display:block;width:100%;height:auto}
+.tree-cap{font-size:13px;color:var(--muted);margin-top:10px;text-align:center}
+
+/* Steps */
+.flow{display:grid;grid-template-columns:repeat(3,1fr);gap:0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin-block:8px 64px}
+.flow div{padding:24px 20px 24px 0}
+.flow div+div{padding-left:20px;border-left:1px solid var(--line)}
+.flow .n{font-family:var(--display);font-size:40px;color:var(--rose);line-height:1}
+.flow h3{font-size:24px;margin:8px 0 6px}
+.flow p{color:var(--ink-2);font-size:15px}
+
+/* Sections */
+section.aud{padding-block:24px 56px;scroll-margin-top:72px}
+.aud-head{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;border-bottom:2px solid var(--rose);padding-bottom:12px;margin-bottom:32px}
+.aud-head h2{font-size:clamp(34px,5vw,48px)}
+.aud-head p{color:var(--muted)}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:40px}
+.block h3{font-size:26px;margin-bottom:12px}
+.block p+p{margin-top:10px}
+.block p{color:var(--ink-2);max-width:62ch}
+
+.missions{list-style:none;padding:0;margin:0;display:grid;gap:0}
+.missions li{display:grid;grid-template-columns:28px 1fr;gap:12px;padding:14px 0;border-bottom:1px solid var(--line)}
+.missions li:first-child{padding-top:0}
+.box{width:20px;height:20px;border:1.5px solid var(--rose);border-radius:6px;margin-top:3px}
+.missions b{font-weight:600;display:block}
+.missions small{color:var(--muted);font-size:14px}
+
+.note{background:var(--rose-soft);color:var(--rose-ink);border-radius:16px;padding:20px 22px;margin-top:32px}
+.note h3{font-size:22px;margin-bottom:6px;color:var(--rose-ink)}
+.note p{color:var(--rose-ink)}
+.copy{display:inline-flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap}
+.copy code{font-family:var(--body);font-weight:600;font-size:16px;user-select:all}
+.copy button{font:500 13px var(--body);background:var(--ground);color:var(--rose-ink);border:1px solid currentColor;border-radius:999px;padding:4px 12px;cursor:pointer}
+
+.feat{display:grid;grid-template-columns:repeat(3,1fr);gap:28px 32px;margin-top:8px}
+.feat h4{font-family:var(--display);font-size:22px;font-weight:600;margin:0 0 4px}
+.feat p{color:var(--ink-2);font-size:15px}
+
+table{width:100%;border-collapse:collapse;font-size:15px}
+.tbl{overflow-x:auto}
+th,td{text-align:left;padding:10px 12px 10px 0;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:500}
+td:first-child{font-weight:600;white-space:nowrap}
+.pill{display:inline-block;font-size:12px;font-weight:600;border-radius:999px;padding:2px 10px}
+.pill.done{background:var(--sage-soft);color:var(--sage)}
+.pill.next{background:var(--rose-soft);color:var(--rose-ink)}
+.pill.later{background:var(--ground-2);color:var(--muted);border:1px solid var(--line)}
+
+footer{border-top:1px solid var(--line);padding-block:28px 40px;color:var(--muted);font-size:14px;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+
+@media (max-width:760px){
+  .hero{grid-template-columns:1fr;padding-block:36px 28px;gap:28px}
+  .flow{grid-template-columns:1fr}
+  .flow div,.flow div+div{padding:18px 0;border-left:0}
+  .flow div+div{border-top:1px solid var(--line)}
+  .cols,.feat{grid-template-columns:1fr}
+  .cols{gap:32px}
+}
+@media (prefers-reduced-motion:no-preference){
+  .leaf{transform-box:fill-box;transform-origin:center;animation:sway 6s ease-in-out infinite}
+  .leaf:nth-child(odd){animation-delay:-2s}
+  @keyframes sway{50%{transform:rotate(4deg)}}
+}
+</style>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#top">Racontelle</a>
+    <div class="switch" role="navigation" aria-label="Choisir votre lecture">
+      <a href="#testeurs">Je teste l’app</a>
+      <a href="#partenaires">Je suis partenaire</a>
+    </div>
+  </div>
+</nav>
+
+<main class="wrap" id="top">
+  <header class="hero">
+    <div>
+      <p class="script">Les voix que l’on aime racontent les plus belles histoires.</p>
+      <p class="eyebrow" style="margin-top:10px">Bêta privée · septembre 2026</p>
+      <h1 style="margin-top:14px">Les souvenirs de famille, <em>racontés à voix haute</em>, deviennent un livre.</h1>
+      <p class="lede">Chaque jour, Racontelle pose une question à votre famille. Chacun répond avec sa voix, depuis son téléphone. Les souvenirs sont gardés dans un album privé, puis tissés en chapitres de roman dont vos proches sont les personnages.</p>
+      <div class="facts" aria-label="En bref">
+        <span>400 questions de récit de vie</span>
+        <span>3 questions par jour</span>
+        <span>Cercle familial privé</span>
+        <span>Livre PDF à partager</span>
+      </div>
+    </div>
+    <figure class="tree-card" style="margin:0">
+      <svg viewBox="0 0 320 240" role="img" aria-label="Un arbre dont les feuilles apparaissent à mesure que les souvenirs sont enregistrés">
+        <path d="M20 214 H300" stroke="var(--line-strong)" stroke-width="2" fill="none"/>
+        <path d="M160 214 C158 180 162 150 158 118 M158 150 C140 132 118 124 96 120 M159 136 C182 118 206 110 230 108 M158 118 C150 96 140 80 126 66 M158 118 C168 96 182 80 198 66" stroke="var(--ink-2)" stroke-width="5" stroke-linecap="round" fill="none"/>
+        <g fill="var(--rose)">
+          <circle class="leaf" cx="96" cy="114" r="15" opacity=".9"/>
+          <circle class="leaf" cx="230" cy="102" r="16" opacity=".85"/>
+          <circle class="leaf" cx="126" cy="60" r="17"/>
+          <circle class="leaf" cx="198" cy="60" r="15" opacity=".9"/>
+          <circle class="leaf" cx="160" cy="44" r="19" opacity=".95"/>
+        </g>
+        <g fill="var(--sage)">
+          <circle class="leaf" cx="116" cy="98" r="11" opacity=".85"/>
+          <circle class="leaf" cx="212" cy="86" r="12" opacity=".85"/>
+          <circle class="leaf" cx="142" cy="80" r="10"/>
+          <circle class="leaf" cx="180" cy="82" r="11" opacity=".9"/>
+        </g>
+        <g fill="var(--rose-soft)" stroke="var(--line-strong)">
+          <circle cx="74" cy="132" r="9"/><circle cx="252" cy="120" r="9"/><circle cx="104" cy="40" r="9"/><circle cx="222" cy="38" r="9"/>
+        </g>
+      </svg>
+      <figcaption class="tree-cap">L’arbre de la famille grandit à chaque souvenir : 10 étapes, de la première voix enregistrée au 60<sup>e</sup> souvenir.</figcaption>
+    </figure>
+  </header>
+
+  <div class="flow" aria-label="Comment ça marche">
+    <div><div class="n">1</div><h3>Une question</h3><p>« Quelle odeur vous rappelle votre enfance ? » Jusqu’à trois questions par jour, de thèmes variés, ou une question choisie librement.</p></div>
+    <div><div class="n">2</div><h3>Une voix</h3><p>On répond en parlant, avec jusqu’à 10 photos. Le bouton « Sur le vif » capte un souvenir sans question, au moment où il revient.</p></div>
+    <div><div class="n">3</div><h3>Un livre</h3><p>L’IA tisse les souvenirs en chapitres littéraires, fidèles aux faits. On les assemble en livre PDF, couverture et album photo compris.</p></div>
+  </div>
+
+  <section class="aud" id="testeurs">
+    <div class="aud-head"><h2>Pour les testeurs</h2><p>Merci de nous prêter vos souvenirs et votre regard.</p></div>
+
+    <div class="cols">
+      <div class="block">
+        <h3>Installer l’application</h3>
+        <p><b>Android :</b> vous recevrez par e-mail un lien de téléchargement. Ouvrez-le sur votre téléphone et autorisez l’installation depuis cette source si Android le demande.</p>
+        <p><b>iPhone :</b> vous recevrez une invitation TestFlight. Installez l’app TestFlight de l’App Store, puis acceptez l’invitation.</p>
+        <p><b>Rejoindre votre famille :</b> créez votre compte, puis choisissez « Rejoindre » et saisissez le code reçu par e-mail. Le créateur du cercle peut aussi vous ajouter comme profil sans e-mail.</p>
+        <p>Les premières fois, l’app demande l’accès au micro (pour enregistrer) et aux photos (facultatif).</p>
+      </div>
+
+      <div class="block">
+        <h3>Ce que nous vous demandons de tester</h3>
+        <ul class="missions">
+          <li><span class="box" aria-hidden="true"></span><span><b>Répondre à une question du jour</b><small>Écoutez-vous avant d’enregistrer, recommencez si besoin.</small></span></li>
+          <li><span class="box" aria-hidden="true"></span><span><b>Enregistrer un souvenir « Sur le vif »</b><small>Donnez-lui un titre, puis attribuez-le au bon proche.</small></span></li>
+          <li><span class="box" aria-hidden="true"></span><span><b>Ajouter des photos à un souvenir</b><small>Depuis la galerie ou l’appareil photo, jusqu’à 10.</small></span></li>
+          <li><span class="box" aria-hidden="true"></span><span><b>Ajouter le texte d’un souvenir</b><small>Écrivez-le, ou dictez-le avec le micro de votre clavier.</small></span></li>
+          <li><span class="box" aria-hidden="true"></span><span><b>Écouter les souvenirs des autres</b><small>Album, recherche par personne, thème ou mot-clé.</small></span></li>
+          <li><span class="box" aria-hidden="true"></span><span><b>Créer un chapitre, puis le livre PDF</b><small>Lisez-le : sonne-t-il juste pour votre famille ?</small></span></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="note">
+      <h3>Donner votre avis</h3>
+      <p>Le plus simple : <b>Profil → Donner mon avis (bêta)</b>, directement dans l’application. Une idée, un bug, une émotion : tout nous aide. Vous pouvez aussi écrire à :</p>
+      <div class="copy"><code id="mail">laracontelle@gmail.com</code><button type="button" id="copy-mail">Copier l’adresse</button></div>
+      <p style="margin-top:12px;font-size:14px">Vos souvenirs restent privés : seuls les membres de votre cercle familial peuvent les écouter.</p>
+    </div>
+  </section>
+
+  <section class="aud" id="partenaires">
+    <div class="aud-head"><h2>Pour les partenaires</h2><p>Le projet, où il en est, où il va.</p></div>
+
+    <div class="cols">
+      <div class="block">
+        <h3>Le constat</h3>
+        <p>Les histoires de famille se perdent souvent avec les générations qui les portent. On se dit toujours qu’on posera les questions « un jour », puis on ne sait plus par où commencer.</p>
+        <p>Écrire ses mémoires intimide ; parler, beaucoup moins. Pour un grand-parent, raconter à voix haute est naturel. Pour les petits-enfants, entendre la voix compte autant que l’histoire.</p>
+      </div>
+      <div class="block">
+        <h3>Notre réponse</h3>
+        <p>Racontelle transforme la transmission en rituel léger : une question par jour, une réponse orale de quelques minutes. Rien à écrire, rien à organiser.</p>
+        <p>Au fil des semaines, l’album vocal devient la matière d’un livre romancé où chaque proche est un personnage. C’est un objet que la famille peut garder, offrir et transmettre.</p>
+      </div>
+    </div>
+
+    <h3 style="font-size:26px;margin:48px 0 20px">Ce que l’application fait déjà</h3>
+    <div class="feat">
+      <div><h4>Cercle familial</h4><p>Invitations par e-mail et code. Profils sans compte pour les proches peu à l’aise avec le numérique.</p></div>
+      <div><h4>400 questions</h4><p>Une banque de questions de récit de vie en français, classées par thèmes, sans répétition.</p></div>
+      <div><h4>Album vocal</h4><p>Écoute, photos, recherche par personne et par thème, fiche de chaque membre avec son temps de parole.</p></div>
+      <div><h4>Livre romancé</h4><p>Chapitres écrits par Claude (Anthropic) à partir des souvenirs réels, exportés en PDF.</p></div>
+      <div><h4>Arbre qui grandit</h4><p>Une progression visible et non compétitive, qui encourage à revenir.</p></div>
+      <div><h4>Données protégées</h4><p>Fichiers privés, vérification des formats envoyés, isolation stricte entre familles.</p></div>
+    </div>
+
+    <h3 style="font-size:26px;margin:48px 0 16px">Où en est le projet</h3>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Étape</th><th>Contenu</th><th>État</th></tr></thead>
+        <tbody>
+          <tr><td>MVP</td><td>Application iOS / Android / web complète : les parcours ci-dessus, développés et testés en 20 itérations.</td><td><span class="pill done">Fait</span></td></tr>
+          <tr><td>Sécurité</td><td>Audit de code et corrections avant ouverture aux familles.</td><td><span class="pill done">Fait</span></td></tr>
+          <tr><td>Cahier des charges</td><td>Vérification point par point du MVP Family : e-mail quotidien, journal d’usage exportable, consentement, demande de suppression, charte graphique.</td><td><span class="pill done">Fait</span></td></tr>
+          <tr><td>Hébergement</td><td>Passage sur une infrastructure dédiée, données hébergées en Europe.</td><td><span class="pill next">En cours</span></td></tr>
+          <tr><td>Bêta familles</td><td>Premières familles testeuses, mesure de l’usage et des retours.</td><td><span class="pill next">En cours</span></td></tr>
+          <tr><td>RGPD</td><td>Consentement explicite et demande de suppression faits dans l’app ; politique de confidentialité et durée de conservation à publier.</td><td><span class="pill later">Avant lancement</span></td></tr>
+          <tr><td>Après la bêta</td><td>Réponses écrites ou en photo, carte postale souvenir, capsule temporelle, badges.</td><td><span class="pill later">Envisagé</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="cols" style="margin-top:48px">
+      <div class="block">
+        <h3>Sous le capot</h3>
+        <p>Application Expo (React Native) : un seul code pour iPhone, Android et le web. API Python (FastAPI) et base MongoDB.</p>
+        <p>Hébergement prévu en Europe : API à Francfort, base de données à Paris ou Francfort, fichiers audio et photo en stockage européen.</p>
+      </div>
+      <div class="block">
+        <h3>Travailler ensemble</h3>
+        <p>Nous cherchons des familles testeuses, des structures qui accompagnent les aînés et des partenaires d’édition ou d’impression pour le livre.</p>
+        <p>Pour en parler : <b>laracontelle@gmail.com</b></p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span>Racontelle · version bêta</span>
+    <span>Contact : laracontelle@gmail.com</span>
+  </footer>
+</main>
+
+<script>
+document.getElementById("copy-mail").addEventListener("click", function () {
+  var btn = this, text = document.getElementById("mail").textContent;
+  function done(){ btn.textContent = "Adresse copiée"; setTimeout(function(){ btn.textContent = "Copier l’adresse"; }, 2000); }
+  function fallback(){ var r = document.createRange(); r.selectNodeContents(document.getElementById("mail")); var s = getSelection(); s.removeAllRanges(); s.addRange(r); btn.textContent = "Sélectionnée : Ctrl+C"; }
+  try { navigator.clipboard.writeText(text).then(done, fallback); } catch (e) { fallback(); }
+});
+</script>

@@ -6,6 +6,7 @@ import { CaretLeft, Trash } from "phosphor-react-native";
 import { Body, Display, Label } from "@/src/components/ui";
 import { api } from "@/src/api/client";
 import { useToast } from "@/src/components/toast";
+import { confirmAction } from "@/src/components/confirm";
 import { fonts, makeStyles, spacing, useTheme } from "@/src/theme";
 
 type Chapter = { id: string; title: string; content: string; memory_count: number; created_at: string };
@@ -22,6 +23,11 @@ export default function ChapterRead() {
   const chapterQ = useQuery({ queryKey: ["chapter", id], queryFn: () => api.get<Chapter>(`/book/chapters/${id}`) });
 
   const remove = async () => {
+    const ok = await confirmAction(
+      "Supprimer ce chapitre ?",
+      "Le chapitre disparaîtra du livre de famille. Les souvenirs, eux, sont conservés.",
+    );
+    if (!ok) return;
     try {
       await api.del(`/book/chapters/${id}`);
       qc.invalidateQueries({ queryKey: ["chapters"] });

@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Sparkle, Microphone } from "phosphor-react-native";
 import { Body, Label, Title } from "@/src/components/ui";
 import { api } from "@/src/api/client";
+import { useToast } from "@/src/components/toast";
 import { usesNativeTabs } from "@/src/navigation";
 import { makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
@@ -19,6 +20,7 @@ export default function Questions() {
   const { colors } = useTheme();
   const bottomChrome = usesNativeTabs ? insets.bottom : 0;
   const [selected, setSelected] = useState<string | null>(null);
+  const toast = useToast();
 
   const themesQ = useQuery({ queryKey: ["themes"], queryFn: () => api.get<Theme[]>("/themes") });
   const activeTheme = selected ?? themesQ.data?.[0]?.theme ?? null;
@@ -28,12 +30,23 @@ export default function Questions() {
     enabled: !!activeTheme,
   });
 
-  const goRecord = (q: Question) =>
+  const goRecord = (q: Question) => {
+    api.post("/events", { event_type: "question_viewed", question_id: q.id, source: "guided" }).catch(() => {});
     router.push({ pathname: "/record", params: { questionId: q.id, theme: q.theme, questionText: q.text } });
+  };
+
+  const selectTheme = (theme: string) => {
+    setSelected(theme);
+    api.post("/events", { event_type: "theme_selected", theme }).catch(() => {});
+  };
 
   const surprise = async () => {
-    const q = await api.get<Question>("/questions/surprise");
-    goRecord(q);
+    try {
+      const q = await api.get<Question>("/questions/surprise");
+      goRecord(q);
+    } catch {
+      toast.show("Impossible de tirer une question pour le moment. Vérifiez votre connexion.", "error");
+    }
   };
 
   return (
@@ -54,7 +67,7 @@ export default function Questions() {
               <Pressable
                 key={t.theme}
                 testID={`theme-chip-${t.theme}`}
-                onPress={() => setSelected(t.theme)}
+                onPress={() => selectTheme(t.theme)}
                 style={[styles.chip, active && styles.chipActive]}
               >
                 <Label style={[styles.chipText, active && styles.chipTextActive]} numberOfLines={1}>
@@ -156,9 +169,9 @@ const useStyles = makeStyles((colors) => ({
     paddingVertical: 14,
     borderRadius: radius.pill,
     ...Platform.select({
-      web: { boxShadow: "0 4px 12px rgba(58, 51, 44, 0.15)" },
+      web: { boxShadow: "0 4px 12px rgba(47, 62, 82, 0.15)" },
       default: {
-        shadowColor: "#3A332C",
+        shadowColor: "#2F3E52",
         shadowOpacity: 0.15,
         shadowRadius: 12,
         shadowOffset: { width: 0, height: 4 },

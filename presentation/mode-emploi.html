@@ -1,0 +1,245 @@
+<title>Mode d'emploi Racontelle</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Allura&family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Montserrat:wght@400;500;600&display=swap">
+<style>
+:root{
+  --ground:#FFFFFF; --ground-2:#FBF6F4; --line:#EFE6E2; --line-strong:#DCCFC9;
+  --ink:#2F3E52; --ink-2:#4E5A69; --muted:#6F6660;
+  --rose:#AE5856; --rose-soft:#F9E6E5; --rose-ink:#7E3F3E;
+  --sage:#5F7359; --sage-soft:#EEF2EC; --brun:#A67C63; --on-rose:#FFFFFF;
+  --display:"Cormorant Garamond",Georgia,"Times New Roman",serif;
+  --script:"Allura","Brush Script MT",cursive;
+  --body:"Montserrat",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --ground:#1C2330; --ground-2:#253041; --line:#334055; --line-strong:#46546B;
+    --ink:#F4EEEA; --ink-2:#D5CCC6; --muted:#A99F98;
+    --rose:#E7A7A5; --rose-soft:#3A2C33; --rose-ink:#F2C9C7;
+    --sage:#B9C5B3; --sage-soft:#26302A; --brun:#C9A48D; --on-rose:#2A1F24;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --ground:#1C2330; --ground-2:#253041; --line:#334055; --line-strong:#46546B;
+    --ink:#F4EEEA; --ink-2:#D5CCC6; --muted:#A99F98;
+    --rose:#E7A7A5; --rose-soft:#3A2C33; --rose-ink:#F2C9C7;
+    --sage:#B9C5B3; --sage-soft:#26302A; --brun:#C9A48D; --on-rose:#2A1F24;
+}
+*{box-sizing:border-box}
+body{background:var(--ground);color:var(--ink);font-family:var(--body);font-size:17px;line-height:1.65;padding-inline:20px}
+.wrap{max-width:720px;margin:0 auto;padding-block:40px 56px}
+h1,h2,h3{font-family:var(--display);font-weight:600;line-height:1.12;text-wrap:balance;margin:0}
+p{margin:0}
+a{color:var(--rose-ink)}
+a:focus-visible,button:focus-visible{outline:2px solid var(--rose);outline-offset:3px;border-radius:4px}
+.script{font-family:var(--script);font-size:34px;line-height:1.2;color:var(--rose);margin:0}
+.eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:500}
+
+header h1{font-size:clamp(40px,8vw,58px);margin-top:10px}
+header h1 em{color:var(--rose);font-weight:500}
+header .lede{color:var(--ink-2);font-size:18px;margin-top:14px;max-width:36em}
+
+.toc{display:flex;flex-wrap:wrap;gap:8px;margin-top:24px}
+.toc a{font-size:14px;text-decoration:none;color:var(--ink-2);border:1px solid var(--line-strong);border-radius:999px;padding:5px 13px}
+.toc a:hover{background:var(--rose-soft);color:var(--rose-ink);border-color:transparent}
+
+section{padding-top:48px;scroll-margin-top:16px}
+section>h2{font-size:clamp(30px,6vw,38px);padding-bottom:10px;border-bottom:2px solid var(--rose);margin-bottom:22px}
+section>.intro{color:var(--ink-2);margin:-8px 0 20px}
+h3{font-size:24px;margin:28px 0 10px}
+
+/* the words people will see on screen */
+.btn{display:inline-block;background:var(--rose);color:var(--on-rose);font-weight:600;font-size:.86em;border-radius:999px;padding:1px 10px;white-space:nowrap}
+.tab{display:inline-block;font-weight:600;font-size:.86em;border:1.5px solid var(--ink-2);border-radius:6px;padding:0 7px;white-space:nowrap}
+.scr{font-style:italic;color:var(--rose-ink)}
+
+ol.steps{list-style:none;counter-reset:s;padding:0;margin:0}
+ol.steps>li{counter-increment:s;position:relative;padding:0 0 18px 48px}
+ol.steps>li::before{content:counter(s);position:absolute;left:0;top:-2px;width:32px;height:32px;border-radius:50%;background:var(--rose-soft);color:var(--rose-ink);font-family:var(--display);font-weight:600;font-size:20px;display:grid;place-items:center}
+ol.steps>li:not(:last-child)::after{content:"";position:absolute;left:15.5px;top:34px;bottom:4px;width:1px;background:var(--line-strong)}
+ol.steps b{font-weight:600}
+
+.tabs{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.tabs div{padding:16px 18px;background:var(--ground-2)}
+.tabs div:nth-child(odd){border-right:1px solid var(--line)}
+.tabs div:nth-child(-n+2){border-bottom:1px solid var(--line)}
+.tabs h4{margin:0 0 4px;font-size:15px}
+.tabs p{font-size:15px;color:var(--ink-2)}
+
+.ways{display:grid;gap:12px}
+.way{display:grid;grid-template-columns:130px 1fr;gap:16px;padding:14px 0;border-bottom:1px solid var(--line)}
+.way:last-child{border-bottom:0}
+.way strong{font-family:var(--display);font-size:21px;line-height:1.2;color:var(--rose-ink)}
+.way p{color:var(--ink-2);font-size:16px}
+
+.mic{display:inline-grid;place-items:center;width:1.6em;height:1.6em;border-radius:50%;background:var(--rose);vertical-align:-.4em}
+.mic svg{width:.9em;height:.9em}
+
+.tip{background:var(--sage-soft);border-radius:14px;padding:14px 18px;margin-top:16px;font-size:16px}
+.tip b{color:var(--sage)}
+
+dl.faq{margin:0}
+dl.faq dt{font-weight:600;margin-top:18px}
+dl.faq dt:first-child{margin-top:0}
+dl.faq dd{margin:4px 0 0;color:var(--ink-2)}
+
+.avis{background:var(--rose-soft);color:var(--rose-ink);border-radius:18px;padding:22px 24px}
+.avis h2{border:0;padding:0;margin:0 0 8px;font-size:32px;color:var(--rose-ink)}
+.avis p{color:var(--rose-ink)}
+.copy{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px}
+.copy code{font-family:var(--body);font-weight:600;user-select:all}
+.copy button{font:500 13px var(--body);background:var(--ground);color:var(--rose-ink);border:1px solid currentColor;border-radius:999px;padding:4px 12px;cursor:pointer}
+
+footer{margin-top:40px;color:var(--muted);font-size:14px;border-top:1px solid var(--line);padding-top:18px}
+
+@media (max-width:560px){
+  body{font-size:16px}
+  .tabs{grid-template-columns:1fr}
+  .tabs div:nth-child(odd){border-right:0}
+  .tabs div:not(:last-child){border-bottom:1px solid var(--line)}
+  .way{grid-template-columns:1fr;gap:4px}
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="script">Une question. Une voix. Un souvenir.</p>
+    <p class="eyebrow" style="margin-top:6px">Racontelle · guide des testeurs</p>
+    <h1>Raconter, écouter, <em>garder</em>.</h1>
+    <p class="lede">Tout ce qu’il faut pour utiliser Racontelle pendant la bêta. Cinq minutes de lecture ; ensuite, l’application se laisse deviner.</p>
+    <nav class="toc" aria-label="Sommaire">
+      <a href="#demarrer">Démarrer</a>
+      <a href="#ecran">L’écran</a>
+      <a href="#raconter">Raconter</a>
+      <a href="#album">L’album</a>
+      <a href="#livre">Le livre</a>
+      <a href="#famille">La famille</a>
+      <a href="#soucis">Un souci ?</a>
+      <a href="#avis">Votre avis</a>
+    </nav>
+  </header>
+
+  <section id="demarrer">
+    <h2>Démarrer</h2>
+    <ol class="steps">
+      <li><b>Installez l’application</b> avec le lien reçu par e-mail : un fichier à installer sur Android, une invitation TestFlight sur iPhone.</li>
+      <li><b>Créez votre compte :</b> <span class="btn">Créer mon espace famille</span>, puis votre prénom, votre e-mail et un mot de passe. Cochez la case d’acceptation des conditions de la bêta. Vous restez connecté ensuite, inutile de le ressaisir à chaque fois.</li>
+      <li><b>Entrez dans votre cercle de famille.</b>
+        <br>Vous avez reçu un code ? Choisissez <span class="tab">Rejoindre</span>, tapez le code, puis <span class="btn">Rejoindre la famille</span>.
+        <br>Vous lancez la famille ? Choisissez <span class="tab">Créer</span>, donnez un nom (« La famille Dupont ») et ajoutez si vous le souhaitez jusqu’à trois proches, sans e-mail.</li>
+      <li><b>Autorisez le micro</b> la première fois que vous enregistrez. Sans lui, pas de souvenir vocal.</li>
+      <li><b>Demandez l’accord</b> de chaque personne que vous enregistrez : ses souvenirs seront partagés avec toute la famille.</li>
+    </ol>
+  </section>
+
+  <section id="ecran">
+    <h2>L’écran en un coup d’œil</h2>
+    <p class="intro">Quatre onglets en bas de l’écran.</p>
+    <div class="tabs">
+      <div><h4>Accueil</h4><p>L’arbre de la famille, les questions du jour, le livre et le bouton <span class="btn">Sur le vif</span>.</p></div>
+      <div><h4>Raconter</h4><p>Toutes les questions, rangées par thème, et la <span class="scr">Question surprise</span>.</p></div>
+      <div><h4>Album</h4><p>Tous les souvenirs de la famille, à écouter et à rechercher.</p></div>
+      <div><h4>Profil</h4><p>Vos réglages, les rappels par e-mail, la confidentialité, les membres de la famille et le bouton pour donner votre avis.</p></div>
+    </div>
+    <div class="tip"><b>L’arbre grandit</b> à chaque souvenir enregistré par la famille. Sous l’arbre, on voit combien de souvenirs il manque pour la prochaine étape.</div>
+  </section>
+
+  <section id="raconter">
+    <h2>Raconter un souvenir</h2>
+    <h3>Trois façons de commencer</h3>
+    <div class="ways">
+      <div class="way"><strong>La question du jour</strong><p>Sur l’<b>Accueil</b>, jusqu’à trois questions nouvelles chaque jour. Touchez <span class="btn">Répondre</span>. Pas l’inspiration ? La petite flèche à côté permet de passer : la question disparaît pour vous seul, pas pour le reste de la famille. Sous les questions, <span class="scr">Changer de thème</span> ouvre toutes les questions.</p></div>
+      <div class="way"><strong>Une question choisie</strong><p>Onglet <b>Raconter</b> : choisissez un thème puis une question qui vous parle. Ou laissez faire le hasard avec <span class="scr">Question surprise</span>. Sur l’écran d’enregistrement, <span class="scr">Une autre question</span> en propose une nouvelle du même thème, sans changer la personne choisie.</p></div>
+      <div class="way"><strong>Sur le vif</strong><p>Un souvenir vous revient, sans question ? Le bouton <span class="btn">Sur le vif</span>, en bas de l’Accueil, lance l’enregistrement tout de suite.</p></div>
+    </div>
+
+    <h3>Enregistrer</h3>
+    <ol class="steps">
+      <li><b>Qui raconte ?</b> Touchez le prénom de la personne qui parle. Vous pouvez enregistrer pour Mamie, assise à côté de vous.</li>
+      <li><b>Photos</b> (facultatif) : <span class="scr">Galerie</span> ou <span class="scr">Appareil photo</span>, jusqu’à 10 par souvenir.</li>
+      <li><b>Touchez le grand bouton micro</b> <span class="mic" aria-hidden="true"><svg viewBox="0 0 24 24"><path fill="var(--on-rose)" d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a1 1 0 1 1 2 0 7 7 0 0 1-6 6.93V21a1 1 0 1 1-2 0v-2.07A7 7 0 0 1 5 12a1 1 0 1 1 2 0 5 5 0 0 0 10 0Z"/></svg></span> et parlez librement. Prenez votre temps : jusqu’à 2 heures, rien ne coupe la parole. Besoin d’un moment ? Le bouton pause, à gauche, suspend l’enregistrement ; touchez le micro pour reprendre. Touchez le carré pour arrêter.</li>
+      <li><b>Réécoutez-vous</b> avec le bouton lecture. Pas satisfait ? La flèche circulaire efface et recommence.</li>
+      <li><b>Texte</b> (facultatif) : écrivez le souvenir, ou dictez-le avec le micro de votre clavier. Ce texte nourrit le livre.</li>
+      <li>Touchez <span class="btn">Enregistrer cette réponse</span>. Le message « Capsule sauvegardée » confirme que le souvenir est dans l’album.</li>
+    </ol>
+    <div class="tip"><b>Conseil :</b> un endroit calme, le téléphone posé à 30 cm, et racontez comme à un petit-enfant. Les détails (une odeur, un prénom, un lieu) rendent le livre vivant.</div>
+  </section>
+
+  <section id="album">
+    <h2>Écouter et retrouver</h2>
+    <p class="intro">Onglet <b>Album</b> : tous les souvenirs de la famille, du plus récent au plus ancien.</p>
+    <ol class="steps">
+      <li><b>Filtrez</b> en touchant un prénom (ou <span class="scr">Tous</span>) et un thème (ou <span class="scr">Tous les thèmes</span>), ou <b>cherchez</b> un mot : un lieu, un prénom, un thème.</li>
+      <li><b>Ouvrez un souvenir</b> pour l’écouter, voir ses photos, sa date et son heure.</li>
+      <li><b>Complétez-le</b> si besoin : ajoutez des photos, ou le texte du souvenir avec <span class="btn">Enregistrer le texte</span>.</li>
+    </ol>
+    <div class="tip"><b>Souvenir « Sur le vif » mal rangé ?</b> Ouvrez-le et touchez <span class="scr">Renommer ou changer de profil</span> pour lui donner un titre ou l’attribuer au bon proche.</div>
+  </section>
+
+  <section id="livre">
+    <h2>Le livre de famille</h2>
+    <ol class="steps">
+      <li>Sur l’Accueil, touchez <b>Votre livre romancé</b>.</li>
+      <li>Touchez <span class="btn">Générer un chapitre</span>. Patientez une minute environ : un auteur (une intelligence artificielle) tisse vos souvenirs en un chapitre, fidèle à ce qui a été raconté.</li>
+      <li>Ouvrez le chapitre dans <span class="scr">Mes chapitres</span> pour le lire.</li>
+      <li><span class="btn">Livre PDF</span> assemble tous les chapitres avec une couverture et l’album photo, à enregistrer ou partager.</li>
+    </ol>
+    <div class="tip"><b>Plus il y a de texte, meilleur est le chapitre.</b> Si l’écran du livre indique des souvenirs « à enrichir », ajoutez-leur un texte depuis l’Album.</div>
+  </section>
+
+  <section id="famille">
+    <h2>Agrandir la famille</h2>
+    <p class="intro">Réservé à la personne qui a créé le cercle : <b>Profil</b> → <span class="scr">Membres &amp; invitations</span>.</p>
+    <div class="ways">
+      <div class="way"><strong>Sans e-mail</strong><p><span class="scr">Ajouter un profil sans e-mail</span> : pour un grand-parent qui n’a pas de smartphone. Vous enregistrerez pour lui. Possible pour les 4 premiers membres de la famille, vous compris.</p></div>
+      <div class="way"><strong>Par e-mail</strong><p><span class="scr">Inviter un membre par e-mail</span>, à partir du 5<sup>e</sup> membre. La personne reçoit un code valable 7 jours, à saisir dans <span class="tab">Rejoindre</span>. Le code s’affiche aussi à l’écran au moment de l’invitation.</p></div>
+    </div>
+  </section>
+
+  <section id="soucis">
+    <h2>Un souci ?</h2>
+    <dl class="faq">
+      <dt>Le micro ne marche pas.</dt>
+      <dd>L’accès a sans doute été refusé. Touchez <span class="btn">Ouvrir les réglages</span> sur l’écran d’enregistrement et autorisez le micro.</dd>
+      <dt>J’ai oublié mon mot de passe.</dt>
+      <dd>Sur l’écran de connexion : <span class="scr">Mot de passe oublié ?</span> Vous recevez un code par e-mail, valable 30 minutes.</dd>
+      <dt>Mon code d’invitation ne marche pas.</dt>
+      <dd>Il expire au bout de 7 jours. Demandez au créateur du cercle de vous le renvoyer : un nouveau code part par e-mail et l’ancien ne fonctionne plus.</dd>
+      <dt>Mon souvenir ne s’envoie pas.</dt>
+      <dd>Si la connexion est faible, l’écran indique « En attente d’envoi » : votre enregistrement est conservé. Restez sur l’écran et touchez <span class="btn">Réessayer l’envoi</span> quand le réseau revient.</dd>
+      <dt>Je ne veux plus recevoir la question du jour par e-mail.</dt>
+      <dd><b>Profil</b> → désactivez <span class="scr">Question du jour par e-mail</span>, puis <span class="btn">Enregistrer</span>. Le lien <span class="scr">Mettre les rappels en pause</span>, sous les questions du jour, y mène directement.</dd>
+      <dt>Je ne vois pas le dernier souvenir de ma sœur.</dt>
+      <dd>Tirez l’écran vers le bas pour l’actualiser.</dd>
+      <dt>Qui peut écouter mes souvenirs ?</dt>
+      <dd>Uniquement les membres de votre cercle familial. Personne d’autre.</dd>
+      <dt>Je veux que mes données soient supprimées.</dt>
+      <dd><b>Profil</b> → <span class="scr">Confidentialité</span> → <span class="scr">Demander la suppression de mes données</span>. L’équipe Racontelle vous confirme la suppression par e-mail.</dd>
+      <dt>Je me suis trompé, je veux supprimer un souvenir.</dt>
+      <dd>Ouvrez-le, puis <span class="scr">Supprimer ce souvenir</span> tout en bas. Possible pour vos propres souvenirs ; le créateur du cercle peut supprimer tous les souvenirs.</dd>
+    </dl>
+  </section>
+
+  <section id="avis">
+    <div class="avis">
+      <h2>Votre avis nous fait grandir</h2>
+      <p>C’est le cœur de la bêta. Dans l’application : <b>Profil</b> → <b>Donner mon avis (bêta)</b>. Une idée, un bug, un moment d’émotion : tout compte, même en une phrase.</p>
+      <p style="margin-top:10px">Ou par e-mail :</p>
+      <div class="copy"><code id="mail">laracontelle@gmail.com</code><button type="button" id="copy-mail">Copier l’adresse</button></div>
+    </div>
+  </section>
+
+  <footer>Racontelle · version bêta · merci de faire partie de l’aventure.</footer>
+</div>
+
+<script>
+document.getElementById("copy-mail").addEventListener("click", function () {
+  var btn = this, text = document.getElementById("mail").textContent;
+  function done(){ btn.textContent = "Adresse copiée"; setTimeout(function(){ btn.textContent = "Copier l’adresse"; }, 2000); }
+  function fallback(){ var r = document.createRange(); r.selectNodeContents(document.getElementById("mail")); var s = getSelection(); s.removeAllRanges(); s.addRange(r); btn.textContent = "Sélectionnée : Ctrl+C"; }
+  try { navigator.clipboard.writeText(text).then(done, fallback); } catch (e) { fallback(); }
+});
+</script>

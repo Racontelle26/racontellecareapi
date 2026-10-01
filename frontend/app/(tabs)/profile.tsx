@@ -3,16 +3,15 @@ import { View, Pressable, ScrollView, Switch, ActivityIndicator } from "react-na
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CaretRight, Users, ChatCircleDots, SignOut, Microphone, Clock } from "phosphor-react-native";
+import { CaretRight, Users, ChatCircleDots, SignOut, Microphone, Clock, ShieldCheck } from "phosphor-react-native";
 import { Body, Button, Card, Label, TextField, Title, Avatar } from "@/src/components/ui";
 import { api } from "@/src/api/client";
 import { useAuth } from "@/src/auth/auth-context";
 import { useToast } from "@/src/components/toast";
+import { AvatarPicker } from "@/src/components/avatar-picker";
 import { usesNativeTabs } from "@/src/navigation";
-import { makeStyles, spacing, useTheme } from "@/src/theme";
-
-const COLORS = ["#C98B8B", "#738A70", "#D1A054", "#8A9691", "#B57477", "#A38160"];
-type FamilyMember = { id: string; display_name: string; relationship_label?: string | null; initials_color?: string; status: string; capsule_count?: number; total_seconds?: number };
+import { AVATAR_COLORS as COLORS, makeStyles, spacing, useTheme } from "@/src/theme";
+type FamilyMember = { id: string; display_name: string; relationship_label?: string | null; initials_color?: string; avatar_url?: string | null; status: string; capsule_count?: number; total_seconds?: number };
 
 function shortDuration(seconds: number) {
   if (seconds < 60) return `${seconds} s`;
@@ -38,6 +37,27 @@ export default function Profile() {
   const [color, setColor] = useState(member?.initials_color ?? COLORS[0]);
   const [dailyEmail, setDailyEmail] = useState(member?.daily_email ?? true);
   const [saving, setSaving] = useState(false);
+  const [confirmDeletion, setConfirmDeletion] = useState(false);
+  const [requesting, setRequesting] = useState(false);
+  const consentsQ = useQuery({
+    queryKey: ["consents"],
+    queryFn: () => api.get<{ consents: { consent_type: string; version: string; occurred_at: string }[]; deletion_request: { created_at: string } | null }>("/me/consents"),
+  });
+  const consent = consentsQ.data?.consents.find((item) => item.consent_type === "cgu_beta");
+
+  const requestDeletion = async () => {
+    setRequesting(true);
+    try {
+      await api.post("/me/deletion-request", { scope: "account" });
+      await consentsQ.refetch();
+      setConfirmDeletion(false);
+      toast.show("Demande de suppression envoyée", "success");
+    } catch (e: any) {
+      toast.show(e?.message || "La demande n’a pas pu être envoyée. Réessayez.", "error");
+    } finally {
+      setRequesting(false);
+    }
+  };
 
   const save = async () => {
     setSaving(true);
@@ -66,7 +86,18 @@ export default function Profile() {
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.head}>
-        <Avatar name={name || "?"} color={color} size={72} />
+        {member ? (
+          <AvatarPicker
+            memberId={member.id}
+            name={name || "?"}
+            color={color}
+            photo={membersQ.data?.find((item) => item.id === member.id)?.avatar_url}
+            size={84}
+            editable
+          />
+        ) : (
+          <Avatar name={name || "?"} color={color} size={84} />
+        )}
         <Title style={styles.name}>{name}</Title>
         <Label style={styles.email}>{user?.email}</Label>
       </View>
@@ -109,7 +140,7 @@ export default function Profile() {
         </View>
         {membersQ.isLoading ? <ActivityIndicator color={colors.brandSecondary} /> : activeMembers.map((item) => (
           <Pressable key={item.id} testID={`profile-family-member-${item.id}`} onPress={() => router.push(`/family-member/${item.id}`)} style={({ pressed }) => [styles.familyCard, pressed && styles.familyCardPressed]}>
-            <Avatar name={item.display_name} color={item.initials_color} size={52} />
+            <Avatar name={item.display_name} color={item.initials_color} photo={item.avatar_url} size={52} />
             <View style={styles.familyInfo}>
               <Body style={styles.familyName} numberOfLines={1}>{item.display_name}</Body>
               <Label style={styles.familyRelation} numberOfLines={1}>{item.relationship_label || "Membre"}</Label>
@@ -135,6 +166,40 @@ export default function Profile() {
           <Body style={styles.linkText}>Donner mon avis (bêta)</Body>
           <CaretRight color={colors.muted} size={18} />
         </Pressable>
+      </Card>
+
+      <Card style={styles.card} testID="profile-privacy">
+        <Label style={styles.section}>CONFIDENTIALITÉ</Label>
+        <View style={styles.privacyRow}>
+          <ShieldCheck color={colors.brandSecondary} size={22} />
+          <Body style={styles.privacyText}>
+            {consent
+              ? `Conditions de la bêta acceptées le ${new Date(consent.occurred_at).toLocaleDateString("fr-FR")} (version ${consent.version}).`
+              : "Conditions de la bêta : acceptation non retrouvée."}
+          </Body>
+        </View>
+        <Body muted style={styles.toggleSub}>
+          Vos souvenirs ne sont visibles que par les membres de votre famille. Chaque personne enregistrée doit être d’accord.
+        </Body>
+        {consentsQ.data?.deletion_request ? (
+          <Body style={styles.privacyText} testID="profile-deletion-pending">
+            Demande de suppression envoyée le {new Date(consentsQ.data.deletion_request.created_at).toLocaleDateString("fr-FR")}. L’équipe Racontelle vous confirmera la suppression par e-mail.
+          </Body>
+        ) : confirmDeletion ? (
+          <View style={styles.deleteConfirm}>
+            <Body style={styles.privacyText}>
+              Votre compte, votre profil et les souvenirs que vous avez enregistrés seront supprimés par l’équipe Racontelle. Cette action est définitive.
+            </Body>
+            <Button title="Confirmer la demande de suppression" variant="secondary" testID="profile-deletion-confirm" loading={requesting} onPress={requestDeletion} />
+            <Pressable onPress={() => setConfirmDeletion(false)} style={styles.cancelLink} testID="profile-deletion-cancel">
+              <Label style={styles.manageText}>Annuler</Label>
+            </Pressable>
+          </View>
+        ) : (
+          <Pressable onPress={() => setConfirmDeletion(true)} style={styles.cancelLink} testID="profile-deletion-request">
+            <Label style={styles.deleteText}>Demander la suppression de mes données</Label>
+          </Pressable>
+        )}
       </Card>
 
       <Pressable style={styles.logout} testID="profile-logout" onPress={signOut}>
@@ -174,6 +239,11 @@ const useStyles = makeStyles((colors) => ({
   link: { flexDirection: "row", alignItems: "center", gap: spacing.md, padding: spacing.lg },
   linkText: { flex: 1, fontSize: 15 },
   linkDivider: { height: 1, backgroundColor: colors.divider, marginLeft: 54 },
+  privacyRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
+  privacyText: { flex: 1, fontSize: 14, lineHeight: 20 },
+  deleteConfirm: { gap: spacing.sm },
+  cancelLink: { minHeight: 44, justifyContent: "center", alignSelf: "flex-start" },
+  deleteText: { color: colors.error },
   logout: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, padding: spacing.md },
   logoutText: { color: colors.error, fontSize: 15 },
 }));

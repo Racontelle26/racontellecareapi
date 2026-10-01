@@ -9,6 +9,9 @@ import {
   View,
   ViewProps,
 } from "react-native";
+import { Image } from "expo-image";
+import { Eye, EyeSlash } from "phosphor-react-native";
+import { mediaUrl, useMediaToken } from "@/src/api/client";
 import { fonts, makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
 // ---------------------------------------------------------------------------
@@ -34,12 +37,20 @@ export function Label({ style, ...props }: TextProps & { children: React.ReactNo
   return <Text {...props} style={[styles.label, style]} />;
 }
 
+// Allura script, reserved for short accroches (charte : « titres & accroches »).
+export function Script({ style, ...props }: TextProps & { children: React.ReactNode }) {
+  const styles = useTextStyles();
+  return <Text {...props} style={[styles.script, style]} />;
+}
+
 const useTextStyles = makeStyles((colors) => ({
   display: { fontFamily: fonts.displaySemiBold, fontSize: 34, color: colors.onSurface, lineHeight: 40 },
-  title: { fontFamily: fonts.displayMedium, fontSize: 24, color: colors.onSurface, lineHeight: 30 },
-  body: { fontFamily: fonts.body, fontSize: 15, color: colors.onSurface, lineHeight: 22 },
+  title: { fontFamily: fonts.displaySemiBold, fontSize: 25, color: colors.onSurface, lineHeight: 31 },
+  // Cormorant has a small x-height: body copy is set larger than a sans-serif would be.
+  body: { fontFamily: fonts.textMedium, fontSize: 17, color: colors.onSurface, lineHeight: 24 },
   bodyMuted: { color: colors.muted },
-  label: { fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.onSurfaceTertiary, letterSpacing: 0.3 },
+  label: { fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.onSurfaceTertiary, letterSpacing: 0.4 },
+  script: { fontFamily: fonts.script, fontSize: 34, color: colors.brandPrimary, lineHeight: 44 },
 }));
 
 // ---------------------------------------------------------------------------
@@ -96,9 +107,9 @@ const useButtonStyles = makeStyles((colors) => ({
   ghost: { backgroundColor: "transparent", borderWidth: 1, borderColor: colors.borderStrong },
   pressed: { opacity: 0.85 },
   disabled: { opacity: 0.5 },
-  primaryText: { fontFamily: fonts.bodyMedium, fontSize: 16, color: colors.onBrandPrimary },
-  secondaryText: { fontFamily: fonts.bodyMedium, fontSize: 16, color: colors.onBrandTertiary },
-  ghostText: { fontFamily: fonts.bodyMedium, fontSize: 16, color: colors.onSurface },
+  primaryText: { fontFamily: fonts.bodySemiBold, fontSize: 15, color: colors.onBrandPrimary, letterSpacing: 0.3 },
+  secondaryText: { fontFamily: fonts.bodySemiBold, fontSize: 15, color: colors.onBrandTertiary, letterSpacing: 0.3 },
+  ghostText: { fontFamily: fonts.bodySemiBold, fontSize: 15, color: colors.onSurface, letterSpacing: 0.3 },
 }));
 
 // ---------------------------------------------------------------------------
@@ -146,6 +157,41 @@ const useFieldStyles = makeStyles((colors) => ({
 }));
 
 // ---------------------------------------------------------------------------
+// PasswordField — eye toggle + autofill hints so the phone's password manager
+// (Google, Samsung, iCloud Keychain) offers to save and refill the password.
+// ---------------------------------------------------------------------------
+type PasswordFieldProps = Omit<FieldProps, "secureTextEntry" | "accessory"> & { isNew?: boolean };
+
+export function PasswordField({ isNew, testID, ...props }: PasswordFieldProps) {
+  const { colors } = useTheme();
+  const [visible, setVisible] = React.useState(false);
+  return (
+    <TextField
+      {...props}
+      testID={testID}
+      secureTextEntry={!visible}
+      autoCapitalize="none"
+      autoCorrect={false}
+      autoComplete={isNew ? "new-password" : "current-password"}
+      textContentType={isNew ? "newPassword" : "password"}
+      importantForAutofill="yes"
+      accessory={
+        <Pressable
+          testID={testID ? `${testID}-visibility` : undefined}
+          onPress={() => setVisible((v) => !v)}
+          hitSlop={8}
+          style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}
+          accessibilityRole="button"
+          accessibilityLabel={visible ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+        >
+          {visible ? <EyeSlash color={colors.muted} size={23} /> : <Eye color={colors.muted} size={23} />}
+        </Pressable>
+      }
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Card
 // ---------------------------------------------------------------------------
 export function Card({ style, ...props }: ViewProps & { children: React.ReactNode }) {
@@ -166,8 +212,21 @@ const useCardStyles = makeStyles((colors) => ({
 // ---------------------------------------------------------------------------
 // Avatar
 // ---------------------------------------------------------------------------
-export function Avatar({ name, color, size = 44 }: { name: string; color?: string; size?: number }) {
+export function Avatar({ name, color, size = 44, photo }: { name: string; color?: string; size?: number; photo?: string | null }) {
   const { colors } = useTheme();
+  const token = useMediaToken();
+  const uri = mediaUrl(photo, token);
+  if (uri) {
+    return (
+      <Image
+        source={{ uri }}
+        style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color || colors.brand }}
+        contentFit="cover"
+        transition={150}
+        accessibilityLabel={`Photo de ${name}`}
+      />
+    );
+  }
   const initials = name
     .split(" ")
     .map((w) => w[0])
@@ -186,7 +245,7 @@ export function Avatar({ name, color, size = 44 }: { name: string; color?: strin
         justifyContent: "center",
       }}
     >
-      <Text style={{ color: colors.onBrand, fontFamily: fonts.bodyMedium, fontSize: size * 0.36 }}>{initials}</Text>
+      <Text style={{ color: colors.onBrand, fontFamily: fonts.bodySemiBold, fontSize: size * 0.34 }}>{initials}</Text>
     </View>
   );
 }

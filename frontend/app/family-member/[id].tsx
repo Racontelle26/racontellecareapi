@@ -3,11 +3,13 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQuery } from "@tanstack/react-query";
 import { CaretLeft, Clock, Microphone, Play } from "phosphor-react-native";
-import { Avatar, Body, Card, Label, Title } from "@/src/components/ui";
+import { Body, Card, Label, Title } from "@/src/components/ui";
+import { AvatarPicker } from "@/src/components/avatar-picker";
 import { api } from "@/src/api/client";
+import { useAuth } from "@/src/auth/auth-context";
 import { makeStyles, radius, spacing, useTheme } from "@/src/theme";
 
-type Member = { id: string; display_name: string; relationship_label?: string | null; initials_color?: string; status: string; capsule_count?: number; total_seconds?: number };
+type Member = { id: string; display_name: string; relationship_label?: string | null; initials_color?: string; avatar_url?: string | null; status: string; capsule_count?: number; total_seconds?: number };
 type Capsule = { id: string; question_text?: string; theme?: string; duration_sec: number; recorded_at: string };
 
 function durationLabel(seconds: number) {
@@ -29,6 +31,7 @@ export default function FamilyMemberDetail() {
   const insets = useSafeAreaInsets();
   const styles = useStyles();
   const { colors } = useTheme();
+  const { member: me } = useAuth();
   const membersQ = useQuery({ queryKey: ["members"], queryFn: () => api.get<Member[]>("/circle/members") });
   const memoriesQ = useQuery({ queryKey: ["capsules", "member", id], queryFn: () => api.get<Capsule[]>(`/capsules?narrator=${encodeURIComponent(String(id))}`) });
   const member = membersQ.data?.find((item) => item.id === id && item.status === "active");
@@ -46,7 +49,17 @@ export default function FamilyMemberDetail() {
       ) : (
         <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + spacing.xxl }]} showsVerticalScrollIndicator={false}>
           <View style={styles.identity}>
-            <Avatar name={member.display_name} color={member.initials_color} size={84} />
+            <AvatarPicker
+              memberId={member.id}
+              name={member.display_name}
+              color={member.initials_color}
+              photo={member.avatar_url}
+              size={96}
+              editable={me?.id === member.id || me?.role === "owner"}
+            />
+            {me?.id === member.id || me?.role === "owner" ? (
+              <Label style={styles.photoHint}>{member.avatar_url ? "Touchez la photo pour la changer" : "Touchez pour ajouter une photo"}</Label>
+            ) : null}
             <Title style={styles.name} testID="family-member-name" numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.72}>{member.display_name}</Title>
             <Label style={styles.relationship} numberOfLines={2}>{member.relationship_label || "Membre de la famille"}</Label>
           </View>
@@ -77,6 +90,7 @@ const useStyles = makeStyles((colors) => ({
   identity: { alignItems: "center", gap: spacing.xs, paddingVertical: spacing.md },
   name: { width: "100%", fontSize: 30, marginTop: spacing.sm, textAlign: "center" },
   relationship: { width: "100%", color: colors.muted, textAlign: "center" },
+  photoHint: { color: colors.brandPrimary, fontSize: 12, marginTop: spacing.xs },
   statsRow: { flexDirection: "row", gap: spacing.md },
   statCard: { flex: 1, minHeight: 132, alignItems: "center", justifyContent: "center", gap: spacing.xs, paddingHorizontal: spacing.sm },
   statValue: { fontSize: 23, textAlign: "center" },

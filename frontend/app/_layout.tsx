@@ -7,6 +7,11 @@ import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { useFonts } from "expo-font";
+// Per-weight imports: the package root would bundle all 18 Montserrat weights.
+import { Montserrat_400Regular } from "@expo-google-fonts/montserrat/400Regular";
+import { Montserrat_500Medium } from "@expo-google-fonts/montserrat/500Medium";
+import { Montserrat_600SemiBold } from "@expo-google-fonts/montserrat/600SemiBold";
+import { Allura_400Regular } from "@expo-google-fonts/allura/400Regular";
 import * as SplashScreen from "expo-splash-screen";
 
 import { ErrorBoundary } from "@/src/components/error-boundary";
@@ -60,8 +65,10 @@ export default function RootLayout() {
     Cormorant: require("../assets/fonts/CormorantGaramond-Regular.ttf"),
     CormorantMedium: require("../assets/fonts/CormorantGaramond-Medium.ttf"),
     CormorantSemiBold: require("../assets/fonts/CormorantGaramond-SemiBold.ttf"),
-    DMSans: require("../assets/fonts/DMSans-Regular.ttf"),
-    DMSansMedium: require("../assets/fonts/DMSans-Medium.ttf"),
+    Montserrat: Montserrat_400Regular,
+    MontserratMedium: Montserrat_500Medium,
+    MontserratSemiBold: Montserrat_600SemiBold,
+    Allura: Allura_400Regular,
   });
 
   const ready = loaded || !!error;
