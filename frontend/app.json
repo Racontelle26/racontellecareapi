@@ -1,7 +1,8 @@
 {
   "expo": {
-    "name": "Racontelle",
-    "slug": "frontend",
+    "name": "Racontelle Famille",
+    "slug": "racontelle-famille",
+    "owner": "laracontelle",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -24,8 +25,12 @@
       "package": "fr.racontelle.famille",
       "versionCode": 1,
       "permissions": [
-        "RECORD_AUDIO",
-        "CAMERA"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
       ]
     },
     "web": {
@@ -66,6 +71,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "2162840c-ab22-4025-a9df-c8e19325d929"
+      }
     }
   }
 }
