@@ -70,6 +70,13 @@ ol.steps b{font-weight:600}
 
 .link-box{border:2px dashed var(--rose);border-radius:16px;padding:14px 18px;margin-bottom:22px;background:var(--rose-soft);color:var(--rose-ink)}
 .link-box b{font-weight:600}
+.dl{display:flex;gap:18px;align-items:center}
+#qr{flex:none;background:#fff;padding:8px;border-radius:10px;line-height:0}
+#qr:empty{display:none}
+#qr img,#qr canvas{width:120px;height:120px}
+.dl-btn{display:inline-block;background:var(--rose);color:var(--on-rose);font-weight:600;text-decoration:none;border-radius:999px;padding:10px 20px}
+.small{font-size:14px;margin-top:8px}
+@media (max-width:560px){#qr{display:none}}
 .tip{background:var(--sage-soft);border-radius:14px;padding:14px 18px;margin-top:14px;font-size:16px}
 .tip b{color:var(--sage)}
 
@@ -142,9 +149,16 @@ footer{margin-top:40px;color:var(--muted);font-size:14px;border-top:1px solid va
   <section id="installer">
     <p class="kicker">Étape 1</p>
     <h2>Installer l’application</h2>
-    <div class="link-box"><b>Le lien de téléchargement</b> vous est envoyé par message. Ouvrez-le <b>directement sur votre téléphone Android</b>, pas sur un ordinateur.</div>
+    <div class="link-box dl">
+      <div id="qr" aria-hidden="true"></div>
+      <div>
+        <p><b>Sur votre téléphone Android</b>, touchez ce lien ou scannez le code avec l’appareil photo :</p>
+        <p style="margin-top:10px"><a class="dl-btn" href="https://expo.dev/artifacts/eas/IWldSBcLv4cZl29DfV8SjZ2riPlx7ZXzK4Shmrq7RyM.apk">Télécharger Racontelle Famille</a></p>
+        <p class="small">Fichier de 120 Mo : le Wi-Fi est conseillé.</p>
+      </div>
+    </div>
     <ol class="steps">
-      <li><b>Touchez le lien</b>, puis <span class="btn">Install</span> (ou <span class="btn">Télécharger</span>). Le fichier <span class="scr">Racontelle</span> se télécharge.</li>
+      <li><b>Touchez le lien.</b> Si Chrome demande confirmation, choisissez <span class="btn">Télécharger quand même</span>. Le fichier <span class="scr">Racontelle</span> se télécharge.</li>
       <li><b>Ouvrez le fichier</b> téléchargé (dans la notification, ou dans <span class="scr">Fichiers → Téléchargements</span>).</li>
       <li>Le téléphone demande d’<b>autoriser l’installation depuis cette source</b> ? Touchez <span class="scr">Paramètres</span>, activez l’interrupteur, puis revenez en arrière. C’est normal : l’application n’est pas encore sur le Play Store.</li>
       <li>Touchez <span class="btn">Installer</span>. Si <span class="scr">Play Protect</span> s’inquiète, choisissez <span class="scr">Plus de détails → Installer quand même</span>.</li>
@@ -214,7 +228,9 @@ footer{margin-top:40px;color:var(--muted);font-size:14px;border-top:1px solid va
   <footer>Racontelle Famille · version bêta · une question, une voix, un souvenir.</footer>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
+try { new QRCode(document.getElementById("qr"), { text: document.querySelector(".dl-btn").href, width: 240, height: 240, correctLevel: QRCode.CorrectLevel.M }); } catch (e) {}
 (function () {
   var KEY = "racontelle-missions";
   var boxes = Array.prototype.slice.call(document.querySelectorAll(".mission input"));
