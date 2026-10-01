@@ -31,6 +31,7 @@ import {
   type ResidentDraft,
 } from "@/src/components/modals";
 import { useCarnetStore } from "@/src/hooks/use-carnet-store";
+import { isInactiveSince, readLastActivity, useInactivityLock } from "@/src/hooks/use-inactivity-lock";
 import { useUsageTracking } from "@/src/hooks/use-usage-tracking";
 import { isLocalId, setLocalScope } from "@/src/local";
 import { availableQuestions, pickQuestion, THEME_ORDER, themeCards } from "@/src/question-bank";
@@ -52,6 +53,7 @@ type Screen = "home" | "profile" | "workshop" | "library" | "pro" | "quiz" | "qu
 type Confirm = { title: string; message: string; confirmLabel: string; action: () => void };
 
 const KEEP_AWAKE_TAG = "racontelle-enregistrement";
+const INACTIVITY_MESSAGE = "Session fermée après 5 minutes d’inactivité. Reconnectez-vous : vos souvenirs restent conservés sur l’appareil.";
 const PIN_MAX_ATTEMPTS = 5;
 const PIN_LOCK_SECONDS = 60;
 
@@ -123,12 +125,22 @@ export default function Index() {
 
   useEffect(() => {
     let active = true;
-    void authApi.rememberedUser().then(async (user) => {
+    void authApi.rememberedUser().then(async (remembered) => {
       if (!active) return;
+      let user = remembered;
+      // Application rouverte après plus de 5 minutes sans activité : la
+      // session est fermée, il faut se reconnecter.
+      if (user && isInactiveSince(await readLastActivity())) {
+        await authApi.logout();
+        setAuthMessage(INACTIVITY_MESSAGE);
+        setRememberedEmail(user.email);
+        user = null;
+      }
       setAuthUser(user);
-      setRememberedEmail(user?.email ?? "");
+      if (user) setRememberedEmail(user.email);
       setAuthChecking(false);
-      await openCarnet(user);
+      if (user) await openCarnet(user);
+      else setLoading(false);
     });
     authApi.onSessionExpired(() => {
       setAuthMessage("Votre session a expiré par sécurité. Connectez-vous à nouveau : vos souvenirs restent sur l’appareil.");
@@ -855,6 +867,17 @@ export default function Index() {
     }
   };
 
+  // --- Fermeture après 5 minutes d'inactivité ----------------------------------------
+  // Pendant un enregistrement (même en pause ou avant sauvegarde) ou une écoute,
+  // la session reste ouverte : un long récit se fait sans toucher l'écran.
+  const markActivity = useInactivityLock({
+    enabled: !!authUser && !loading,
+    busy: recorderStatus !== "idle" || playerStatus.playing,
+    onExpire: () => {
+      void logout().then(() => setAuthMessage(INACTIVITY_MESSAGE));
+    },
+  });
+
   // --- Affichage -----------------------------------------------------------------
   if (authChecking) {
     return <View testID="auth-session-loading" style={[styles.root, styles.center]}><ActivityIndicator size="large" color={colors.brandPrimary} /><Text style={styles.body}>Ouverture de la session sécurisée…</Text></View>;
@@ -871,7 +894,7 @@ export default function Index() {
     setScreen("library");
   };
 
-  return <View style={styles.root}>
+  return <View style={styles.root} onTouchStart={markActivity}>
     {screen === "home" && <HomeScreen {...base}
       residents={state.residents}
       maxResidents={settings.max_residents}

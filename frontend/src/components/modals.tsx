@@ -1,6 +1,6 @@
 import { Image } from "expo-image";
-import { useState, type ReactNode } from "react";
-import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { useEffect, useState, type ReactNode } from "react";
+import { ActivityIndicator, BackHandler, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { KeyboardAwareScrollView, KeyboardStickyView } from "react-native-keyboard-controller";
 
 import { appVersion } from "../api";
@@ -10,22 +10,40 @@ import type { ScreenProps } from "../ui/types";
 
 type Base = Pick<ScreenProps, "styles" | "colors" | "insets">;
 
-/** Feuille modale commune : titre, bouton fermer, contenu défilant, action collée au clavier. */
+/**
+ * Feuille commune : titre, bouton fermer, contenu défilant, action collée au
+ * clavier. Elle est dessinée dans l'écran principal et non dans une fenêtre
+ * « Modal » : sous Android, une Modal est une fenêtre à part que le clavier
+ * recouvre (le champ en cours de saisie devenait invisible). Ici, le champ
+ * actif remonte au-dessus du clavier et le texte reste visible pendant la
+ * frappe. Le bouton « retour » d'Android ferme la feuille.
+ */
 function Sheet({ testID, visible, title, onClose, children, footer, styles, colors, insets }: Base & { testID: string; visible: boolean; title: string; onClose: () => void; children: ReactNode; footer?: ReactNode }) {
-  return <Modal testID={testID} visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+  useEffect(() => {
+    if (!visible) return;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      onClose();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [visible, onClose]);
+
+  if (!visible) return null;
+  return <View testID={testID} style={[StyleSheet.absoluteFill, { zIndex: 50, elevation: 50 }]}>
     <View style={styles.modalBackdrop}>
+      <Pressable accessibilityLabel="Fermer" onPress={onClose} style={{ flex: 1 }} />
       <View style={styles.modalCard}>
-        <KeyboardAwareScrollView bottomOffset={96} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 16, paddingBottom: 16 }}>
+        <KeyboardAwareScrollView bottomOffset={footer ? 110 : 40} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 16, paddingBottom: 16 }}>
           <View style={styles.sectionHeader}>
             <Text style={[styles.heading, { flex: 1 }]}>{title}</Text>
             <Pressable testID={`${testID}-close`} accessibilityRole="button" accessibilityLabel="Fermer" onPress={onClose} style={styles.backButton}><Icon name="close" color={colors.onSurface} /></Pressable>
           </View>
           {children}
         </KeyboardAwareScrollView>
-        {footer ? <KeyboardStickyView style={{ paddingBottom: insets.bottom + 8, gap: 10 }}>{footer}</KeyboardStickyView> : <View style={{ height: insets.bottom }} />}
+        {footer ? <KeyboardStickyView offset={{ closed: 0, opened: insets.bottom }} style={{ paddingTop: 8, paddingBottom: insets.bottom + 8, gap: 10, backgroundColor: colors.surface }}>{footer}</KeyboardStickyView> : <View style={{ height: insets.bottom }} />}
       </View>
     </View>
-  </Modal>;
+  </View>;
 }
 
 function PrimaryButton({ testID, label, icon, onPress, busy, disabled, danger, styles, colors }: Pick<Base, "styles" | "colors"> & { testID: string; label: string; icon: IconName; onPress: () => void; busy?: boolean; disabled?: boolean; danger?: boolean }) {
@@ -64,18 +82,17 @@ function ResidentFormSheet({ visible, resident, onPickPhoto, onClose, onSubmit, 
 
   return <Sheet testID={resident ? "edit-resident-modal" : "add-resident-modal"} visible={visible} title={resident ? "Modifier le profil" : "Nouveau profil"} onClose={onClose} {...base}
     footer={<PrimaryButton testID="resident-create-button" label={resident ? "Enregistrer" : "Créer le profil"} icon={resident ? "checkmark" : "person-add-outline"} onPress={() => onSubmit(draft)} styles={styles} colors={colors} />}>
-    <Text style={styles.body}>Un prénom ou un pseudonyme suffit. Aucune donnée de santé n’est demandée.</Text>
+    <Text style={styles.eyebrow}>Prénom ou pseudonyme</Text>
+    <TextInput testID="resident-name-input" value={draft.display_name} onChangeText={(value) => set({ display_name: value })} autoFocus={!resident} placeholder="Par exemple : Marguerite" placeholderTextColor={colors.muted} style={styles.input} maxLength={80} returnKeyType="done" autoCapitalize="words" autoCorrect={false} />
+    <Text style={styles.small}>Un prénom ou un pseudonyme suffit. Aucune donnée de santé n’est demandée.</Text>
     <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
       <View style={styles.largeAvatar}>{draft.photo_uri ? <Image testID="resident-photo-preview" source={{ uri: draft.photo_uri }} style={{ width: 80, height: 80, borderRadius: 40 }} contentFit="cover" /> : <Icon name="camera-outline" color={colors.onBrandTertiary} size={28} />}</View>
       <View style={{ flex: 1, gap: 6 }}>
         <Pressable testID="resident-photo-button" accessibilityRole="button" onPress={() => void onPickPhoto().then((uri) => uri && set({ photo_uri: uri }))} style={({ pressed }) => [styles.secondaryButton, { minHeight: 48 }, pressed && styles.pressed]}><Icon name="image-outline" color={colors.brandPrimary} size={20} /><Text style={[styles.secondaryText, { fontSize: 14 }]}>{draft.photo_uri ? "Changer la photo" : "Ajouter une photo"}</Text></Pressable>
         <Text style={styles.small}>Facultative, elle reste sur cet appareil.</Text>      </View>
     </View>
-    <TextInput testID="resident-name-input" value={draft.display_name} onChangeText={(value) => set({ display_name: value })} autoFocus={!resident} placeholder="Prénom ou pseudonyme" placeholderTextColor={colors.muted} style={styles.input} maxLength={80} returnKeyType="next" />
-    <View style={styles.actionRow}>
-      <TextInput testID="resident-initial-input" value={draft.last_initial} onChangeText={(value) => set({ last_initial: value })} placeholder="Initiale ou nom (facultatif)" placeholderTextColor={colors.muted} style={[styles.input, { flex: 1 }]} maxLength={40} />
-      <TextInput testID="resident-unit-input" value={draft.unit} onChangeText={(value) => set({ unit: value })} placeholder="Unité (facultatif)" placeholderTextColor={colors.muted} style={[styles.input, { flex: 1 }]} maxLength={60} />
-    </View>
+    <TextInput testID="resident-initial-input" value={draft.last_initial} onChangeText={(value) => set({ last_initial: value })} placeholder="Initiale ou nom (facultatif)" placeholderTextColor={colors.muted} style={styles.input} maxLength={40} />
+    <TextInput testID="resident-unit-input" value={draft.unit} onChangeText={(value) => set({ unit: value })} placeholder="Unité de vie (facultatif)" placeholderTextColor={colors.muted} style={styles.input} maxLength={60} />
     <Text style={styles.eyebrow}>Consentement à l’enregistrement</Text>
     <View style={styles.modeSwitch}>
       {(["obtained", "pending", "withdrawn"] as ConsentStatus[]).map((status) => {
@@ -261,7 +278,7 @@ export function PinModal(props: PinProps) {
 }
 
 function PinSheet({ visible, mode, error, lockedSeconds, onSubmit, onClose, ...base }: PinProps) {
-  const { styles, colors, insets } = base;
+  const { styles, colors } = base;
   const [draft, setDraft] = useState("");
   // Les 4 chiffres sont envoyés puis effacés : un code faux laisse le champ prêt pour un nouvel essai.
   const change = (value: string) => {
@@ -270,19 +287,12 @@ function PinSheet({ visible, mode, error, lockedSeconds, onSubmit, onClose, ...b
     setDraft("");
     onSubmit(clean);
   };
-  return <Modal testID="pin-modal" visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalBackdrop}>
-      <View style={styles.modalCard}>
-        <View style={{ gap: 16, paddingBottom: insets.bottom + 12 }}>
-          <View style={styles.sectionHeader}><Text style={styles.heading}>{mode === "create" ? "Créer le code professionnel" : "Code professionnel"}</Text><Pressable testID="pin-cancel" accessibilityRole="button" accessibilityLabel="Fermer" onPress={onClose} style={styles.backButton}><Icon name="close" color={colors.onSurface} /></Pressable></View>
-          <Text style={styles.body}>{mode === "create" ? "Choisissez un code à 4 chiffres. Il protégera l’espace professionnel et le retrait des profils sur cet appareil." : "Saisissez le code à 4 chiffres pour continuer."}</Text>
-          <TextInput testID="pin-input" value={draft} editable={lockedSeconds === 0} onChangeText={change} keyboardType="number-pad" maxLength={4} autoFocus secureTextEntry placeholder="••••" placeholderTextColor={colors.muted} style={styles.pinInput} />
-          {lockedSeconds > 0 ? <Text testID="pin-locked" style={[styles.small, { color: colors.error }]}>Trop d’essais. Réessayez dans {lockedSeconds} s.</Text>
-            : error ? <Text testID="pin-error" style={[styles.small, { color: colors.error }]}>Code incorrect. Réessayez.</Text> : null}
-        </View>
-      </View>
-    </KeyboardAvoidingView>
-  </Modal>;
+  return <Sheet testID="pin-modal" visible={visible} title={mode === "create" ? "Créer le code professionnel" : "Code professionnel"} onClose={onClose} {...base}>
+    <Text style={styles.body}>{mode === "create" ? "Choisissez un code à 4 chiffres. Il protégera l’espace professionnel et le retrait des profils sur cet appareil." : "Saisissez le code à 4 chiffres pour continuer."}</Text>
+    <TextInput testID="pin-input" value={draft} editable={lockedSeconds === 0} onChangeText={change} keyboardType="number-pad" maxLength={4} autoFocus secureTextEntry placeholder="••••" placeholderTextColor={colors.muted} style={styles.pinInput} />
+    {lockedSeconds > 0 ? <Text testID="pin-locked" style={[styles.small, { color: colors.error }]}>Trop d’essais. Réessayez dans {lockedSeconds} s.</Text>
+      : error ? <Text testID="pin-error" style={[styles.small, { color: colors.error }]}>Code incorrect. Réessayez.</Text> : null}
+  </Sheet>;
 }
 
 // ---------------------------------------------------------------------------
