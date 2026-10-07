@@ -467,3 +467,32 @@
 ##     message: "Itération 20: unavailable réel et branche neutre validés; pending validé via MOCKED status uniquement faute de STT active; Livre/PDF/chapitres, lint/tsc passent."
 ##   - agent: "main"
 ##     message: "Deployment agent final: code/compilation/env/DB/CORS/secrets passent; deux fails restants sont des faux positifs plateforme demandant de modifier supervisor READONLY et variables Expo protégées. Support confirme de ne pas les modifier."
+
+## user_problem_statement_12: "Reconnecter le frontend Racontelle au backend Railway https://racontelle-famille-production.up.railway.app et vérifier connexion/inscription depuis la preview."
+## frontend_12:
+##   - task: "Basculer EXPO_PUBLIC_BACKEND_URL vers Railway"
+##     implemented: true
+##     working: true
+##     file: "/app/frontend/.env"
+##     priority: "critical"
+##     needs_retesting: false
+##   - task: "Connexion et inscription preview vers Railway"
+##     implemented: true
+##     working: true
+##     files: ["/app/frontend/src/api/client.ts", "/app/frontend/.env"]
+##     priority: "critical"
+##     needs_retesting: false
+## metadata_12:
+##   created_by: "main_agent"
+##   version: "2.2"
+##   test_sequence: 21
+##   run_ui: true
+## agent_communication_12:
+##   - agent: "main"
+##     message: "EXPO_PUBLIC_BACKEND_URL=Railway sans /api; client ajoute /api. Railway root 200. CORS preview initialement bloqué puis utilisateur a configuré CORS_ORIGINS et redéployé; preflight 200 allow-origin exact. Auto-test preview: login verification.railway et register preview.signup.railway redirigent tous deux vers setup cercle. Expo redémarré. Validation testing_agent obligatoire."
+##   - agent: "testing"
+##     message: "Itération 21: Railway health/CORS/login/me/register 5/5; UI login/signup/reload passent sans CORS ni ancien backend. Défauts: eas.json ancien backend et 404 /auth/refresh Railway."
+##   - agent: "main"
+##     message: "eas.json preview+production basculé Railway. Appel optionnel /auth/refresh retiré car le Railway déployé ne l'expose pas; /auth/me conserve la session jusqu'à expiration normale. Auto-test login+reload sans 404 ni ancien backend; lint/tsc OK. Retest final requis."
+##   - agent: "testing"
+##     message: "Itération 22 finale: .env/eas Railway, CORS, login, signup, reload, réseau, console, lint/tsc et 6 tests backend validés. Aucun ancien backend ni auth/refresh; MOCKED APIs NONE."

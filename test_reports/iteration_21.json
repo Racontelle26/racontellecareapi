@@ -1,0 +1,47 @@
+{
+  "summary": "Reconnexion Railway validée: backend smoke, CORS preflight, login/signup UI preview et persistance session au reload passent.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Web preview runtime assets",
+        "issue": "Console contient une erreur 404 ressource après reload (sans CORS/ERR_FAILED).",
+        "testID": "N/A",
+        "priority": "low"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration21_railway_reconnect.py",
+    "/app/test_reports/pytest/pytest_iteration21_railway_reconnect.xml",
+    "/app/test_reports/artifacts_iter21/login_success_setup.jpg",
+    "/app/test_reports/artifacts_iter21/register_success_setup.jpg"
+  ],
+  "action_items": [
+    "Mettre à jour /app/frontend/eas.json (preview+production) pour pointer EXPO_PUBLIC_BACKEND_URL vers Railway, sinon les builds EAS repartiront vers l’ancien backend preview.",
+    "Identifier la ressource 404 vue en console web au reload et corriger si nécessaire."
+  ],
+  "critical_code_review_comments": [
+    "Risque de régression majeur: /app/frontend/eas.json hardcode encore https://family-stories-34.preview.emergentagent.com pour EXPO_PUBLIC_BACKEND_URL (profiles preview et production).",
+    "Le client API est correct pour la preview: BASE construit bien ${EXPO_PUBLIC_BACKEND_URL}/api via src/api/client.ts."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration21_railway_reconnect.py",
+    "/app/test_reports/iteration_21.json"
+  ],
+  "success_rate": {
+    "backend": "100%",
+    "frontend": "95%"
+  },
+  "seed_data_creation": "Compte créé pour test inscription UI: preview.signup.railway.20261007101710@racontelle.fr",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Login verification.railway@racontelle.fr -> /circle/setup OK (has_circle false). Signup UI unique email -> /circle/setup OK. Toutes requêtes API capturées pendant ces flux partent vers racontelle-famille-production.up.railway.app/api/auth.",
+  "rca_of_issue": "RCA config: la bascule Railway a été faite dans frontend/.env (runtime preview), mais eas.json conserve l’ancienne URL preview pour EXPO_PUBLIC_BACKEND_URL. Effet: builds EAS futurs risquent d’appeler l’ancien backend même si la preview actuelle est correcte."
+}

@@ -136,6 +136,13 @@ Trois cahiers des charges fournis (Beta test, MVP technique chiffrable, V7 ritue
 - L’écran Livre affiche le nombre de souvenirs « à enrichir » et guide vers l’ajout de texte.
 - Les deux échecs persistants du deployment_agent (`--tunnel` supervisor et URL ngrok) sont des faux positifs confirmés : ils demandent de modifier un fichier READONLY et des variables Expo protégées alors que le proxy d’aperçu fonctionne.
 
+## Connexion au backend Railway (2026-10, itérations 21–22)
+- Frontend preview et profils EAS preview/production pointent vers `https://racontelle-famille-production.up.railway.app` ; le client ajoute `/api`.
+- CORS Railway autorise l’origine preview Emergent ; preflight login/register confirmé en 200.
+- Connexion, inscription, `/auth/me` et persistance de session après reload validées depuis la preview.
+- Appel optionnel `/auth/refresh` retiré car absent du backend Railway actuellement déployé ; la session reste active jusqu’à l’expiration normale du JWT.
+- Recette finale : 6 tests backend, lint/TypeScript, réseau et console réussis ; aucune requête vers l’ancien backend et aucune API simulée.
+
 ## Backlog (prioritized)
 - P2 : Réponse texte/photo à une question ; carte postale souvenir PDF ; capsule temporelle.
 - P2 : Export des événements CSV (mesure bêta) via endpoint admin.

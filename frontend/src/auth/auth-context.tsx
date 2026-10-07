@@ -49,13 +49,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     (async () => {
       const token = await getToken();
       if (!active) return;
-      if (token && (await refresh())) {
-        // Sliding session: each launch swaps the token for a fresh 30-day one, so an active family
-        // never has to sign in again. A failure here is harmless (the current token stays valid).
-        api.post<{ access_token: string }>("/auth/refresh")
-          .then((res) => setToken(res.access_token))
-          .catch(() => {});
-      }
+      if (token) await refresh();
       if (active) setLoading(false);
     })();
     return () => { active = false; };

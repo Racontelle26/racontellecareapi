@@ -7,11 +7,11 @@
     "preview": {
       "distribution": "internal",
       "android": { "buildType": "apk" },
-      "env": { "EXPO_PUBLIC_BACKEND_URL": "https://family-stories-34.preview.emergentagent.com" }
+      "env": { "EXPO_PUBLIC_BACKEND_URL": "https://racontelle-famille-production.up.railway.app" }
     },
     "production": {
       "android": { "buildType": "app-bundle" },
-      "env": { "EXPO_PUBLIC_BACKEND_URL": "https://family-stories-34.preview.emergentagent.com" }
+      "env": { "EXPO_PUBLIC_BACKEND_URL": "https://racontelle-famille-production.up.railway.app" }
     }
   }
 }

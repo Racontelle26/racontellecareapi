@@ -1,0 +1,37 @@
+{
+  "summary": "Retest final Railway validé: eas.json (preview+production), login/reload/signup mobile preview, CORS et smoke API passent sans appel /auth/refresh.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration21_railway_reconnect.py",
+    "/app/test_reports/pytest/pytest_iteration22_railway_retest.xml",
+    "/app/test_reports/artifacts_iter22/login_setup_iter22.jpeg",
+    "/app/test_reports/artifacts_iter22/signup_setup_iter22.jpeg",
+    "/root/.emergent/automation_output/20261007_102050/console_20261007_102050.log"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py dépasse 700 lignes (2120): prévoir découpage modulaire pour maintenabilité et RCA plus rapide."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iteration21_railway_reconnect.py",
+    "/app/test_reports/iteration_22.json"
+  ],
+  "success_rate": {
+    "backend": "100%",
+    "frontend": "100%"
+  },
+  "seed_data_creation": "Comptes créés: preview.signup.railway.<timestamp>@racontelle.fr (pytest) et preview.signup.railway.retest.1791368462@racontelle.fr (UI).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Toutes les requêtes /api capturées pendant login+reload+signup ciblent uniquement https://racontelle-famille-production.up.railway.app/api ; aucun appel ancien preview et aucun /api/auth/refresh.",
+  "rca_of_issue": "RCA itération21 clôturée: eas.json pointait encore l'ancien backend et le refresh optionnel appelait un endpoint absent sur Railway. Retest confirme correction des deux causes."
+}
