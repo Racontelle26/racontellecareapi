@@ -7,13 +7,15 @@ from dotenv import load_dotenv
 
 load_dotenv("/app/frontend/.env")
 BASE_URL = os.environ["EXPO_PUBLIC_BACKEND_URL"].rstrip("/")
-TEST_EMAIL = "admin.security@racontelle.example.com"
-TEST_PASSWORD = "Racontelle-Test-2026!"
+TEST_EMAIL = os.environ.get("RAILWAY_TEST_EMAIL")
+TEST_PASSWORD = os.environ.get("RAILWAY_TEST_PASSWORD")
 _token: dict = {}
 
 
 @pytest.fixture(scope="session", autouse=True)
 def authenticated_requests():
+    if not TEST_EMAIL or not TEST_PASSWORD:
+        pytest.skip("RAILWAY_TEST_EMAIL et RAILWAY_TEST_PASSWORD requis pour les suites authentifiées")
     login = requests.post(
         f"{BASE_URL}/api/auth/login",
         headers={"X-Client-Platform": "native"},

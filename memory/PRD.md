@@ -60,6 +60,7 @@ Clarifications utilisateur : offline-first avec stockage local (smartphones/tabl
 - **Chronométrage d'utilisation réel** : le temps total compte chaque milliseconde où l'application est au premier plan. Le temps par résident compte uniquement la fiche et l'atelier de cette personne. Aucun seuil de 3 secondes ni arrondi n'est appliqué ; l'affichage avance en direct chaque seconde et les compteurs sont persistés toutes les 10 secondes. L'horloge monotone évite les erreurs liées au changement d'heure du téléphone et les anciennes durées en secondes sont migrées sans perte.
 - **Ouverture automatique mémorisée** : après une première connexion, l'identité non sensible de l'établissement est mémorisée. Les lancements suivants ouvrent directement les données locales du bon établissement sans requête, refresh ou validation serveur au démarrage. Les jetons restent dans SecureStore sur mobile et ne sont jamais persistés sur le web ; la validation serveur intervient uniquement lors d'une action nécessitant le réseau.
 - **Reconnexion lisible** : lorsque la session expire pendant une action serveur, l'adresse email reste préremplie et le champ mot de passe propose un bouton œil accessible pour afficher ou masquer la saisie. Le mot de passe n'est jamais mémorisé.
+- **Backend mobile Railway** : le frontend utilise `https://racontellecareapi-production.up.railway.app` via `EXPO_PUBLIC_BACKEND_URL`; toutes les routes continuent d'ajouter le préfixe `/api` côté client.
 - Flux complet : Accueil → création de profil (max 10, modal scrollable, bouton accessible clavier) → atelier libre ou 10 questions/jour → enregistrement audio → archive datée par profil.
 - Persistance locale JSON (profils + capsules), synchronisation serveur best-effort.
 - `testID` sur les éléments interactifs ; réponses HTTP `201` conformes.
@@ -78,7 +79,7 @@ Détail critère par critère : `docs/CONFORMITE_CAHIER_DES_CHARGES.md`.
 
 ## Backlog priorisé
 - **P0** : Recette complète sur l'environnement de test (le code n'a pas pu être exécuté lors de la mise à niveau) ; configurer SMTP ; importer des extraits musicaux autorisés.
-- **P0 — Intégration externe** : l'accès `whisper-1` manque sur la clé gérée (transcription, désormais hors bêta et désactivée par défaut).
+- **P1 — Vérification Railway** : valider STT/TTS après création du premier établissement sur Railway. L'ancien backend local manquait d'accès `whisper-1`, mais il n'est plus utilisé par le frontend actif ; aucun fallback simulé n'est utilisé.
 - **P1** : Hébergement UE, sauvegardes automatiques, environnements recette/bêta, builds iOS/Android privés, suivi des crashs.
 - **P1** : Message « niveau sonore insuffisant » (mesure du volume pendant l'enregistrement).
 - **P2** : Base relationnelle (PostgreSQL) demandée par le cahier des charges ; segmentation des longs récits ; invitation par email.

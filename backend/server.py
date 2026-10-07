@@ -49,13 +49,18 @@ load_dotenv(ROOT_DIR / ".env")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-client = AsyncIOMotorClient(os.environ["MONGO_URL"])
-db = client[os.environ["DB_NAME"]]
+client = AsyncIOMotorClient(os.environ.get("MONGO_URL", "mongodb://localhost:27017"))
+db = client[os.environ.get("DB_NAME", "racontelle")]
 configure_security(db)
 configure_beta(db)
 configure_quiz(db)
 app = FastAPI(title="Racontelle Care API")
 api_router = APIRouter(prefix="/api")
+
+
+def get_cors_origins() -> list[str]:
+    raw = os.environ.get("CORS_ORIGINS", "")
+    return [origin.strip() for origin in raw.split(",") if origin.strip()]
 
 # Environ 2 h 30 d'enregistrement en qualité haute (AAC ~1 Mo/min) : une
 # narration n'est jamais coupée (BT-09) et doit pouvoir être sauvegardée.
@@ -1137,11 +1142,7 @@ app.include_router(auth_router)
 app.include_router(beta_router)
 app.include_router(quiz_router)
 app.include_router(api_router)
-cors_origins = [
-    origin.strip()
-    for origin in os.environ["CORS_ORIGINS"].split(",")
-    if origin.strip()
-]
+cors_origins = get_cors_origins()
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
@@ -1177,3 +1178,9 @@ async def normalize_proxy_cors_origin(request, call_next):
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8000")))

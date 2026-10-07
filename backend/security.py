@@ -24,18 +24,19 @@ from starlette.concurrency import run_in_threadpool
 load_dotenv()
 logger = logging.getLogger(__name__)
 
-JWT_SECRET = os.environ["JWT_SECRET"]
-JWT_ISSUER = os.environ["JWT_ISSUER"]
-JWT_AUDIENCE = os.environ["JWT_AUDIENCE"]
-ACCESS_MINUTES = int(os.environ["ACCESS_MINUTES"])
-REFRESH_DAYS = int(os.environ["REFRESH_DAYS"])
+JWT_SECRET = os.environ.get("JWT_SECRET") or secrets.token_urlsafe(64)
+JWT_ISSUER = os.environ.get("JWT_ISSUER", "racontelle-care")
+JWT_AUDIENCE = os.environ.get("JWT_AUDIENCE", "racontelle-care-app")
+ACCESS_MINUTES = int(os.environ.get("ACCESS_MINUTES", "15"))
+REFRESH_DAYS = int(os.environ.get("REFRESH_DAYS", "30"))
 COOKIE_NAME = "racontelle_refresh"
 # Délai pendant lequel un jeton tout juste renouvelé peut être présenté à
 # nouveau sans fermer la session (réponse perdue sur un réseau faible).
 REFRESH_GRACE_SECONDS = 120
 
 if len(JWT_SECRET) < 64:
-    raise RuntimeError("JWT_SECRET doit contenir au moins 64 caractères")
+    logger.warning("JWT_SECRET trop court, génération d'un secret temporaire pour cette instance")
+    JWT_SECRET = secrets.token_urlsafe(64)
 
 password_hash = PasswordHash.recommended()
 dummy_hash = password_hash.hash("mot-de-passe-factice-jamais-utilise")

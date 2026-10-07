@@ -1,4 +1,5 @@
 import { makeStyles } from "../theme";
+import { Platform } from "react-native";
 
 // Charte typographique Racontelle Care :
 // Allura → titres & accroches (script manuscrit élégant)
@@ -88,7 +89,7 @@ export const useStyles = makeStyles((colors) => ({
   filterTextActive: { color: colors.onBrandPrimary },
   center: { alignItems: "center", justifyContent: "center", gap: 12 },
   pressed: { opacity: 0.78, transform: [{ scale: 0.985 }] },
-  notice: { position: "absolute", left: 18, right: 18, minHeight: 52, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: colors.info, flexDirection: "row", alignItems: "center", gap: 10, shadowColor: colors.surfaceInverse, shadowOpacity: 0.15, shadowRadius: 12, elevation: 3 },
+  notice: { position: "absolute", left: 18, right: 18, minHeight: 52, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: colors.info, flexDirection: "row", alignItems: "center", gap: 10, ...Platform.select({ web: { boxShadow: `0 6px 18px ${colors.surfaceInverse}26` }, default: { shadowColor: colors.surfaceInverse, shadowOpacity: 0.15, shadowRadius: 12, elevation: 3 } }) },
   noticeText: { flex: 1, color: colors.onInfo, fontSize: 14, lineHeight: 19, fontFamily: "Montserrat-Medium" },
   statsCard: { flexDirection: "row", alignItems: "center", gap: 14, borderRadius: 20, padding: 16, backgroundColor: colors.brandTertiary, borderWidth: 1, borderColor: colors.brandTertiary },
   statHero: { borderRadius: 24, padding: 22, backgroundColor: colors.brandPrimary, gap: 6 },

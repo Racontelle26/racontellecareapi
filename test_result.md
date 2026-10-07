@@ -132,10 +132,42 @@
 
 ## known_external_integration_issue:
 ##   - flow: "Transcription automatique Whisper"
-##     working: false
+##     working: "not_tested_on_railway"
 ##     mocked: false
-##     priority: "critical"
-##     comment: "La clé gérée renouvelée restaure Object Storage mais est limitée aux modèles Claude et refuse whisper-1. Le renommage, les uploads, partages et carnets fonctionnent; l'entitlement STT doit être activé côté fournisseur."
+##     priority: "medium"
+##     comment: "L'ancien backend local refusait whisper-1, mais le frontend actif pointe désormais Railway. STT/TTS Railway restent à vérifier après création du premier établissement; aucun fallback n'est simulé."
+
+## user_problem_statement_railway: "Reconfigurer l'URL backend vers Railway : https://racontellecareapi-production.up.railway.app"
+## railway_backend:
+##   - task: "Basculer le frontend Expo vers le backend Railway"
+##     implemented: true
+##     working: true
+##     files: "/app/frontend/.env, /app/memory/PRD.md, /app/memory/test_credentials.md"
+##     stuck_count: 0
+##     priority: "high"
+##     needs_retesting: false
+##     status_history:
+##       - working: false
+##         agent: "main"
+##         comment: "URL Railway valide mais preflight web initialement refusé et comptes historiques absents."
+##       - working: "NA"
+##         agent: "main"
+##         comment: "Variables CORS configurées par l'utilisateur sur Railway. GET /api=200, preflight=200 avec ACAO exact, accès navigateur=200 et login inexistant retourne proprement Identifiants incorrects."
+##       - working: true
+##         agent: "testing"
+##         comment: "Itération 15 : URL, variables protégées, API Railway, 401, CORS, login web, inscription, mode local, lint et TypeScript validés à 100 %. Aucun mock."
+##       - working: true
+##         agent: "main"
+##         comment: "Fixture auth rendu optionnel via RAILWAY_TEST_EMAIL/RAILWAY_TEST_PASSWORD et avertissement shadow web corrigé. Suite Railway 6/6, lints Python/JS et tsc verts."
+## test_plan_railway:
+##   current_focus:
+##     - "EXPO_PUBLIC_BACKEND_URL pointe uniquement vers Railway sans /api final"
+##     - "Les variables Expo protégées de preview sont inchangées"
+##     - "CORS preview vers Railway autorise GET/POST avec credentials"
+##     - "Le formulaire de connexion appelle bien /api/auth/login sur Railway"
+##     - "Le flux d'inscription peut créer le premier établissement Railway"
+##   test_all: false
+##   test_priority: "high_first"
 
 ## user_problem_statement_brand: "Remplace le nom de Ehpad recall par Racontelle Care partout."
 ## branding:

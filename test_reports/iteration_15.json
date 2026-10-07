@@ -1,0 +1,44 @@
+{
+  "summary": "Validation Railway réussie: URL frontend, santé API, 401 non-auth, preflight CORS, flux login web mobile et mode local/offline conformes.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {
+        "component": "Expo web runtime",
+        "issue": "Avertissement console non bloquant: \"shadow* style props are deprecated. Use boxShadow\""
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_railway_reconfig_iter15.py",
+    "/app/test_reports/pytest/pytest_results_iter15_railway.xml",
+    "/app/test_reports/screens/iter15/mobile_auth_flow.jpeg"
+  ],
+  "action_items": [
+    "Rendre le fixture autouse d'auth backend/tests/conftest.py optionnel: il casse les suites publiques/no-auth si aucun compte seed Railway n'existe.",
+    "(Optionnel) Nettoyer l'avertissement RN Web shadow* -> boxShadow."
+  ],
+  "critical_code_review_comments": [
+    "backend/tests/conftest.py force un login autouse avec identifiants historiques non valides Railway; cela provoque des erreurs de setup sur des tests non-authentifiés.",
+    "frontend/src/api.ts compose correctement les routes via `${baseUrl}/api...` et évite tout hardcode de localhost."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_railway_reconfig_iter15.py",
+    "/app/test_reports/iteration_15.json"
+  ],
+  "success_rate": {
+    "backend": "100%",
+    "frontend": "100%"
+  },
+  "seed_data_creation": "Aucune donnée seed créée; aucun compte permanent créé sur Railway.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Les contrôles demandés Railway sont validés; conserver l'interdiction de créer un tenant de test permanent.",
+  "rca_of_issue": "RCA test infra: le premier run pytest a échoué (6 erreurs setup) car conftest.py impose un login autouse avec anciens identifiants preview. Mitigation appliquée uniquement dans la suite iter15 via override local du fixture pour valider les checks publics/no-auth sans toucher les données Railway."
+}

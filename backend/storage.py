@@ -17,11 +17,16 @@ load_dotenv(Path(__file__).parent / ".env")
 
 logger = logging.getLogger(__name__)
 
-STORAGE_BASE = os.environ["INTEGRATION_PROXY_URL"].strip()
-STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
-EMERGENT_KEY = os.environ["EMERGENT_LLM_KEY"]
+INTEGRATION_PROXY_URL = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip()
+EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
+STORAGE_BASE = INTEGRATION_PROXY_URL
+STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage" if STORAGE_BASE else ""
 APP_NAME = "racontelle-care"
 _storage_key: Optional[str] = None
+
+
+def storage_ready() -> bool:
+    return bool(STORAGE_BASE and EMERGENT_KEY)
 
 
 def init_storage() -> str:
@@ -29,6 +34,8 @@ def init_storage() -> str:
     global _storage_key
     if _storage_key:
         return _storage_key
+    if not storage_ready():
+        raise RuntimeError("INTEGRATION_PROXY_URL et EMERGENT_LLM_KEY doivent être configurés pour le stockage objet")
     resp = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_KEY}, timeout=30)
     resp.raise_for_status()
     _storage_key = resp.json()["storage_key"]
