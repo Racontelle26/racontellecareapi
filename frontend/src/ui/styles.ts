@@ -11,7 +11,7 @@ export const useStyles = makeStyles((colors) => ({
   screen: { paddingHorizontal: 20, gap: 22, width: "100%", maxWidth: 760, alignSelf: "center" },
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   backButton: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.surfaceSecondary, alignItems: "center", justifyContent: "center" },
-  logo: { width: 176, height: 56 },
+  logo: { width: 92, height: 92 },
   eyebrow: { color: colors.muted, fontSize: 12, letterSpacing: 1.5, textTransform: "uppercase", fontFamily: "Montserrat-Bold" },
   title: { color: colors.onSurface, fontSize: 32, lineHeight: 38, fontFamily: "CormorantGaramond-SemiBold" },
   heading: { color: colors.onSurface, fontSize: 20, lineHeight: 26, fontFamily: "Montserrat-Bold" },

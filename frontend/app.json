@@ -2,7 +2,7 @@
   "expo": {
     "name": "Racontelle Care",
     "slug": "racontelle-care",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "racontelle-care",
@@ -17,7 +17,7 @@
         "backgroundColor": "#FFFFFF"
       },
       "package": "fr.racontelle.care",
-      "versionCode": 2,
+      "versionCode": 3,
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS",
@@ -41,7 +41,7 @@
         "expo-splash-screen",
         {
           "image": "./assets/images/splash-image.png",
-          "imageWidth": 200,
+          "imageWidth": 220,
           "resizeMode": "contain",
           "backgroundColor": "#FFFFFF"
         }
@@ -64,7 +64,8 @@
           "cameraPermission": false
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true

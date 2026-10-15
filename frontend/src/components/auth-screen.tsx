@@ -11,7 +11,7 @@ import type { AuthSession } from "../types";
 const useStyles = makeStyles((colors) => ({
   root: { flex: 1, backgroundColor: colors.surface },
   content: { paddingHorizontal: 24, gap: 22, width: "100%", maxWidth: 560, alignSelf: "center" },
-  logo: { width: 230, height: 78, alignSelf: "center" },
+  logo: { width: 152, height: 152, alignSelf: "center" },
   intro: { alignItems: "center", gap: 8 },
   title: { color: colors.onSurface, fontSize: 30, lineHeight: 36, textAlign: "center", fontFamily: "CormorantGaramond-SemiBold" },
   body: { color: colors.onSurfaceSecondary, fontSize: 17, lineHeight: 24, textAlign: "center", fontFamily: "CormorantGaramond-Regular" },

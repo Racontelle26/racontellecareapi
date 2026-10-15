@@ -231,6 +231,29 @@
 ##   test_all: false
 ##   test_priority: "critical_first"
 
+## user_problem_statement_logo: "Appliquer le logo fourni partout : icône Android, écran de démarrage, écran de connexion et accueil."
+## application_logo:
+##   - task: "Nouvelle identité visuelle Racontelle Care"
+##     implemented: true
+##     working: "NA"
+##     files: "/app/frontend/assets/images/icon.png, /app/frontend/assets/images/adaptive-icon.png, /app/frontend/assets/images/splash-image.png, /app/frontend/assets/images/favicon.png, /app/frontend/assets/images/racontelle-logo.webp, /app/frontend/app.json"
+##     stuck_count: 0
+##     priority: "high"
+##     needs_retesting: true
+##     status_history:
+##       - working: "NA"
+##         agent: "main"
+##         comment: "Logo utilisateur détouré et décliné sans altération en variantes interface, icône opaque, adaptive foreground transparent, splash et favicon. Login 152x152 et accueil 92x92 vérifiés. Version 1.0.2 / Android versionCode 3. Expo Doctor 20/20, export web, lint et TypeScript verts."
+## test_plan_logo:
+##   current_focus:
+##     - "Logo visible et non déformé sur connexion et accueil"
+##     - "Icône classique 1024 opaque et adaptive foreground 1024 transparent dans la zone sûre"
+##     - "Splash et favicon utilisent le nouveau monogramme"
+##     - "Expo config expose version 1.0.2 et Android versionCode 3"
+##     - "Export web et compatibilité SDK Expo passent"
+##   test_all: false
+##   test_priority: "high_first"
+
 ## user_problem_statement_brand: "Remplace le nom de Ehpad recall par Racontelle Care partout."
 ## branding:
 ##   - task: "Renommage complet visible en Racontelle Care"
