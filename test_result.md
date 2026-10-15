@@ -449,6 +449,9 @@
 ##       - working: false
 ##         agent: "main"
 ##         comment: "Après annonce d'un déploiement actif, l'API publique sert toujours l'ancien message. RCA : les changements Resend ne figurent pas dans le HEAD déployé et email_service.py n'est pas suivi; un nouveau Save to GitHub est requis. Validation PASSWORD_RESET_URL rendue dynamique et sûre (HTTPS, hôte non-IP/non-raccourci), sans domaine hardcodé."
+##       - working: "deployed_source_verified"
+##         agent: "main"
+##         comment: "Après push de conflict_151026_1601, Railway /api/ répond 200 et forgot renvoie le nouveau contrat « un lien et un code ». Playwright sur l'URL publique réelle confirme POST vers Railway HTTP 200. Aucun compte personnel ni email réel testé."
 ## test_plan_resend:
 ##   current_focus:
 ##     - "Template fixe, marque Racontelle Care, aucun formulaire ni demande de secret"
