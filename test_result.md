@@ -254,6 +254,35 @@
 ##   test_all: false
 ##   test_priority: "high_first"
 
+## user_problem_statement_launcher_icon: "Le logo Emergent apparaît encore comme icône pour ouvrir l'application ; utiliser le logo Racontelle Care à la place."
+## native_launcher_icon:
+##   - task: "Forcer le nouveau logo dans le prochain APK Android"
+##     implemented: true
+##     working: "source_verified_pending_apk"
+##     files: "/app/frontend/app.json, /app/frontend/assets/images/racontelle-care-icon-v4.png, /app/frontend/assets/images/racontelle-care-adaptive-v4.png, /app/frontend/assets/images/racontelle-care-splash-v4.png, /app/frontend/assets/images/racontelle-care-favicon-v4.png"
+##     stuck_count: 0
+##     priority: "critical"
+##     needs_retesting: true
+##     status_history:
+##       - working: false
+##         agent: "user"
+##         comment: "Capture Android : l'application Racontelle Care installée affiche encore l'icône Emergent."
+##       - working: "NA"
+##         agent: "main"
+##         comment: "Icône forcée explicitement dans expo.icon, ios.icon, android.icon et android.adaptiveIcon avec noms versionnés uniques v4. Version 1.0.3 / Android versionCode 4 pour invalider ancien APK et cache build. Expo config confirme tous les chemins; Doctor 20/20, lint et TypeScript verts. Un nouvel APK natif reste nécessaire."
+##       - working: "source_verified_pending_apk"
+##         agent: "testing"
+##         comment: "Itération 19 : configuration Expo, assets natifs, absence de logo Emergent actif, Doctor 20/20, lint, TypeScript, export web et logos UI validés. L'icône launcher finale doit être confirmée après génération et installation d'un nouvel APK versionCode 4."
+## test_plan_native_launcher_icon:
+##   current_focus:
+##     - "Tous les champs Expo natifs pointent vers des fichiers Racontelle Care v4"
+##     - "Icône 1024 opaque et adaptive foreground transparent respectent Android"
+##     - "VersionCode 4 force une mise à jour distincte de l'ancien APK"
+##     - "Aucune référence icon/splash active ne pointe vers les anciens fichiers"
+##     - "Le prochain APK doit être généré puis installé; Expo Go conserve toujours sa propre icône hôte"
+##   test_all: false
+##   test_priority: "critical_first"
+
 ## user_problem_statement_brand: "Remplace le nom de Ehpad recall par Racontelle Care partout."
 ## branding:
 ##   - task: "Renommage complet visible en Racontelle Care"

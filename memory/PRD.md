@@ -34,6 +34,7 @@ Clarifications utilisateur : offline-first avec stockage local (smartphones/tabl
 - Typographies officielles chargées via `expo-font` : Allura (titres/accroches), Cormorant Garamond (textes), Montserrat (menus/boutons) — assets dans `frontend/assets/fonts/`.
 - Logo officiel « Racontelle Care » affiché dans l'en-tête d'accueil (`assets/images/racontelle-logo.webp`) ; splash blanc ; application et métadonnées renommées « Racontelle Care ».
 - Identité visuelle v1.0.2 : monogramme officiel « R » bleu encre, cercle végétal et point brun appliqué à l'icône Android/iOS, l'icône adaptative Android, le splash, le favicon, la connexion et l'accueil. Android `versionCode` 3 permet l'installation par-dessus l'APK précédent.
+- Correctif icône native v1.0.3 : Android et iOS référencent explicitement des fichiers versionnés uniques (`racontelle-care-*-v4.png`) afin d'invalider l'ancien cache de build Emergent. Android `versionCode` 4 impose un nouvel APK distinct de celui affichant l'ancienne icône.
 - Banque de questions extraite des documents fournis (thèmes Enfance, etc., avec marqueur « sensible »).
 - Tests : 9/9 pytest backend (`test_audio_share_api.py`) + parcours frontend validés par le testing agent (itération 3).
 - **Lecteur audio dans la fiche** : bouton lecture/pause par souvenir (testID `capsule-play-<id>`), dans la fiche et l'archive.

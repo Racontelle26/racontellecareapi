@@ -2,22 +2,24 @@
   "expo": {
     "name": "Racontelle Care",
     "slug": "racontelle-care",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/racontelle-care-icon-v4.png",
     "scheme": "racontelle-care",
     "userInterfaceStyle": "automatic",
     "ios": {
+      "icon": "./assets/images/racontelle-care-icon-v4.png",
       "supportsTablet": true,
       "bundleIdentifier": "com.emergent.ehpadrecall.up10xn"
     },
     "android": {
+      "icon": "./assets/images/racontelle-care-icon-v4.png",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "foregroundImage": "./assets/images/racontelle-care-adaptive-v4.png",
         "backgroundColor": "#FFFFFF"
       },
       "package": "fr.racontelle.care",
-      "versionCode": 3,
+      "versionCode": 4,
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS",
@@ -33,14 +35,14 @@
     "web": {
       "bundler": "metro",
       "output": "single",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/racontelle-care-favicon-v4.png"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-image.png",
+          "image": "./assets/images/racontelle-care-splash-v4.png",
           "imageWidth": 220,
           "resizeMode": "contain",
           "backgroundColor": "#FFFFFF"
