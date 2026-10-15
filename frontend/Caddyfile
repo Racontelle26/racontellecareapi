@@ -1,0 +1,29 @@
+{
+	admin off
+	auto_https off
+}
+
+:{$PORT:8080} {
+	root * /srv
+	encode zstd gzip
+
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		X-Frame-Options DENY
+		Permissions-Policy "camera=(), geolocation=(), microphone=(self)"
+		Strict-Transport-Security "max-age=31536000"
+	}
+
+	# Fichiers versionnés par Expo : cache long. index.html : jamais en cache,
+	# pour qu'une nouvelle version soit prise immédiatement.
+	@hashed path /_expo/static/* /assets/*
+	header @hashed Cache-Control "public, max-age=31536000, immutable"
+	@html path / /index.html
+	header @html Cache-Control "no-cache"
+
+	# Application monopage : toute route inconnue renvoie index.html
+	# (dont le lien de réinitialisation /?reset_email=…&reset_code=…).
+	try_files {path} /index.html
+	file_server
+}

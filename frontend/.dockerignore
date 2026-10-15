@@ -1,0 +1,14 @@
+node_modules
+.expo
+.metro-cache
+dist
+web-build
+android
+ios
+.env*
+*.jks
+*.keystore
+*.p8
+*.p12
+*.key
+*.pem
