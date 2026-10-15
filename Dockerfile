@@ -19,7 +19,7 @@ RUN python -m pip install --no-cache-dir -r /tmp/requirements.txt \
 
 COPY backend/ /app/
 
-EXPOSE 8001
+EXPOSE 8000
 
-# Railway injecte PORT. La valeur 8001 permet aussi un lancement local fidèle.
-CMD ["sh", "-c", "exec uvicorn server:app --host 0.0.0.0 --port ${PORT:-8001}"]
+# Railway injecte PORT. Le port 8000 est le repli pour le lancement local.
+CMD ["sh", "-c", "exec uvicorn server:app --host 0.0.0.0 --port ${PORT:-8000}"]

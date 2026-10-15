@@ -39,7 +39,7 @@ def test_dockerfile_installs_backend_requirements_and_uvicorn():
     assert "COPY backend/requirements.txt /tmp/requirements.txt" in source
     assert "python -m pip install --no-cache-dir -r /tmp/requirements.txt" in source
     assert "import uvicorn" in source
-    assert "exec uvicorn server:app --host 0.0.0.0 --port ${PORT:-8001}" in source
+    assert "exec uvicorn server:app --host 0.0.0.0 --port ${PORT:-8000}" in source
 
 
 def test_dockerfile_keeps_ffmpeg_and_ca_certificates_for_azure():
