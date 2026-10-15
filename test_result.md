@@ -364,6 +364,15 @@
 ##       - working: "source_verified_pending_deployment"
 ##         agent: "testing"
 ##         comment: "Itération 21 : 9/9 contrats déploiement/Azure/auth passent, pip check et ffmpeg passent, uvicorn démarre réellement et GET /api/ répond 200. Docker CLI indisponible localement; validation Railway finale requise après Save to GitHub."
+##       - working: false
+##         agent: "user"
+##         comment: "Après redéploiement, Railway renvoie encore 502; demande explicite de supprimer tout port hardcodé/repli et d'utiliser strictement la variable PORT."
+##       - working: "NA"
+##         agent: "main"
+##         comment: "EXPOSE et le repli 8000 supprimés. Le CMD Docker exige PORT, échoue explicitement si absent et transmet exactement la valeur Railway à uvicorn."
+##       - working: "source_verified_pending_deployment"
+##         agent: "testing"
+##         comment: "Itération 22 : aucun EXPOSE/fallback/port hardcodé; PORT=8765 donne GET /api/ 200, PORT absent échoue explicitement, 9/9 tests passent. Validation Railway live requise après Save to GitHub."
 ## test_plan_railway_startup_recovery:
 ##   current_focus:
 ##     - "Le Dockerfile installe backend/requirements.txt et vérifie l'import uvicorn pendant le build"

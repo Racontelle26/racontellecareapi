@@ -19,7 +19,6 @@ RUN python -m pip install --no-cache-dir -r /tmp/requirements.txt \
 
 COPY backend/ /app/
 
-EXPOSE 8000
-
-# Railway injecte PORT. Le port 8000 est le repli pour le lancement local.
-CMD ["sh", "-c", "exec uvicorn server:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Railway injecte PORT à l'exécution. Aucun port de repli ni EXPOSE statique :
+# l'image échoue clairement si la plateforme ne fournit pas la variable.
+CMD ["sh", "-c", "test -n \"$PORT\" || { echo 'PORT environment variable is required' >&2; exit 1; }; exec uvicorn server:app --host 0.0.0.0 --port \"$PORT\""]
