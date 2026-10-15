@@ -1,5 +1,15 @@
 # Point d'avancement — 15-16 octobre 2026
 
+## Plan du 16/10 (le plus court)
+
+1. Stockage audio sur Railway : ajouter `INTEGRATION_PROXY_URL` et `EMERGENT_LLM_KEY` au service API,
+   avec les valeurs déjà présentes dans l'environnement backend d'Emergent. Aucun code à fusionner.
+   Contrôle : le log `stockage objet indisponible au démarrage` disparaît.
+2. Vérification par Claude après redéploiement : enregistrement, réécoute, rechargement de la page web.
+3. Comptes d'avant le 7/10 : recréer l'espace établissement sur l'adresse web, ou transférer la base Emergent
+   vers Railway si les souvenirs de cette période doivent être conservés.
+4. Plus tard, sans urgence : PR #3 (stockage Scaleway) puis PR #2 (`app.racontellecare.com`).
+
 ## Chronologie (historique Git)
 
 | Période | Web (adresse Emergent) | APK | Serveur et base | Stockage audio |
