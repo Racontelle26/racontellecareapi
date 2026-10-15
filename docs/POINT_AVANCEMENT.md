@@ -1,14 +1,24 @@
 # Point d'avancement — 15-16 octobre 2026
 
-## État actuel
+## Chronologie (historique Git)
 
-| Accès | Serveur | Base de données | État |
-|-------|---------|-----------------|------|
-| Adresse web Emergent `https://ehpad-recall.preview.emergentagent.com` (donnée à l'EHPAD) | serveur Emergent | base Emergent | fonctionnait le 16/10 au matin ; non modifiée |
-| APK Android 1.0.3 (build Expo `2f0909a2`, disponible 13 jours) | Railway | base Railway | connexion vérifiée sur téléphone |
+| Période | Web (adresse Emergent) | APK | Serveur et base | Stockage audio |
+|---------|------------------------|-----|-----------------|----------------|
+| 1er → 7/10 08:48 | serveur Emergent | serveur Emergent (`eas.json`) | Emergent, comptes et souvenirs créés à cette période | Emergent, fonctionnel |
+| depuis 7/10 08:48 (commit `db77980` « Backend Railway configuré ») | **Railway** | Emergent (ancien `eas.json`) | Railway : base **neuve**, vide au départ | **non configuré** sur Railway |
+| depuis 15/10 (PR #1) | Railway | Railway | Railway | non configuré |
 
-Les deux accès utilisent des bases **séparées** : un compte créé sur l'un n'existe pas sur l'autre.
-Pour les testeurs, rester sur **un seul** accès : l'adresse web Emergent, déjà transmise.
+Conséquence : les comptes créés jusqu'au 7/10 (dont `laracontelle@gmail.com`) sont dans la base
+Emergent, absente de Railway. D'où « Identifiants incorrects » sur l'adresse web, et l'avertissement
+`stockage objet indisponible` dans les logs Railway.
+
+## Deux façons de retrouver l'état du 7/10
+
+1. **Revenir au serveur Emergent** (le plus rapide, retrouve comptes et souvenirs) : remettre
+   `EXPO_PUBLIC_BACKEND_URL=https://ehpad-recall.preview.emergentagent.com` dans l'environnement
+   frontend d'Emergent, et dans `frontend/eas.json` pour un nouvel APK. Dépend d'Emergent.
+2. **Rester sur Railway** (durable) : renseigner le stockage audio (PR #3 ou variables
+   `INTEGRATION_PROXY_URL` + `EMERGENT_LLM_KEY`) et transférer la base Emergent vers Railway.
 
 ## Fait
 
@@ -29,8 +39,7 @@ Ordre : #3, puis #2. Une fois les deux en ligne, web et APK partagent le serveur
 
 - **Railway sans stockage audio** (log `stockage objet indisponible au démarrage`) : sur l'APK, les
   audios restent seulement sur le téléphone ; transcription et export côté serveur échouent. Corrigé par la PR #3.
-- **Compte `laracontelle@gmail.com`** absent de la base Railway au 15/10 au soir : l'essai de connexion
-  passait par Emergent. À recréer sur Railway si besoin.
+- **Compte `laracontelle@gmail.com`** absent de la base Railway : créé avant le 7/10, il est dans la base Emergent.
 - **Emergent écrit directement dans `main`** : ne pas faire « Save to GitHub » depuis Emergent
   après la fusion des PR #2/#3 sans resynchroniser, sinon conflit ou écrasement.
 - Mot de passe affiché en clair dans une capture et jeton Expo visible dans le terminal :
