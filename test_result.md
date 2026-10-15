@@ -169,6 +169,40 @@
 ##   test_all: false
 ##   test_priority: "high_first"
 
+## user_problem_statement_azure_speech: "Remplacer OpenAI Whisper et OpenAI TTS par Azure AI Speech, région France Central, en conservant le cache tts_cache et les autres fonctionnalités."
+## azure_speech:
+##   - task: "Migration STT/TTS vers Azure AI Speech France Central"
+##     implemented: true
+##     working: true
+##     files: "/app/backend/azure_speech.py, /app/backend/server.py, /app/nixpacks.toml, /app/railway.json, /app/backend/requirements.txt"
+##     stuck_count: 0
+##     priority: "critical"
+##     needs_retesting: false
+##     status_history:
+##       - working: "NA"
+##         agent: "main"
+##         comment: "STT Azure REST + conversion WAV, TTS SSML AlainNeural -5 %, cache Mongo existant, quotas/consentements inchangés, erreurs 429/502/503 sûres. OpenAI/LiteLLM retirés. Tests : 26/26 API locale, 15/15 suite publique disponible, 9/9 contrats Azure. Appels Azure réels à valider après redéploiement Railway car la nouvelle clé n'est volontairement pas disponible localement."
+##       - working: true
+##         agent: "testing"
+##         comment: "Itération 16 : contrats Azure, routes STT/TTS, cache, ffmpeg Railway et non-régression validés. 26/26 tests locaux et 15/15 tests publics disponibles. Production non mockée; fournisseurs doublés uniquement dans les tests."
+##       - working: "verified_predeploy"
+##         agent: "main"
+##         comment: "Alertes finales corrigées : MongoDB fail-fast, import inutilisé retiré, Nixpacks préserve les paquets par défaut. Deux suites rejouées vertes. Contrôle réel Azure en attente du redéploiement Railway de ce code."
+##       - working: true
+##         agent: "user"
+##         comment: "Le backend a été redéployé et l'utilisateur confirme que tout fonctionne. Il demande explicitement de ne plus tenter de connexion Railway."
+## test_plan_azure_speech:
+##   current_focus:
+##     - "Aucune dépendance ni invocation OpenAI/Whisper/TTS-1 ne subsiste"
+##     - "M4A/WebM/WAV sont normalisés en WAV PCM mono 16 kHz avant Azure STT"
+##     - "Endpoint, headers et corps Azure STT respectent exactement le contrat France Central"
+##     - "SSML Azure utilise AlainNeural, fr-FR, rate -5 % et échappe le texte"
+##     - "Le second appel TTS identique réutilise tts_cache sans appeler Azure"
+##     - "Consentement, auth tenant, quotas et routes frontend restent inchangés"
+##     - "Railway installe ffmpeg et exige les variables Azure en production"
+##   test_all: true
+##   test_priority: "critical_first"
+
 ## user_problem_statement_brand: "Remplace le nom de Ehpad recall par Racontelle Care partout."
 ## branding:
 ##   - task: "Renommage complet visible en Racontelle Care"

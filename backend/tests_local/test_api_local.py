@@ -4,6 +4,7 @@ import importlib.util
 import io
 from pathlib import Path
 import uuid
+import wave
 import zipfile
 
 import requests
@@ -22,6 +23,16 @@ for _name in dir(_beta):
 new_tenant = _beta.new_tenant
 create_resident = _beta.create_resident
 M4A = b"\x00\x00\x00\x18ftypM4A " + b"\x00" * 64
+
+
+def pcm_wav() -> bytes:
+    output = io.BytesIO()
+    with wave.open(output, "wb") as audio:
+        audio.setnchannels(1)
+        audio.setsampwidth(2)
+        audio.setframerate(16000)
+        audio.writeframes(b"\x00\x00" * 3200)
+    return output.getvalue()
 
 
 def now_iso():
@@ -109,6 +120,63 @@ def test_hidden_features_are_refused_by_default(base_url):
     assert transcribe.status_code == 403
     settings = requests.get(f"{base_url}/api/settings", headers=headers, timeout=20).json()
     assert settings["max_residents"] == 5 and settings["features"]["quiz"] is True
+
+
+def test_azure_transcription_route_persists_only_final_text(base_url, monkeypatch):
+    from local_env import server as local_server
+
+    calls = []
+
+    async def fake_azure_stt(wav_data):
+        calls.append(wav_data)
+        return "Je me souviens des vacances en Bretagne."
+
+    monkeypatch.setattr(local_server, "transcribe_wav", fake_azure_stt)
+    headers, _ = new_tenant()
+    requests.patch(f"{base_url}/api/settings", headers=headers, json={"transcription": True}, timeout=20)
+    resident = create_resident(headers, "Madeleine").json()
+    capsule = requests.post(
+        f"{base_url}/api/capsules",
+        headers=headers,
+        json={"resident_id": resident["id"], "mode": "free", "duration_sec": 2, "recorded_at": now_iso()},
+        timeout=20,
+    ).json()
+    response = requests.post(
+        f"{base_url}/api/capsules/{capsule['id']}/transcribe",
+        headers=headers,
+        files={"file": ("recording.wav", io.BytesIO(pcm_wav()), "audio/wav")},
+        timeout=20,
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["transcription"] == "Je me souviens des vacances en Bretagne."
+    assert len(calls) == 1 and calls[0].startswith(b"RIFF")
+    listed = requests.get(f"{base_url}/api/capsules", headers=headers, timeout=20).json()
+    saved = next(item for item in listed if item["id"] == capsule["id"])
+    assert saved["transcription"] == response.json()["transcription"]
+
+
+def test_azure_tts_route_reuses_existing_mongo_cache(base_url, monkeypatch):
+    from local_env import server as local_server
+
+    generated = []
+
+    async def fake_azure_tts(text):
+        generated.append(text)
+        return b"ID3" + b"\x00" * 900
+
+    monkeypatch.setattr(local_server, "synthesize_speech", fake_azure_tts)
+    headers, _ = new_tenant()
+    requests.patch(f"{base_url}/api/settings", headers=headers, json={"voice_reading": True}, timeout=20)
+    payload = {"text": "Racontez-moi votre plus beau souvenir d'enfance."}
+    first = requests.post(f"{base_url}/api/tts", headers=headers, json=payload, timeout=20)
+    second = requests.post(f"{base_url}/api/tts", headers=headers, json=payload, timeout=20)
+    assert first.status_code == 200 and second.status_code == 200
+    assert first.json()["path"] == second.json()["path"]
+    assert generated == [payload["text"]]
+    audio = requests.get(f"{base_url}{first.json()['path']}", headers=headers, timeout=20)
+    assert audio.status_code == 200
+    assert audio.headers["Content-Type"].startswith("audio/mpeg")
+    assert audio.content.startswith(b"ID3")
 
 
 def test_export_zip_then_archive_then_rgpd_purge(base_url, stored_objects):

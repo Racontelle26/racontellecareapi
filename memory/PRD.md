@@ -25,7 +25,8 @@ Clarifications utilisateur : offline-first avec stockage local (smartphones/tabl
 ## Implémenté (sept. 2026)
 - **Espace professionnel** : temps d'utilisation global de l'application et par personne (suivi local des segments fiche/atelier, attribution corrigée au profil sortant), nombre de souvenirs et durée d'audio par résident.
 - **Conservation précieuse de l'audio** : chaque enregistrement quitte le cache système pour le stockage document permanent de l'appareil (`expo-file-system`), puis copie de sauvegarde dans Emergent Object Storage via `POST /api/capsules/{id}/audio`.
-- **Transcription vocale** : Whisper (clé Emergent) via `POST /api/capsules/{id}/transcribe`, affichée dans la carte du souvenir.
+- **Transcription vocale UE** : Azure AI Speech STT en région France Central via `POST /api/capsules/{id}/transcribe`, avec conversion serveur M4A/WebM → WAV PCM 16 kHz mono ; seule la transcription finale est conservée.
+- **Synthèse vocale UE** : Azure AI Speech TTS en région France Central via `POST /api/tts`, voix `fr-FR-AlainNeural` à vitesse `-5%`, sortie MP3 16 kHz 128 kbit/s. Le cache privé MongoDB `tts_cache` est conservé et indexé par texte + configuration vocale Azure.
 - **Partage famille** : lien privé `GET /api/share/{token}` (page HTML aux couleurs Racontelle Care + lecteur audio + transcription), lien copié dans le presse-papiers.
 - **Photo de profil** : sélection depuis la galerie (expo-image-picker, permissions contextuelles avec bouton « Ouvrir les réglages »), stockée localement, affichée dans les avatars.
 - **Onde sonore animée** pendant l'enregistrement (react-native-reanimated).
@@ -69,6 +70,7 @@ Clarifications utilisateur : offline-first avec stockage local (smartphones/tabl
 ## Mise à niveau bêta (25 sept. 2026) — cahier des charges Bêta Test du 15/09/2026
 Détail critère par critère : `docs/CONFORMITE_CAHIER_DES_CHARGES.md`.
 - **Corrections critiques** : plus aucune perte d'audio au retrait d'un profil (export vérifié, retrait bloqué tant qu'un audio n'est pas « Sauvegardé ») ; types audio contrôlés + `nosniff` + CSP sur les liens de partage (faille de vol de session fermée) ; un membre ne peut plus retirer/réactiver un profil par `PATCH` ; `audio_base64` n'est plus stocké ; cache TTS privé.
+- **Dépendances vocales** : les SDK et modèles OpenAI/LiteLLM ont été retirés. Railway installe `ffmpeg` via Nixpacks pour normaliser les fichiers avant envoi à Azure France Central ; la clé Azure reste uniquement dans les variables du backend.
 - **Hors connexion réel** : file d'attente rejouée automatiquement (profils, renommages, consentements, retraits, fusions, souvenirs, classements, copies audio) ; indicateur « En attente d'envoi » / « Sauvegardé ».
 - **Périmètre bêta** : 5 profils max ; 400 questions (annexe A) embarquées et sur le serveur, thèmes sensibles désactivés par défaut ; parcours résident → thème / Question surprise → question → « Une autre question » → enregistrer → « Capsule sauvegardée » ; rubrique « À classer » ; date + heure ; consentement à 3 états journalisé ; champs initiale/unité.
 - **Quiz « Qui a dit ça ? »** (`backend/quiz.py`) : citations + musique, import CSV/JSON (annexe B), droits contrôlés, score de session facultatif.
@@ -79,7 +81,7 @@ Détail critère par critère : `docs/CONFORMITE_CAHIER_DES_CHARGES.md`.
 
 ## Backlog priorisé
 - **P0** : Recette complète sur l'environnement de test (le code n'a pas pu être exécuté lors de la mise à niveau) ; configurer SMTP ; importer des extraits musicaux autorisés.
-- **P1 — Vérification Railway** : valider STT/TTS après création du premier établissement sur Railway. L'ancien backend local manquait d'accès `whisper-1`, mais il n'est plus utilisé par le frontend actif ; aucun fallback simulé n'est utilisé.
+- **Azure Railway actif** : l’utilisateur confirme le fonctionnement des flux STT/TTS Azure France Central après redéploiement ; aucun fallback simulé n’est utilisé.
 - **P1** : Hébergement UE, sauvegardes automatiques, environnements recette/bêta, builds iOS/Android privés, suivi des crashs.
 - **P1** : Message « niveau sonore insuffisant » (mesure du volume pendant l'enregistrement).
 - **P2** : Base relationnelle (PostgreSQL) demandée par le cahier des charges ; segmentation des longs récits ; invitation par email.

@@ -1,0 +1,51 @@
+{
+  "summary": "Backend-only validation completed for Azure Speech migration scope. Separate suites executed as requested: tests_local (26/26 pass) and tests (15 pass, 66 skipped by design/credentials). Azure contract, STT/TTS route behavior, cache reuse, and Railway ffmpeg/healthcheck configuration are validated. Frontend lint/tsc also pass.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "backend lint (flake8)",
+        "issue": "flake8 reports many E501 line-length violations and one F401 unused import (TTS_OUTPUT_FORMAT in server.py)."
+      },
+      {
+        "endpoint": "backend/server.py bootstrap",
+        "issue": "Code review: MONGO_URL and DB_NAME currently have fallback defaults in code; this weakens fail-fast env enforcement guidance."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_azure_speech.py",
+    "/app/backend/tests_local/test_api_local.py",
+    "/app/test_reports/pytest/pytest_results_iter16_tests_local.xml",
+    "/app/test_reports/pytest/pytest_results_iter16_tests.xml"
+  ],
+  "action_items": [
+    "If flake8 is part of CI gate, align lint config (line-length) or reformat long lines and remove unused imports.",
+    "Optional hardening: remove default values from MONGO_URL/DB_NAME reads in backend/server.py to enforce strict env fail-fast policy.",
+    "Optional cleanup: remove unused import TTS_OUTPUT_FORMAT in backend/server.py to keep static analysis clean."
+  ],
+  "critical_code_review_comments": [
+    "No OpenAI/LiteLLM/emergentintegrations/whisper-1/tts-1/coral references found in backend/server.py, backend/azure_speech.py, backend/requirements.txt.",
+    "Azure config is env-only, region enforcement is strict francecentral, and endpoints match requested STT/TTS France Central URLs exactly.",
+    "Startup behavior matches requirement: Railway fail-fast via ensure_azure_speech_ready(); local startup allows warning path.",
+    "nixpacks.toml includes ffmpeg and railway.json healthcheck path is /api/."
+  ],
+  "updated_files": [
+    "/app/test_reports/iteration_16.json"
+  ],
+  "success_rate": {
+    "backend": "100% on executed suites (41 passed total; 66 intentionally skipped)",
+    "frontend": "NA (backend-only request)"
+  },
+  "seed_data_creation": "No persistent external seed data created; local test fixtures only.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Important: keep pytest runs separate (`pytest -q /app/backend/tests_local` and `pytest -q /app/backend/tests`). Mixing subsets across both trees can fail due intentionally distinct fixtures/network assumptions.",
+  "rca_of_issue": "One exploratory mixed pytest command across both suites failed because fixtures in /app/backend/tests expect different runtime/network setup than /app/backend/tests_local. This is not a product regression and confirms the explicit requirement to run suites separately."
+}

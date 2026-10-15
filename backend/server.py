@@ -16,7 +16,6 @@ import logging
 import os
 from pathlib import Path
 import re
-import tempfile
 from typing import List, Literal, Optional
 import uuid
 import zipfile
@@ -41,7 +40,19 @@ from security import (
     ensure_security_indexes,
     require_admin,
 )
-from storage import APP_NAME, EMERGENT_KEY, delete_object, get_object, init_storage, put_object
+from azure_speech import (
+    AzureSpeechConfigurationError,
+    AzureSpeechUpstreamError,
+    SpeechNotRecognizedError,
+    TTS_RATE,
+    TTS_VOICE,
+    ensure_azure_speech_ready,
+    normalize_audio_to_wav,
+    synthesize_speech,
+    tts_cache_key,
+    transcribe_wav,
+)
+from storage import APP_NAME, delete_object, get_object, init_storage, put_object
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -49,8 +60,8 @@ load_dotenv(ROOT_DIR / ".env")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-client = AsyncIOMotorClient(os.environ.get("MONGO_URL", "mongodb://localhost:27017"))
-db = client[os.environ.get("DB_NAME", "racontelle")]
+client = AsyncIOMotorClient(os.environ["MONGO_URL"])
+db = client[os.environ["DB_NAME"]]
 configure_security(db)
 configure_beta(db)
 configure_quiz(db)
@@ -65,8 +76,8 @@ def get_cors_origins() -> list[str]:
 # Environ 2 h 30 d'enregistrement en qualité haute (AAC ~1 Mo/min) : une
 # narration n'est jamais coupée (BT-09) et doit pouvoir être sauvegardée.
 MAX_AUDIO_BYTES = 150 * 1024 * 1024
-# La transcription Whisper n'accepte que 25 Mo : au-delà, elle est refusée
-# proprement sans empêcher la sauvegarde de l'audio.
+# La transcription Azure reste bornée à 25 Mo avant conversion : au-delà, elle
+# est refusée proprement sans empêcher la sauvegarde de l'audio.
 MAX_TRANSCRIBE_BYTES = 25 * 1024 * 1024
 CONSENT_TEXT_VERSION = "beta-2026-09"
 
@@ -248,6 +259,17 @@ async def tenant_questions(tenant_id: str, include_disabled: bool = False) -> li
 
 @app.on_event("startup")
 async def startup_seed() -> None:
+    running_on_railway = any(
+        os.environ.get(name)
+        for name in ("RAILWAY_ENVIRONMENT", "RAILWAY_ENVIRONMENT_ID", "RAILWAY_PROJECT_ID")
+    )
+    if running_on_railway:
+        ensure_azure_speech_ready()
+    else:
+        try:
+            ensure_azure_speech_ready()
+        except AzureSpeechConfigurationError as exc:
+            logger.warning("Azure Speech non configuré dans cet environnement : %s", exc)
     await ensure_security_indexes()
     await ensure_beta_indexes()
     await ensure_quiz_indexes()
@@ -790,32 +812,33 @@ async def transcribe_capsule(
     if len(data) > MAX_TRANSCRIBE_BYTES:
         raise HTTPException(status_code=413, detail="Récit trop long pour la transcription automatique (25 minutes environ)")
     await consume_quota(user, "stt")
-    from emergentintegrations.llm.openai.speech_to_text import OpenAISpeechToText
-
-    suffix = ".webm" if "webm" in (file.content_type or "") else ".m4a"
-    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-        tmp.write(data)
-        tmp_path = tmp.name
     try:
-        stt = OpenAISpeechToText(api_key=EMERGENT_KEY)
-        # litellm attend un objet fichier (pas un chemin) pour l'upload.
-        with open(tmp_path, "rb") as audio_file:
-            result = await stt.transcribe(
-                file=audio_file,
-                model="whisper-1",
-                response_format="json",
-                language="fr",
-                prompt="Souvenir raconté en français par une personne âgée pendant un atelier mémoire en EHPAD.",
+        wav_data = await run_in_threadpool(
+            normalize_audio_to_wav,
+            data,
+            file.content_type,
+            file.filename,
+        )
+        text = await transcribe_wav(wav_data)
+    except SpeechNotRecognizedError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except AzureSpeechConfigurationError:
+        logger.error("Azure Speech STT non configuré")
+        raise HTTPException(status_code=503, detail="Transcription non configurée")
+    except AzureSpeechUpstreamError as exc:
+        logger.warning("Azure STT indisponible status=%s request_id=%s", exc.status_code, exc.request_id)
+        if exc.status_code == 429:
+            raise HTTPException(
+                status_code=429,
+                detail="Service de transcription temporairement saturé",
+                headers={"Retry-After": exc.retry_after or "30"},
             )
-        text = (getattr(result, "text", None) or str(result)).strip()
-    except Exception as exc:
-        logger.warning("transcription failed: %s", exc)
         raise HTTPException(status_code=502, detail="Transcription momentanément indisponible")
-    finally:
-        os.unlink(tmp_path)
     await db.capsules.update_one(
         {"id": capsule_id, "tenant_id": user.tenant_id},
-        {"$set": {"transcription": text, "transcribed_at": now_iso()}},
+        {"$set": {"transcription": text, "transcribed_at": now_iso(), "transcription_provider": "azure-francecentral"}},
     )
     return {"transcription": text}
 
@@ -1086,26 +1109,31 @@ class TtsRequest(BaseModel):
 @api_router.post("/tts")
 async def text_to_speech(input: TtsRequest, user: AuthUser = Depends(current_user)):
     """Lecture vocale : questions et transcriptions lues à voix haute.
-    Voix « coral », débit posé pour un public senior. Audio mis en cache dans
-    le stockage objet (clé = hash texte+voix+modèle+format)."""
+    Voix Azure AlainNeural, débit posé pour un public senior. Audio mis en
+    cache dans le stockage objet (clé = hash texte+voix+débit+format)."""
     await ensure_feature(user, "voice_reading")
-    from emergentintegrations.llm.openai import OpenAITextToSpeech
     text = re.sub(r"https?://\S+", "", input.text)
     text = re.sub(r"[*_#>~|`]", "", text)
     text = re.sub(r"\s+", " ", text).strip()
     if not text:
         raise HTTPException(status_code=400, detail="Texte vide")
-    key = hashlib.sha256(f"{text}|coral|0.95|tts-1|mp3".encode()).hexdigest()
+    key = tts_cache_key(text)
     doc = await db.tts_cache.find_one({"key": key}, {"_id": 0})
     if not doc:
         await consume_quota(user, "tts")
         try:
-            tts = OpenAITextToSpeech(api_key=EMERGENT_KEY)
-            audio = await tts.generate_speech(
-                text=text, model="tts-1", voice="coral", speed=0.95, response_format="mp3"
-            )
-        except Exception as exc:
-            logger.warning("tts failed: %s", exc)
+            audio = await synthesize_speech(text)
+        except AzureSpeechConfigurationError:
+            logger.error("Azure Speech TTS non configuré")
+            raise HTTPException(status_code=503, detail="Lecture vocale non configurée")
+        except AzureSpeechUpstreamError as exc:
+            logger.warning("Azure TTS indisponible status=%s request_id=%s", exc.status_code, exc.request_id)
+            if exc.status_code == 429:
+                raise HTTPException(
+                    status_code=429,
+                    detail="Service de lecture vocale temporairement saturé",
+                    headers={"Retry-After": exc.retry_after or "30"},
+                )
             raise HTTPException(status_code=502, detail="Lecture vocale momentanément indisponible")
         path = f"{APP_NAME}/tts/{key}.mp3"
         try:
@@ -1113,7 +1141,16 @@ async def text_to_speech(input: TtsRequest, user: AuthUser = Depends(current_use
         except Exception as exc:
             logger.warning("tts storage failed: %s", exc)
             raise HTTPException(status_code=502, detail="Stockage audio momentanément indisponible")
-        await db.tts_cache.insert_one({"key": key, "path": path, "created_at": now_iso()})
+        await db.tts_cache.insert_one(
+            {
+                "key": key,
+                "path": path,
+                "provider": "azure-francecentral",
+                "voice": TTS_VOICE,
+                "rate": TTS_RATE,
+                "created_at": now_iso(),
+            }
+        )
     return {"path": f"/api/tts/{key}.mp3"}
 
 

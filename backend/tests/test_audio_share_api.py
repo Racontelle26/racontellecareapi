@@ -1,4 +1,4 @@
-"""Regression tests for Racontelle backend: audio upload, Whisper transcription,
+"""Regression tests for Racontelle backend: audio upload, Azure transcription,
 family share links, plus base resident/capsule flow."""
 import io
 import math
@@ -108,7 +108,7 @@ class TestAudioUpload:
 
 
 class TestTranscription:
-    """POST /api/capsules/{id}/transcribe -> Whisper via Emergent key"""
+    """POST /api/capsules/{id}/transcribe -> Azure AI Speech France Central"""
 
     def test_transcribe_returns_text_and_persists(self, session, resident, capsule):
         wav = make_wav()

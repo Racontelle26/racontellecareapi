@@ -1,4 +1,4 @@
-"""Tests pour la synthèse vocale (TTS) : POST /api/tts + GET /api/tts/{key}.mp3.
+"""Tests Azure AI Speech TTS : POST /api/tts + GET /api/tts/{key}.mp3.
 
 Couvre : génération (path), lecture audio/mpeg avec magic bytes MP3,
 cache (2e appel identique -> même path), et validation du texte vide.
