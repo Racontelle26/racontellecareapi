@@ -22,13 +22,13 @@ retours, mot de passe oublié). L'ancien serveur ne suffit pas.
 2. Redémarrer le serveur. Au démarrage, il charge les 400 questions automatiquement.
 3. Facultatif : renseigner `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`
    pour l'envoi des codes « Mot de passe oublié ».
-4. Vérifier le déploiement : `https://ehpad-recall.preview.emergentagent.com/api/settings`
+4. Vérifier le déploiement : `https://racontellecareapi-production.up.railway.app/api/settings`
    doit répondre **401** (authentification requise) et non plus **404**.
 
 ## 2. Adresse du serveur
 
-`frontend/eas.json` pointe vers `https://ehpad-recall.preview.emergentagent.com`
-(profils `preview` et `production`). À changer uniquement si le serveur change d'adresse.
+`frontend/eas.json` pointe vers le serveur Railway
+`https://racontellecareapi-production.up.railway.app` (profils `preview` et `production`). À changer uniquement si le serveur change d'adresse.
 Tant que l'ancien serveur tourne, profils et souvenirs se synchronisent quand même ; seules
 les nouvelles fonctions (thèmes du serveur, quiz, réglages, retours) restent indisponibles.
 
