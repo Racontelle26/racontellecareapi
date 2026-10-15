@@ -10,7 +10,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_BACKEND_URL": "https://ehpad-recall.preview.emergentagent.com"
+        "EXPO_PUBLIC_BACKEND_URL": "https://racontellecareapi-production.up.railway.app"
       }
     },
     "production": {
@@ -18,7 +18,7 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_BACKEND_URL": "https://ehpad-recall.preview.emergentagent.com"
+        "EXPO_PUBLIC_BACKEND_URL": "https://racontellecareapi-production.up.railway.app"
       }
     }
   }
