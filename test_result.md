@@ -373,6 +373,9 @@
 ##       - working: "source_verified_pending_deployment"
 ##         agent: "testing"
 ##         comment: "Itération 22 : aucun EXPOSE/fallback/port hardcodé; PORT=8765 donne GET /api/ 200, PORT absent échoue explicitement, 9/9 tests passent. Validation Railway live requise après Save to GitHub."
+##       - working: true
+##         agent: "main"
+##         comment: "Vérification totale : Railway répond 200 cinq fois, OpenAPI publie forgot/reset, accès anonyme refusé, CORS autorisé/inconnu conforme et en-têtes sécurité présents. Frontend réaligné sur l'URL Railway après détection d'une régression vers l'URL de preview."
 ## test_plan_railway_startup_recovery:
 ##   current_focus:
 ##     - "Le Dockerfile installe backend/requirements.txt et vérifie l'import uvicorn pendant le build"
@@ -381,6 +384,41 @@
 ##     - "Les fichiers .env et secrets locaux ne sont jamais copiés dans l'image"
 ##     - "GET /api/ répond 200 après redéploiement"
 ##   test_all: false
+##   test_priority: "critical_first"
+
+## user_problem_statement_total_verification: "Est-ce que l'appli est fonctionnelle maintenant ? Lance une vérification totale."
+## total_verification:
+##   - task: "Recette complète frontend, backend local et production publique Railway"
+##     implemented: true
+##     working: "public_and_local_verified"
+##     files: "/app/frontend, /app/backend, /app/Dockerfile, /app/railway.json"
+##     stuck_count: 0
+##     priority: "critical"
+##     needs_retesting: false
+##     status_history:
+##       - working: "NA"
+##         agent: "main"
+##         comment: "Railway /api/ 200 cinq fois, OpenAPI forgot/reset présent, accès anonyme 401, CORS autorisé/inconnu conforme, partage invalide 404, en-têtes sécurité présents. Backend local 26/26 + unités 12/12; frontend lint, TypeScript, Doctor 20/20 et export web passent. UI mobile et appel forgot réel vers Railway 200 validés. Expo/router alignés sur les patchs SDK 57 et EXPO_PUBLIC_BACKEND_URL restauré vers Railway."
+##       - working: "limited"
+##         agent: "main"
+##         comment: "Aucun compte de test Railway valide n'est documenté : aucun login distant ni appel Azure authentifié ne peut être exécuté. Resend/SMTP n'est pas configuré; la route forgot répond mais la livraison réelle d'email reste non fonctionnelle/différée."
+##       - working: "NA"
+##         agent: "main"
+##         comment: "Correctif post-recette : le mode local est désormais considéré gestionnaire sur la fiche, afin d'afficher profile-remove et permettre la suppression locale protégée par PIN. Le lancement direct server.py exige aussi PORT sans fallback."
+##       - working: "limited"
+##         agent: "testing"
+##         comment: "Itération 23 : backend public Railway 8/8, backend local 26/26, opérateur/déploiement 12/12, frontend auth/local et appel forgot Railway validés. profile-remove était instable/absent en local avant correctif."
+##       - working: true
+##         agent: "main"
+##         comment: "Après correctif, parcours réel 390x844 validé : mode local, création profil, profile-remove visible, création PIN, suppression définitive et nettoyage du profil. Lint, TypeScript et test déploiement 10/10 verts."
+## test_plan_total_verification:
+##   current_focus:
+##     - "Production Railway publique sans 502, cinq réponses /api/ 200"
+##     - "Frontend mobile charge, navigation auth/forgot et appel CORS Railway fonctionnent"
+##     - "Backend local auth, isolation, profils, capsules, audio, hors-ligne, mot de passe et sécurité"
+##     - "Azure France Central et tts_cache préservés par contrats; pas d'appel réel sans compte de test"
+##     - "Lint, TypeScript, Expo Doctor, bundle web et dépendances"
+##   test_all: true
 ##   test_priority: "critical_first"
 
 ## user_problem_statement_security: "Ajouter authentification serveur, isolation par établissement, autorisations, quotas, liens expirables/révocables, PIN sécurisé et CORS strict."

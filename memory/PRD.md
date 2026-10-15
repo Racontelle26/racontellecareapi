@@ -66,6 +66,7 @@ Clarifications utilisateur : offline-first avec stockage local (smartphones/tabl
 - **Procédure opérateur de récupération** : `backend/scripts/reset_user_password.py` permet une réinitialisation idempotente depuis le terminal privé Railway, avec saisie masquée, hash pwdlib identique au login, révocation des sessions, nettoyage des blocages et audit sans secret. L'envoi d'email Resend reste volontairement différé.
 - **Backend mobile Railway** : le frontend utilise `https://racontellecareapi-production.up.railway.app` via `EXPO_PUBLIC_BACKEND_URL`; toutes les routes continuent d'ajouter le préfixe `/api` côté client.
 - **Déploiement backend déterministe** : Railway construit désormais le `Dockerfile` racine, installe explicitement `backend/requirements.txt` (dont uvicorn), conserve `ffmpeg` pour Azure Speech et démarre FastAPI strictement sur `$PORT`. Aucun `EXPOSE`, port hardcodé ou port de repli n'est utilisé ; l'image échoue clairement si Railway ne fournit pas `PORT`. Les fichiers `.env`, tests et données locales sont exclus de l'image.
+- **Recette totale après incident Railway** : API publique Railway stable (5× HTTP 200, aucun 502), CORS/en-têtes/auth anonyme conformes, routes forgot/reset déployées, 46 tests backend réussis, Expo Doctor 20/20, lint/TypeScript/export web réussis. Le frontend appelle de nouveau Railway directement. Le mode local permet maintenant de supprimer proprement un profil local après protection par PIN.
 - Flux complet : Accueil → création de profil (max 10, modal scrollable, bouton accessible clavier) → atelier libre ou 10 questions/jour → enregistrement audio → archive datée par profil.
 - Persistance locale JSON (profils + capsules), synchronisation serveur best-effort.
 - `testID` sur les éléments interactifs ; réponses HTTP `201` conformes.
@@ -84,7 +85,7 @@ Détail critère par critère : `docs/CONFORMITE_CAHIER_DES_CHARGES.md`.
 - **Charte** : bleu encre #2F3E52 couleur prioritaire de Racontelle Care.
 
 ## Backlog priorisé
-- **P0** : Recette complète sur l'environnement de test (le code n'a pas pu être exécuté lors de la mise à niveau) ; configurer SMTP ; importer des extraits musicaux autorisés.
+- **P0** : Configurer Resend/SMTP puis tester la livraison réelle des codes de récupération ; créer un compte Railway de recette dédié pour automatiser login, synchronisation et Azure en production ; importer des extraits musicaux autorisés.
 - **Azure Railway actif** : l’utilisateur confirme le fonctionnement des flux STT/TTS Azure France Central après redéploiement ; aucun fallback simulé n’est utilisé.
 - **P1** : Hébergement UE, sauvegardes automatiques, environnements recette/bêta, builds iOS/Android privés, suivi des crashs.
 - **P1** : Message « niveau sonore insuffisant » (mesure du volume pendant l'enregistrement).

@@ -56,6 +56,12 @@ def test_railway_json_uses_dockerfile_builder_and_api_healthcheck():
     assert data["deploy"]["healthcheckPath"] == "/api/"
 
 
+def test_direct_server_launch_also_requires_platform_port():
+    source = SERVER_PY.read_text(encoding="utf-8")
+    assert 'port=int(os.environ["PORT"])' in source
+    assert 'os.environ.get("PORT"' not in source
+
+
 def test_dockerignore_excludes_sensitive_and_irrelevant_paths():
     source = DOCKERIGNORE.read_text(encoding="utf-8")
     assert "backend/.env" in source

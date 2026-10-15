@@ -916,7 +916,7 @@ export default function Index() {
     {screen === "profile" && selectedResident && <ProfileScreen {...base}
       resident={selectedResident}
       capsules={state.capsules.filter((capsule) => capsule.resident_id === selectedResident.id)}
-      isAdmin={isAdmin}
+      isAdmin={isAdmin || guestMode}
       carnetEnabled={features.carnet_pdf}
       printing={printing}
       busyCapsuleId={busyCapsuleId}
