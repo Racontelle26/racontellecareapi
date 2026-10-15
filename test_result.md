@@ -376,6 +376,9 @@
 ##       - working: true
 ##         agent: "main"
 ##         comment: "Vérification totale : Railway répond 200 cinq fois, OpenAPI publie forgot/reset, accès anonyme refusé, CORS autorisé/inconnu conforme et en-têtes sécurité présents. Frontend réaligné sur l'URL Railway après détection d'une régression vers l'URL de preview."
+##       - working: true
+##         agent: "main"
+##         comment: "Nouvelle régression de fusion détectée : frontend/.env avait rebasculé vers l'URL de preview. EXPO_PUBLIC_BACKEND_URL restaurée exactement vers https://racontellecareapi-production.up.railway.app, sans toucher aux variables packager protégées."
 ## test_plan_railway_startup_recovery:
 ##   current_focus:
 ##     - "Le Dockerfile installe backend/requirements.txt et vérifie l'import uvicorn pendant le build"
