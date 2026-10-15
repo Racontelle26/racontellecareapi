@@ -1,0 +1,49 @@
+{
+  "summary": "Frontend mobile regression validated for ResidentFormSheet fix at 390x844. Local-mode flow passed: add resident modal opens, fields/buttons render and interact, profile creation succeeds, and edit modal renders without crash. No console/page error contains 'Unexpected text node' or 'A text node cannot be a child of a <View>'. Lint and TypeScript checks pass.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Cleanup test profile in local mode",
+        "issue": "Deletion/cleanup path not available in tested local non-admin session (expected limitation); test profile remains local-only.",
+        "affected_testIDs": [
+          "profile-remove"
+        ]
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/frontend/src/components/modals.tsx",
+    "/app/frontend/app/index.tsx",
+    "/app/test_reports/screens/iter17/add_resident_modal.jpeg",
+    "/app/test_reports/screens/iter17/edit_resident_modal.jpeg",
+    "/root/.emergent/automation_output/20261015_112152/console_20261015_112152.log"
+  ],
+  "action_items": [
+    "Optional: run one admin-mode cleanup pass to remove local profile 'TEST Modal Iter17' if strict environment cleanliness is required.",
+    "No fix required for the reported Unexpected text node bug; regression test passed."
+  ],
+  "critical_code_review_comments": [
+    "ResidentFormSheet JSX around the photo helper text now renders without creating a stray text node under View.",
+    "All targeted interactive elements in the resident modal have testID hooks and are automatable in mobile web preview.",
+    "No React Native red-screen symptom observed during add/edit resident modal flows."
+  ],
+  "updated_files": [
+    "/app/test_reports/iteration_17.json"
+  ],
+  "success_rate": {
+    "backend": "NA (frontend-only request)",
+    "frontend": "100% for requested modal/runtime checks"
+  },
+  "seed_data_creation": "Created local test profile: TEST Modal Iter17 (local-mode data).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "If cleanup is needed, execute removal in an authenticated admin flow (profile-remove path is role-gated).",
+  "rca_of_issue": "Original crash cause was a stray JSX whitespace text node rendered as direct child of <View> in ResidentFormSheet around line ~92. After closing-tag formatting correction, reproducer no longer triggers console error on add/edit modals in 390x844 mobile viewport."
+}

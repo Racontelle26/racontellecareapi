@@ -89,7 +89,8 @@ function ResidentFormSheet({ visible, resident, onPickPhoto, onClose, onSubmit, 
       <View style={styles.largeAvatar}>{draft.photo_uri ? <Image testID="resident-photo-preview" source={{ uri: draft.photo_uri }} style={{ width: 80, height: 80, borderRadius: 40 }} contentFit="cover" /> : <Icon name="camera-outline" color={colors.onBrandTertiary} size={28} />}</View>
       <View style={{ flex: 1, gap: 6 }}>
         <Pressable testID="resident-photo-button" accessibilityRole="button" onPress={() => void onPickPhoto().then((uri) => uri && set({ photo_uri: uri }))} style={({ pressed }) => [styles.secondaryButton, { minHeight: 48 }, pressed && styles.pressed]}><Icon name="image-outline" color={colors.brandPrimary} size={20} /><Text style={[styles.secondaryText, { fontSize: 14 }]}>{draft.photo_uri ? "Changer la photo" : "Ajouter une photo"}</Text></Pressable>
-        <Text style={styles.small}>Facultative, elle reste sur cet appareil.</Text>      </View>
+        <Text style={styles.small}>Facultative, elle reste sur cet appareil.</Text>
+      </View>
     </View>
     <TextInput testID="resident-initial-input" value={draft.last_initial} onChangeText={(value) => set({ last_initial: value })} placeholder="Initiale ou nom (facultatif)" placeholderTextColor={colors.muted} style={styles.input} maxLength={40} />
     <TextInput testID="resident-unit-input" value={draft.unit} onChangeText={(value) => set({ unit: value })} placeholder="Unité de vie (facultatif)" placeholderTextColor={colors.muted} style={styles.input} maxLength={60} />

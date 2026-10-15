@@ -203,6 +203,34 @@
 ##   test_all: true
 ##   test_priority: "critical_first"
 
+## user_problem_statement_resident_modal: "Corriger l'erreur Unexpected text node: A text node cannot be a child of a View dans ResidentFormSheet."
+## resident_modal_runtime:
+##   - task: "Supprimer le nœud texte parasite dans la modale Nouveau profil"
+##     implemented: true
+##     working: true
+##     files: "/app/frontend/src/components/modals.tsx"
+##     stuck_count: 0
+##     priority: "critical"
+##     needs_retesting: false
+##     status_history:
+##       - working: false
+##         agent: "user"
+##         comment: "Capture mobile : Unexpected text node dans ResidentFormSheet, ligne 90."
+##       - working: "NA"
+##         agent: "main"
+##         comment: "Espaces JSX entre </Text> et </View> déplacés sur une nouvelle ligne. Recherche globale sans autre motif, ESLint/TypeScript verts, modale ouverte en 390x844 sans erreur console."
+##       - working: true
+##         agent: "testing"
+##         comment: "Itération 17 : création et modification du profil validées en 390x844, tous les contrôles interactifs fonctionnent, aucune erreur Unexpected text node, lint et TypeScript verts."
+## test_plan_resident_modal:
+##   current_focus:
+##     - "Ouvrir Nouveau profil sans écran d'erreur"
+##     - "Vérifier photo, champs, consentement et bouton Créer le profil"
+##     - "Créer un profil local puis rouvrir la modale de modification"
+##     - "Aucune erreur Unexpected text node dans la console"
+##   test_all: false
+##   test_priority: "critical_first"
+
 ## user_problem_statement_brand: "Remplace le nom de Ehpad recall par Racontelle Care partout."
 ## branding:
 ##   - task: "Renommage complet visible en Racontelle Care"
