@@ -496,3 +496,26 @@
 ##     message: "eas.json preview+production basculé Railway. Appel optionnel /auth/refresh retiré car le Railway déployé ne l'expose pas; /auth/me conserve la session jusqu'à expiration normale. Auto-test login+reload sans 404 ni ancien backend; lint/tsc OK. Retest final requis."
 ##   - agent: "testing"
 ##     message: "Itération 22 finale: .env/eas Railway, CORS, login, signup, reload, réseau, console, lint/tsc et 6 tests backend validés. Aucun ancien backend ni auth/refresh; MOCKED APIs NONE."
+
+## user_problem_statement_13: "Vérifier OpenAI Whisper/TTS dans Racontelle Famille et remplacer les fonctionnalités présentes par Azure AI Speech France Central; ne rien ajouter si TTS absent."
+## backend_13:
+##   - task: "Remplacer Whisper par Azure Speech STT"
+##     implemented: true
+##     working: true
+##     files: ["/app/backend/server.py", "/app/backend/Dockerfile", "/app/backend/.env.example", "/app/backend/requirements-prod.txt"]
+##     priority: "critical"
+##     needs_retesting: true
+##   - task: "Auditer la synthèse vocale TTS"
+##     implemented: false
+##     working: "NA"
+##     priority: "not-present"
+##     needs_retesting: true
+##     note: "Aucun appel TTS OpenAI ou autre n'existe dans Racontelle Famille; aucun TTS Azure ajouté conformément à la demande."
+## metadata_13:
+##   created_by: "main_agent"
+##   version: "2.3"
+##   test_sequence: 23
+##   run_ui: false
+## agent_communication_13:
+##   - agent: "main"
+##     message: "OpenAI Whisper supprimé. Azure REST STT francecentral detailed, clé env, header exact, WAV PCM16 16k mono, segmentation 55s jusqu'à 2h, timeouts/401/403/429/5xx, fallback manuel sans clé. Docker installe ffmpeg; openai retiré prod. TTS absent donc non ajouté. Test conversion m4a 61s=>2 chunks conformes; 4/4 tests Azure; lint/compile/API OK. Live Azure après redeploy Railway."

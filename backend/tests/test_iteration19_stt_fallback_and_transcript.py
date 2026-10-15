@@ -383,7 +383,7 @@ class _FakeDbForChapter:
 async def test_startup_moves_pending_to_unavailable_when_no_stt_key(monkeypatch):
     fake_db = _FakeDbForStartup()
     monkeypatch.setattr(server, "db", fake_db)
-    monkeypatch.setattr(server, "STT_API_KEY", None)
+    monkeypatch.setattr(server, "AZURE_SPEECH_KEY", "")
     monkeypatch.setattr(server, "parse_questions", lambda: [])
     monkeypatch.setattr(server, "init_storage", lambda: {"ok": True})
 

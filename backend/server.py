@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
 import os
 import re
+import asyncio
 import logging
 import secrets
 import hashlib
 import ipaddress
+import shutil
 import tempfile
 import time
 from collections import defaultdict, deque
@@ -32,9 +34,8 @@ import requests
 
 try:  # Emergent proxy (optional): only used when no direct provider key is configured
     from emergentintegrations.llm.chat import LlmChat, UserMessage
-    from emergentintegrations.llm.openai.speech_to_text import OpenAISpeechToText
 except ImportError:
-    LlmChat = OpenAISpeechToText = None
+    LlmChat = None
 
     class UserMessage:  # same shape as the Emergent message, so the proxy path stays testable without the package
         def __init__(self, text: str):
@@ -89,9 +90,16 @@ STORAGE_URL = INTEGRATION_PROXY_URL + "/objstore/api/v1/storage"
 _storage_key = None
 _s3_client = None
 
-# AI: Anthropic (book chapters) and OpenAI Whisper (transcription)
+# AI: Anthropic (book chapters) and Azure AI Speech (transcription)
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
-STT_API_KEY = os.environ.get("OPENAI_API_KEY") or os.environ.get("EMERGENT_STT_KEY")
+AZURE_SPEECH_KEY = (os.environ.get("AZURE_SPEECH_KEY") or "").strip()
+AZURE_SPEECH_REGION = (os.environ.get("AZURE_SPEECH_REGION") or "francecentral").strip().lower()
+AZURE_STT_URL = (
+    f"https://{AZURE_SPEECH_REGION}.stt.speech.microsoft.com/"
+    "speech/recognition/conversation/cognitiveservices/v1?language=fr-FR&format=detailed"
+)
+AZURE_STT_CHUNK_SECONDS = 55
+AZURE_STT_MAX_CHUNKS = 132  # covers the app's existing two-hour audio limit
 
 MAX_AUDIO_BYTES = 50 * 1024 * 1024
 MAX_PHOTO_BYTES = 10 * 1024 * 1024
@@ -268,24 +276,110 @@ def _get_emergent_object(path: str):
 
 
 # ---------------------------------------------------------------------------
-# AI helpers — Whisper transcription + Claude "roman" chapter
+# AI helpers — Azure Speech transcription + Claude "roman" chapter
 # ---------------------------------------------------------------------------
 BOOK_MODEL_PROVIDER = "anthropic"
 BOOK_MODEL_NAME = os.environ.get("BOOK_MODEL", "claude-sonnet-5")
 
 
-async def _speech_to_text(fh) -> str:
-    if os.environ.get("OPENAI_API_KEY"):
-        from openai import AsyncOpenAI
-        stt_client = AsyncOpenAI(api_key=os.environ["OPENAI_API_KEY"])
-        resp = await stt_client.audio.transcriptions.create(
-            file=fh, model="whisper-1", response_format="text", language="fr")
-    else:
-        if OpenAISpeechToText is None:
-            raise RuntimeError("No speech-to-text provider installed")
-        stt = OpenAISpeechToText(api_key=STT_API_KEY)
-        resp = await stt.transcribe(file=fh, model="whisper-1", response_format="text", language="fr")
-    return resp if isinstance(resp, str) else (getattr(resp, "text", None) or str(resp))
+def azure_speech_available() -> bool:
+    return bool(AZURE_SPEECH_KEY and AZURE_SPEECH_REGION)
+
+
+def azure_stt_headers() -> dict:
+    return {
+        "Ocp-Apim-Subscription-Key": AZURE_SPEECH_KEY,
+        "Content-Type": "audio/wav",
+        "Accept": "application/json",
+    }
+
+
+def parse_azure_stt_response(payload: dict) -> str:
+    if payload.get("RecognitionStatus") == "NoMatch":
+        return ""
+    nbest = payload.get("NBest") or []
+    return ((nbest[0].get("Display") if nbest else None) or payload.get("DisplayText") or "").strip()
+
+
+def azure_transcription_error_code(error: Exception) -> str:
+    message = str(error).lower()
+    if "authentification azure" in message:
+        return "azure_auth"
+    if "temporairement limité" in message:
+        return "azure_rate_limit"
+    if "azure speech indisponible" in message:
+        return "azure_service"
+    if "rejeté l’audio" in message:
+        return "audio_rejected"
+    if "réponse azure speech invalide" in message:
+        return "azure_invalid_response"
+    if "ffmpeg" in message or "conversion audio" in message:
+        return "audio_conversion"
+    if isinstance(error, (httpx.TimeoutException, httpx.NetworkError)):
+        return "azure_network"
+    if isinstance(error, requests.RequestException):
+        return "storage_download"
+    return "unknown"
+
+
+async def _convert_to_wav_chunks(source_path: str, output_dir: str) -> List[Path]:
+    """Convert any accepted recording to Azure-compatible WAV PCM 16 kHz mono chunks."""
+    if shutil.which("ffmpeg") is None:
+        raise RuntimeError("FFmpeg indisponible pour la conversion Azure Speech")
+    pattern = str(Path(output_dir) / "chunk-%03d.wav")
+    cmd = [
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-threads", "1",
+        "-i", source_path, "-map_metadata", "-1", "-vn", "-ac", "1", "-ar", "16000",
+        "-sample_fmt", "s16", "-f", "segment", "-segment_time", str(AZURE_STT_CHUNK_SECONDS),
+        "-reset_timestamps", "1", "-segment_format", "wav", "-y", pattern,
+    ]
+    process = await asyncio.create_subprocess_exec(
+        *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+    )
+    try:
+        _, stderr = await asyncio.wait_for(process.communicate(), timeout=300)
+    except asyncio.TimeoutError:
+        process.kill()
+        await process.wait()
+        raise RuntimeError("Conversion audio Azure Speech trop longue")
+    if process.returncode != 0:
+        reason = stderr[-300:].decode(errors="ignore").strip()
+        raise RuntimeError(f"Conversion audio Azure Speech impossible: {reason}")
+    chunks = sorted(Path(output_dir).glob("chunk-*.wav"))
+    if not chunks:
+        raise RuntimeError("Conversion audio Azure Speech vide")
+    if len(chunks) > AZURE_STT_MAX_CHUNKS:
+        raise RuntimeError("Enregistrement trop long pour la transcription automatique")
+    return chunks
+
+
+async def _azure_speech_to_text(source_path: str) -> str:
+    if not azure_speech_available():
+        raise RuntimeError("Azure Speech non configuré")
+    headers = azure_stt_headers()
+    timeout = httpx.Timeout(connect=10, read=60, write=60, pool=10)
+    parts: List[str] = []
+    with tempfile.TemporaryDirectory(prefix="racontelle-azure-stt-") as output_dir:
+        chunks = await _convert_to_wav_chunks(source_path, output_dir)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            for chunk in chunks:
+                response = await client.post(AZURE_STT_URL, headers=headers, content=chunk.read_bytes())
+                if response.status_code in (401, 403):
+                    raise RuntimeError("Authentification Azure Speech refusée")
+                if response.status_code == 429:
+                    raise RuntimeError("Azure Speech temporairement limité")
+                if response.status_code >= 500:
+                    raise RuntimeError("Azure Speech indisponible")
+                if response.status_code >= 400:
+                    raise RuntimeError("Azure Speech a rejeté l’audio")
+                try:
+                    payload = response.json()
+                except ValueError as exc:
+                    raise RuntimeError("Réponse Azure Speech invalide") from exc
+                text = parse_azure_stt_response(payload)
+                if text.strip():
+                    parts.append(text.strip())
+    return " ".join(parts).strip()
 
 
 def book_ai_available() -> bool:
@@ -317,8 +411,8 @@ async def _write_chapter_text(system: str, prompt: str, circle_id: str) -> str:
 
 
 async def transcribe_capsule(capsule_id: str, storage_path: str, ext: str):
-    """Background task: download the audio, transcribe with Whisper, store the transcript."""
-    if not STT_API_KEY:
+    """Background task: convert the audio, transcribe with Azure Speech, store the transcript."""
+    if not azure_speech_available():
         await db.capsules.update_one({"id": capsule_id}, {"$set": {"transcript_status": "unavailable"}})
         return
     tmp = None
@@ -327,17 +421,21 @@ async def transcribe_capsule(capsule_id: str, storage_path: str, ext: str):
         with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as f:
             f.write(content)
             tmp = f.name
-        with open(tmp, "rb") as fh:
-            text = await _speech_to_text(fh)
+        text = await _azure_speech_to_text(tmp)
         text = (text or "").strip()
         await db.capsules.update_one(
             {"id": capsule_id},
-            {"$set": {"transcript": text, "transcript_status": "done" if text else "failed"}},
+            {"$set": {"transcript": text, "transcript_status": "done" if text else "failed"},
+             "$unset": {"transcript_error_code": ""}},
         )
-        logger.info("Transcribed capsule %s (%d chars)", capsule_id, len(text))
+        logger.info("Azure Speech transcribed capsule %s (%d chars)", capsule_id, len(text))
     except Exception as e:  # noqa
-        logger.error("Transcription failed for %s: %s", capsule_id, e)
-        await db.capsules.update_one({"id": capsule_id}, {"$set": {"transcript_status": "failed"}})
+        error_code = azure_transcription_error_code(e)
+        logger.error("Transcription failed for %s [%s]: %s", capsule_id, error_code, e)
+        await db.capsules.update_one(
+            {"id": capsule_id},
+            {"$set": {"transcript_status": "failed", "transcript_error_code": error_code}},
+        )
     finally:
         if tmp:
             try:
@@ -1388,10 +1486,10 @@ async def create_capsule(
         "photos": photos_list, "photo_path": None, "photo_mime": None,
         "duration_sec": duration_sec, "recorded_at": now().isoformat(), "created_at": now().isoformat(),
         "status": "saved", "transcript": manual_transcript or None,
-        "transcript_status": "done" if manual_transcript else ("pending" if STT_API_KEY else "unavailable"),
+        "transcript_status": "done" if manual_transcript else ("pending" if azure_speech_available() else "unavailable"),
     }
     await db.capsules.insert_one(capsule)
-    if not manual_transcript and STT_API_KEY:
+    if not manual_transcript and azure_speech_available():
         background_tasks.add_task(transcribe_capsule, cid, path, ext)
     if daily_question_id:
         await db.daily_states.update_one(
@@ -1515,7 +1613,8 @@ async def update_capsule_transcript(capsule_id: str, body: CapsuleTranscriptIn, 
     transcript = body.transcript.strip()
     await db.capsules.update_one(
         {"id": capsule_id},
-        {"$set": {"transcript": transcript, "transcript_status": "done", "updated_at": now().isoformat()}},
+        {"$set": {"transcript": transcript, "transcript_status": "done", "updated_at": now().isoformat()},
+         "$unset": {"transcript_error_code": ""}},
     )
     updated = await db.capsules.find_one({"id": capsule_id}, {"_id": 0})
     return await _enrich_capsule(updated)
@@ -1597,10 +1696,13 @@ async def retranscribe_capsule(capsule_id: str, background_tasks: BackgroundTask
     c = await db.capsules.find_one({"id": capsule_id, "circle_id": member["circle_id"], "status": "saved"})
     if not c:
         raise HTTPException(404, "Souvenir introuvable")
-    if not STT_API_KEY:
-        raise HTTPException(503, "Transcription automatique temporairement indisponible. Ajoutez le texte du souvenir manuellement.")
+    if not azure_speech_available():
+        raise HTTPException(503, "Azure Speech est temporairement indisponible. Ajoutez le texte du souvenir manuellement.")
     ext = Path(c["storage_path"]).suffix.lstrip(".") or "m4a"
-    await db.capsules.update_one({"id": capsule_id}, {"$set": {"transcript_status": "pending"}})
+    await db.capsules.update_one(
+        {"id": capsule_id},
+        {"$set": {"transcript_status": "pending"}, "$unset": {"transcript_error_code": ""}},
+    )
     background_tasks.add_task(transcribe_capsule, capsule_id, c["storage_path"], ext)
     return {"ok": True, "transcript_status": "pending"}
 
@@ -2091,7 +2193,7 @@ async def startup():
         logger.warning("question metadata backfill skipped: %s", e)
     import asyncio
     asyncio.get_event_loop().create_task(_daily_email_loop())
-    if not STT_API_KEY:
+    if not azure_speech_available():
         await db.capsules.update_many(
             {"status": "saved", "transcript_status": "pending"},
             {"$set": {"transcript_status": "unavailable"}},

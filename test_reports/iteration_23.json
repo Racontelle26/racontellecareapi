@@ -1,0 +1,45 @@
+{
+  "summary": "Backend-only verification for Azure STT migration completed: targeted static/runtime audit + focused pytest (6/6 pass) + local API health + Python compile checks.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "startup lifecycle",
+        "issue": "FastAPI `@app.on_event` startup/shutdown hooks emit deprecation warnings (lifespan migration recommended)."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_azure_speech_migration.py",
+    "/app/backend/tests/test_iteration19_stt_fallback_and_transcript.py",
+    "/app/test_reports/pytest/pytest_iteration23_azure_migration.xml"
+  ],
+  "action_items": [
+    "Redeploy backend to Railway, then run live Azure STT smoke tests with real `AZURE_SPEECH_KEY` and `AZURE_SPEECH_REGION=francecentral`.",
+    "Do not conclude production Azure behavior from preview backend runs that are rate-limited (429) or old-storage-failing (500)."
+  ],
+  "critical_code_review_comments": [
+    "No runtime OpenAI Whisper STT/TTS usage found in backend runtime code; `requirements-prod.txt` has no `openai` dependency.",
+    "No runtime TTS/speech synthesis flow exists and no Azure TTS path was added (aligned with requested scope: STT only).",
+    "Azure STT configuration and parsing match spec: detailed conversation endpoint, expected headers, `NBest[0].Display` then `DisplayText`, `NoMatch` => empty string.",
+    "Audio conversion path enforces ffmpeg WAV PCM s16 mono 16k, 55s segmentation, ordered chunk merge, and max 132 chunks; temp files are cleaned up."
+  ],
+  "updated_files": [
+    "/app/test_reports/iteration_23.json"
+  ],
+  "success_rate": {
+    "backend": "100% (6/6 targeted tests)",
+    "frontend": "NA (backend-only request)"
+  },
+  "seed_data_creation": "None",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Executed only local/static-focused checks to avoid old preview backend noise. Live Azure integration was NOT executed because Azure key is Railway-only and code requires redeploy before production validation.",
+  "rca_of_issue": "Previous 429/500 failures came from old preview backend constraints (rate limit/storage) and are not indicative of this local Azure STT migration path."
+}

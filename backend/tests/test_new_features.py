@@ -1,4 +1,4 @@
-# Tests for the 3 new features: Whisper transcription, Livre Romancé (Claude), Album search
+# Tests for the 3 new features: Azure Speech transcription, Livre Romancé (Claude), Album search
 import time
 import pytest
 from tests.conftest import wav_bytes
@@ -21,7 +21,7 @@ def _upload_capsule(base_url, session, ctx, title="Souvenir test"):
     return r.json(), dq
 
 
-# ------- Feature 1: Auto-transcription (Whisper) -------
+# ------- Feature 1: Auto-transcription (Azure Speech) -------
 class TestTranscription:
     def test_capsule_upload_starts_pending_and_leaves_pending(self, base_url, session, owner_ctx):
         cap, _ = _upload_capsule(base_url, session, owner_ctx, title="Cap pour transcription")

@@ -83,3 +83,9 @@ memory/test_credentials.md
 
 # Mobile development
 android-sdk/racontelle.zip
+.env
+.env.*
+credentials.json
+*.key
+.credentials
+racontelle.zip
