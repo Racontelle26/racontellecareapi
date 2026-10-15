@@ -1,0 +1,43 @@
+{
+  "summary": "Backend-only deployment recovery validation completed. Dockerfile/Railway contracts pass, local uvicorn startup works, and Azure/auth route contracts are preserved.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_railway_startup_recovery_iter21.py",
+    "/app/test_reports/pytest/pytest_results_iter21_railway_startup.xml",
+    "/tmp/iter21_uvicorn.log"
+  ],
+  "action_items": [
+    "No code changes required for this scope.",
+    "Deploy the current revision to Railway when ready to validate runtime there.",
+    "Environment note: Docker CLI is unavailable here, so image build/run could not be executed directly in this workspace."
+  ],
+  "critical_code_review_comments": [
+    "Dockerfile explicitly installs backend/requirements.txt (including uvicorn), verifies uvicorn import, installs ca-certificates+ffmpeg, and starts on dynamic PORT via exec uvicorn server:app --host 0.0.0.0 --port ${PORT:-8001}.",
+    "railway.json correctly uses builder DOCKERFILE with dockerfilePath=\"Dockerfile\" and healthcheckPath=\"/api/\"; no conflicting Nixpacks startCommand remains.",
+    ".dockerignore excludes backend/.env, frontend, and tests from image context; no production URL hardcoded in Dockerfile/railway.json.",
+    "Azure Speech contracts preserved: region francecentral via env validation, voice fr-FR-AlainNeural, rate -5%, STT/TTS routes present, and tts_cache lookup+insert still in server flow.",
+    "Auth recovery routes remain registered locally: POST /api/auth/password/forgot and POST /api/auth/password/reset."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_railway_startup_recovery_iter21.py",
+    "/app/test_reports/iteration_21.json"
+  ],
+  "success_rate": {
+    "backend": "100% (9/9 targeted pytest + local uvicorn /api/ 200 + pip check/ffmpeg checks passed)",
+    "frontend": "NA (backend-only request)"
+  },
+  "seed_data_creation": "None.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "No blocker found in deployment recovery scope. Docker binary absence is an environment limitation, not a Dockerfile defect.",
+  "rca_of_issue": "Consistent with monorepo detection failure: root-level Nixpacks did not install backend dependencies, causing uvicorn missing at runtime. Current Dockerfile-based build path addresses this by explicit backend requirements installation and deterministic CMD startup."
+}

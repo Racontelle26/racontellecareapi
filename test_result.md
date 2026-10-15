@@ -345,6 +345,35 @@
 ##   - agent: "testing"
 ##     message: "Validation frontend réussie à 100 %, aucun problème bloquant. Rapport : /app/test_reports/iteration_10.json."
 
+## user_problem_statement_deployment_outage: "Après un force push sur main, Railway boucle sur uvicorn: command not found et le backend est hors service."
+## railway_startup_recovery:
+##   - task: "Rendre le build et le démarrage Railway déterministes"
+##     implemented: true
+##     working: "pending_deployment"
+##     files: "/app/Dockerfile, /app/.dockerignore, /app/railway.json"
+##     stuck_count: 1
+##     priority: "critical"
+##     needs_retesting: true
+##     status_history:
+##       - working: false
+##         agent: "user"
+##         comment: "Production indisponible après force push; logs Railway: /bin/bash: line 1: uvicorn: command not found."
+##       - working: "NA"
+##         agent: "main"
+##         comment: "Cause racine: Nixpacks lancé à la racine du monorepo ne détecte pas backend/requirements.txt. Dockerfile racine ajouté avec installation explicite des dépendances et ffmpeg; startCommand Nixpacks supprimée au profit du CMD Docker sur PORT."
+##       - working: "source_verified_pending_deployment"
+##         agent: "testing"
+##         comment: "Itération 21 : 9/9 contrats déploiement/Azure/auth passent, pip check et ffmpeg passent, uvicorn démarre réellement et GET /api/ répond 200. Docker CLI indisponible localement; validation Railway finale requise après Save to GitHub."
+## test_plan_railway_startup_recovery:
+##   current_focus:
+##     - "Le Dockerfile installe backend/requirements.txt et vérifie l'import uvicorn pendant le build"
+##     - "ffmpeg et les certificats HTTPS sont présents pour Azure Speech"
+##     - "Railway utilise le builder DOCKERFILE et le CMD écoute 0.0.0.0:$PORT"
+##     - "Les fichiers .env et secrets locaux ne sont jamais copiés dans l'image"
+##     - "GET /api/ répond 200 après redéploiement"
+##   test_all: false
+##   test_priority: "critical_first"
+
 ## user_problem_statement_security: "Ajouter authentification serveur, isolation par établissement, autorisations, quotas, liens expirables/révocables, PIN sécurisé et CORS strict."
 ## security:
 ##   - task: "Sécurisation complète multi-établissements"
