@@ -23,6 +23,9 @@ for key, value in {
     "CORS_ORIGINS": "http://localhost:8081,http://localhost:8002",
     "INTEGRATION_PROXY_URL": "http://storage.invalid",
     "EMERGENT_LLM_KEY": "cle-de-test",
+    "RESEND_API_KEY": "re_email_test_key",
+    "RESEND_FROM_EMAIL": "no-reply@racontellecare.com",
+    "PASSWORD_RESET_URL": "https://ehpad-recall.preview.emergentagent.com",
 }.items():
     os.environ.setdefault(key, value)
 
@@ -65,13 +68,11 @@ for module in (storage, server, quiz):
         setattr(module, "init_storage", lambda: "cle-stockage-test")
 
 
-def _capture_code(to, name, code):
+async def _capture_code(to, name, code, minutes):
     SENT_CODES[to] = code
-    print(f"[email simulé] code de réinitialisation pour {to} : {code}", flush=True)
 
 
-security.SMTP_HOST = "smtp.test"
-security._send_reset_email = _capture_code
+security.send_password_reset_email = _capture_code
 
 app = server.app
 

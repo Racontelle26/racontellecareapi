@@ -2,24 +2,23 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from email.message import EmailMessage
 import hashlib
 import hmac
 import logging
 import os
 import secrets
-import smtplib
 import uuid
 from typing import Optional
 
 import jwt
 from dotenv import load_dotenv
-from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, Header, HTTPException, Request, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, EmailStr, Field
 from pwdlib import PasswordHash
 from pymongo.errors import DuplicateKeyError
-from starlette.concurrency import run_in_threadpool
+
+from email_service import EmailConfigurationError, EmailDeliveryError, send_password_reset_email
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -533,20 +532,13 @@ async def create_member(body: MemberCreate, admin: AuthUser = Depends(require_ad
 #    toujours identique pour ne pas révéler quelles adresses ont un compte.
 # 2. POST /api/auth/password/reset : code + nouveau mot de passe. Toutes les
 #    sessions ouvertes de l'utilisateur sont fermées.
-# Sans serveur SMTP configuré, aucun email ne part : l'administrateur peut
-# alors définir un mot de passe temporaire pour un membre (voir plus bas).
+# Sans service email configuré, l'administrateur peut définir un mot de passe
+# temporaire pour un membre (voir plus bas).
 # ---------------------------------------------------------------------------
 
 RESET_MINUTES = 30
 RESET_MAX_ATTEMPTS = 5
 RESET_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"  # sans 0/O, 1/I/L : lisible et dictable
-SMTP_HOST = os.environ.get("SMTP_HOST", "").strip()
-SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
-SMTP_USER = os.environ.get("SMTP_USER", "").strip()
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
-SMTP_FROM = os.environ.get("SMTP_FROM", SMTP_USER or "no-reply@racontelle.fr").strip()
-
-
 class ForgotRequest(BaseModel):
     email: EmailStr
 
@@ -569,27 +561,6 @@ def _code_hash(reset_id: str, code: str) -> str:
     return hashlib.sha256(f"{reset_id}:{_normalize_code(code)}".encode()).hexdigest()
 
 
-def _send_reset_email(to: str, full_name: str, code: str) -> None:
-    message = EmailMessage()
-    message["Subject"] = "Racontelle Care — votre code de réinitialisation"
-    message["From"] = SMTP_FROM
-    message["To"] = to
-    message.set_content(
-        f"Bonjour {full_name},\n\n"
-        f"Voici votre code pour choisir un nouveau mot de passe Racontelle Care :\n\n"
-        f"    {code}\n\n"
-        f"Ce code est valable {RESET_MINUTES} minutes et ne peut servir qu'une fois.\n"
-        "Si vous n'êtes pas à l'origine de cette demande, ignorez simplement ce message : "
-        "votre mot de passe actuel reste valable.\n\n"
-        "L'équipe Racontelle Care\n"
-    )
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20) as smtp:
-        smtp.starttls()
-        if SMTP_USER:
-            smtp.login(SMTP_USER, SMTP_PASSWORD)
-        smtp.send_message(message)
-
-
 async def _audit_raw(tenant_id: str, user_id: str, action: str, object_type: str, object_id: Optional[str], details: dict) -> None:
     await db.audit_logs.insert_one(
         {
@@ -607,12 +578,21 @@ async def _audit_raw(tenant_id: str, user_id: str, action: str, object_type: str
 
 FORGOT_MESSAGE = {
     "ok": True,
-    "message": "Si un compte existe pour cette adresse, un code vient d’être envoyé. Pensez à vérifier les courriers indésirables.",
+    "message": "Si un compte existe pour cette adresse, un lien et un code viennent d’être envoyés. Pensez à vérifier les courriers indésirables.",
 }
 
 
+async def _deliver_reset_email(to: str, full_name: str, code: str) -> None:
+    try:
+        await send_password_reset_email(to, full_name, code, RESET_MINUTES)
+    except EmailConfigurationError:
+        logger.warning("Service Resend non configuré : réinitialisation non envoyée")
+    except EmailDeliveryError:
+        logger.warning("Service Resend indisponible : réinitialisation non envoyée")
+
+
 @auth_router.post("/password/forgot")
-async def forgot_password(body: ForgotRequest):
+async def forgot_password(body: ForgotRequest, background_tasks: BackgroundTasks):
     email = body.email.lower().strip()
     # Même garde que la connexion : 10 demandes par quart d'heure et par adresse.
     await _assert_login_rate(email)
@@ -634,13 +614,12 @@ async def forgot_password(body: ForgotRequest):
             "expires_at": now() + timedelta(minutes=RESET_MINUTES),
         }
     )
-    if not SMTP_HOST:
-        logger.warning("SMTP non configuré : code de réinitialisation non envoyé pour l'utilisateur %s", user["id"])
-        return FORGOT_MESSAGE
-    try:
-        await run_in_threadpool(_send_reset_email, email, user["full_name"], f"{code[:4]}-{code[4:]}")
-    except Exception as exc:  # noqa: BLE001 - on ne révèle rien au client
-        logger.warning("envoi du code de réinitialisation impossible : %s", exc)
+    background_tasks.add_task(
+        _deliver_reset_email,
+        user["email_lower"],
+        user["full_name"],
+        f"{code[:4]}-{code[4:]}",
+    )
     return FORGOT_MESSAGE
 
 

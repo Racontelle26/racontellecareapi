@@ -421,6 +421,42 @@
 ##   test_all: true
 ##   test_priority: "critical_first"
 
+## user_problem_statement_resend: "Configurer Resend officiel avec lien web + code vers l'écran Nouveau mot de passe."
+## resend_password_recovery:
+##   - task: "Envoyer les récupérations de mot de passe via l'API officielle Resend"
+##     implemented: true
+##     working: "source_verified_pending_railway_env"
+##     files: "/app/backend/email_service.py, /app/backend/security.py, /app/frontend/app/index.tsx, /app/frontend/src/components/auth-screen.tsx"
+##     stuck_count: 0
+##     priority: "high"
+##     needs_retesting: true
+##     status_history:
+##       - working: "NA"
+##         agent: "main"
+##         comment: "Email transactionnel fixe Racontelle Care, destinataire lu uniquement en base, lien HTTPS + code one-shot, clé backend seulement, garde anti-phishing et réponse anti-énumération. Lien profond 390x844 validé : écran reset ouvert, email et code préremplis."
+##       - working: "MOCKED"
+##         agent: "main"
+##         comment: "42 tests backend passent; le client HTTP email est simulé et aucune livraison réelle n'a été demandée. RESEND_API_KEY doit être configuré dans Railway avant activation réelle."
+##       - working: "NA"
+##         agent: "main"
+##         comment: "Le proxy Emergent non documenté a été entièrement retiré. Implémentation basculée vers POST https://api.resend.com/emails avec Authorization Bearer, expéditeur strict no-reply@racontellecare.com, URL de reset first-party et tâche FastAPI en arrière-plan pour préserver l'anti-énumération."
+##       - working: "source_verified_pending_deployment"
+##         agent: "testing"
+##         comment: "Itération 25 : Resend officiel uniquement, backend 42/42, frontend deep-link validé. Production sert encore l'ancien message forgot : redéploiement requis. API Resend et Mongo restent MOCKED; aucun email réel envoyé."
+##       - working: false
+##         agent: "main"
+##         comment: "Après annonce d'un déploiement actif, l'API publique sert toujours l'ancien message. RCA : les changements Resend ne figurent pas dans le HEAD déployé et email_service.py n'est pas suivi; un nouveau Save to GitHub est requis. Validation PASSWORD_RESET_URL rendue dynamique et sûre (HTTPS, hôte non-IP/non-raccourci), sans domaine hardcodé."
+## test_plan_resend:
+##   current_focus:
+##     - "Template fixe, marque Racontelle Care, aucun formulaire ni demande de secret"
+##     - "Lien HTTPS first-party, code court one-shot, expiration et cinq essais conservés"
+##     - "Recipient issu de users.email_lower, jamais du corps libre d'une route d'envoi"
+##     - "Clé uniquement en Authorization Bearer vers api.resend.com et absente du payload/logs/frontend"
+##     - "Deep link ouvre l'écran reset et préremplit email/code"
+##     - "Livraison réelle différée jusqu'aux variables Railway"
+##   test_all: true
+##   test_priority: "high_first"
+
 ## user_problem_statement_security: "Ajouter authentification serveur, isolation par établissement, autorisations, quotas, liens expirables/révocables, PIN sécurisé et CORS strict."
 ## security:
 ##   - task: "Sécurisation complète multi-établissements"

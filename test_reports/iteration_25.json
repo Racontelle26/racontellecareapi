@@ -1,0 +1,59 @@
+{
+  "summary": "Validation Resend officielle backend+frontend effectuée: tests_local 29/29 et unités opérateur/déploiement 13/13 passent, deep-link reset 390x844 validé, et transport local MOCKED sans envoi réel. Vérification publique: /api/auth/password/forgot répond 200 générique sans fuite, mais le message prod diffère du code source courant (drift de déploiement probable).",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "https://racontellecareapi-production.up.railway.app/api/auth/password/forgot",
+        "issue": "Drift probable entre source et production: la réponse publique contient 'un code vient d’être envoyé' alors que security.py (FORGOT_MESSAGE) attend 'un lien et un code viennent d’être envoyés'.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": [
+      {
+        "endpoint": "backend lint",
+        "issue": "python -m flake8 backend échoue (grand volume E501 + quelques F/E), donc lint Python n'est pas clean."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests_local/test_email_service.py",
+    "/app/backend/tests_local/test_api_local.py",
+    "/app/backend/tests/test_operator_password_reset.py",
+    "/app/backend/tests/test_railway_startup_recovery_iter21.py",
+    "/app/test_reports/pytest/pytest_results_iter25_tests_local.xml",
+    "/app/test_reports/pytest/pytest_results_iter25_operator_deploy.xml",
+    "/app/test_reports/screens/iter25/reset_deeplink_390x844.jpeg",
+    "/app/test_reports/screens/iter25/preview_base_390x844.jpeg"
+  ],
+  "action_items": [
+    "Redéployer Railway avec ce commit pour aligner le message forgot avec la source actuelle et revalider les routes /api/auth/password/forgot + /api/auth/password/reset.",
+    "Configurer/valider Railway: RESEND_API_KEY, RESEND_FROM_EMAIL=no-reply@racontellecare.com, PASSWORD_RESET_URL=https://ehpad-recall.preview.emergentagent.com puis redéployer.",
+    "Corriger la dette lint Python (ou ajuster policy de lint) si 'lint clean' est exigé en gate CI."
+  ],
+  "critical_code_review_comments": [
+    "Aucune référence résiduelle trouvée dans backend/frontend: EMERGENT_EMAIL_KEY, integrations.emergentagent.com, X-Email-Key, SMTP, smtplib.",
+    "Seul transport email trouvé: POST https://api.resend.com/emails avec Authorization: Bearer RESEND_API_KEY et Content-Type application/json (email_service.py).",
+    "Payload 'from' conforme au besoin: RESEND_FROM_EMAIL=no-reply@racontellecare.com est transformé en 'Racontelle Care <no-reply@racontellecare.com>' quand aucun display-name n'est fourni.",
+    "PASSWORD_RESET_URL est verrouillée en code sur schéma HTTPS + host strict ehpad-recall.preview.emergentagent.com; hôte/IP/http/autre domaine refusés via email_configured().",
+    "Flux forgot anti-énumération correct en source: même FORGOT_MESSAGE, destinataire relu depuis user.email_lower, envoi en BackgroundTasks, exceptions email capturées sans fuite de secret.",
+    "Réinitialisation conforme en source: code hashé one-shot, expiration 30 min, max 5 essais, révocation des refresh tokens au succès."
+  ],
+  "updated_files": [
+    "/app/test_reports/iteration_25.json"
+  ],
+  "success_rate": {
+    "backend": "90%",
+    "frontend": "100%"
+  },
+  "seed_data_creation": "Aucune donnée seed persistante créée. Vérification backend locale en MONGO MOCKED (mongomock) et client HTTP Resend MOCKED dans tests_local.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "MOCKED dans cette itération: POST api.resend.com/emails via faux AsyncClient (tests_local), Mongo local via mongomock. Aucun email réel envoyé. URL publique testée en lecture + forgot anonyme uniquement.",
+  "rca_of_issue": "RCA drift prod: la réponse publique forgot ne correspond plus exactement à FORGOT_MESSAGE de la base source testée. Repro: comparer POST public /api/auth/password/forgot (email inconnu) et constante FORGOT_MESSAGE dans backend/security.py. Mitigation: redéploiement Railway avec commit courant, puis retest API public."
+}

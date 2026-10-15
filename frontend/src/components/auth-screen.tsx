@@ -44,20 +44,21 @@ const TITLES: Record<Mode, [string, string]> = {
   reset: ["Nouveau mot de passe", "Saisissez le code reçu par email puis choisissez un nouveau mot de passe."],
 };
 
-export function AuthScreen({ onAuthenticated, onContinueLocal, initialMessage, initialEmail }: { onAuthenticated: (session: AuthSession) => void; onContinueLocal: () => void; initialMessage?: string | null; initialEmail?: string }) {
+export function AuthScreen({ onAuthenticated, onContinueLocal, initialMessage, initialEmail, initialResetEmail, initialResetCode }: { onAuthenticated: (session: AuthSession) => void; onContinueLocal: () => void; initialMessage?: string | null; initialEmail?: string; initialResetEmail?: string; initialResetCode?: string }) {
   const styles = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const [mode, setMode] = useState<Mode>("login");
-  const [email, setEmail] = useState(initialEmail ?? "");
+  const resetFromLink = !!initialResetEmail && !!initialResetCode;
+  const [mode, setMode] = useState<Mode>(resetFromLink ? "reset" : "login");
+  const [email, setEmail] = useState(initialResetEmail ?? initialEmail ?? "");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [code, setCode] = useState("");
+  const [code, setCode] = useState(initialResetCode ?? "");
   const [showPassword, setShowPassword] = useState(false);
   const [name, setName] = useState("");
   const [facility, setFacility] = useState("");
   const [error, setError] = useState<string | null>(initialMessage ?? null);
-  const [info, setInfo] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(resetFromLink ? "Lien reconnu. Choisissez maintenant votre nouveau mot de passe." : null);
   const [busy, setBusy] = useState(false);
 
   const switchMode = (next: Mode) => {

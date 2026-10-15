@@ -12,6 +12,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
 import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import * as Sharing from "expo-sharing";
+import { useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, AppState, BackHandler, Platform, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -71,6 +72,10 @@ export default function Index() {
   const styles = useStyles();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const resetParams = useLocalSearchParams<{ reset_email?: string | string[]; reset_code?: string | string[] }>();
+  const resetEmail = Array.isArray(resetParams.reset_email) ? resetParams.reset_email[0] : resetParams.reset_email;
+  const resetCode = Array.isArray(resetParams.reset_code) ? resetParams.reset_code[0] : resetParams.reset_code;
+  const resetFromLink = !!resetEmail && !!resetCode;
   const base = { styles, colors, insets };
 
   const [notice, setNotice] = useState<string | null>(null);
@@ -128,6 +133,10 @@ export default function Index() {
     void authApi.rememberedUser().then(async (remembered) => {
       if (!active) return;
       let user = remembered;
+      if (resetFromLink) {
+        await authApi.logout();
+        user = null;
+      }
       // Application rouverte après plus de 5 minutes sans activité : la
       // session est fermée, il faut se reconnecter.
       if (user && isInactiveSince(await readLastActivity())) {
@@ -883,7 +892,7 @@ export default function Index() {
     return <View testID="auth-session-loading" style={[styles.root, styles.center]}><ActivityIndicator size="large" color={colors.brandPrimary} /><Text style={styles.body}>Ouverture de la session sécurisée…</Text></View>;
   }
   if (!authUser && !guestMode) {
-    return <AuthScreen onAuthenticated={(session) => void activateSession(session)} onContinueLocal={() => void continueLocally()} initialMessage={authMessage} initialEmail={rememberedEmail} />;
+    return <AuthScreen onAuthenticated={(session) => void activateSession(session)} onContinueLocal={() => void continueLocally()} initialMessage={authMessage} initialEmail={rememberedEmail} initialResetEmail={resetEmail} initialResetCode={resetCode} />;
   }
   if (loading) {
     return <View style={[styles.root, styles.center]}><ActivityIndicator size="large" color={colors.brandPrimary} /><Text style={styles.body}>Ouverture du carnet…</Text></View>;
