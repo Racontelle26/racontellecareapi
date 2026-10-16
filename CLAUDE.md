@@ -5,6 +5,23 @@ résidents. Propriétaire : Racontelle (GitHub `Racontelle26`). Répondre en fra
 sans condescendance : l'utilisatrice n'est pas développeuse et veut des étapes courtes et sûres.
 État détaillé et historique : `docs/POINT_AVANCEMENT.md`. Produit : `memory/PRD.md`.
 
+## À faire le 17/10/2026 (dans cet ordre)
+
+1. **APK 1.0.4** — le téléphone a encore la 1.0.3 (3 souvenirs « en attente d'envoi » le 16/10 à 21 h 26).
+   - expo.dev → Builds : chercher un build **1.0.4 (5)** terminé. Sinon :
+     `cd $HOME\racontellecareapi\frontend` → `git pull` → `npx eas-cli build --platform android --profile preview`.
+   - Installer **par-dessus** la 1.0.3, sans désinstaller ni effacer les données.
+   - Vérifier : bandeau « Tout est sauvegardé », 3 lignes `POST /api/capsules/…/audio 200` dans Railway
+     (déploiement Active → Network Logs), fichiers dans `racontelle-care-media/racontelle-care/`.
+   - Si l'envoi échoue encore en 1.0.4 : relever le code HTTP de `/audio` dans Railway avant toute autre action.
+2. **Mot de passe oublié** : tester une vraie réception d'email (Resend) depuis l'adresse web testeurs.
+3. **Mode d'emploi EHPAD** (document Claude) : y mettre le lien d'installation du build 1.0.4 et le contact, puis l'envoyer.
+4. Si un testeur a un iPhone : vérifier que la session web tient au rechargement (Safari).
+5. Plus tard, sans urgence : PR #2 (`app.racontellecare.com`) + domaine `api.racontellecare.com` ;
+   supprimer le bucket vide `racontelle-care-audio` ; décider du sort des comptes d'avant le 7/10 (base Emergent).
+
+Rappel permanent : avant tout « Save to GitHub » depuis Emergent, lui faire récupérer `main` (PR #1 à #7 fusionnées).
+
 ## Architecture en production (au 16/10/2026)
 
 | Élément | Où | Détail |
