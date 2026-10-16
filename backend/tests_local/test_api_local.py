@@ -302,3 +302,13 @@ def test_web_refresh_cookie_is_cross_site(base_url):
     cookie = resp.headers.get("set-cookie", "").lower()
     assert "racontelle_refresh=" in cookie
     assert "samesite=none" in cookie and "secure" in cookie and "httponly" in cookie
+    assert "partitioned" in cookie
+    refreshed = requests.post(
+        f"{base_url}/api/auth/refresh",
+        headers={"X-Client-Platform": "web"},
+        cookies={"racontelle_refresh": resp.cookies.get("racontelle_refresh") or cookie.split("racontelle_refresh=")[1].split(";")[0]},
+        json={"refresh_token": None},
+        timeout=20,
+    )
+    assert refreshed.status_code == 200, refreshed.text
+    assert "partitioned" in refreshed.headers.get("set-cookie", "").lower()

@@ -33,7 +33,19 @@ COOKIE_NAME = "racontelle_refresh"
 # sont sur des sites différents : un cookie « strict » n'y est jamais renvoyé
 # et la session web tombait à chaque rechargement ou après 15 minutes.
 # « none » (toujours avec Secure + HttpOnly) ; CORS reste limité à CORS_ORIGINS.
+# « Partitioned » (CHIPS) : le cookie est rangé sous le site de la page, il est
+# accepté même quand le navigateur bloque les cookies tiers (cas constaté sur
+# Android le 16/10 : /api/auth/refresh en 401 juste après la connexion).
 COOKIE_SAMESITE = "none"
+
+
+def _set_refresh_cookie(response: Response, value: str, max_age: int) -> None:
+    """Starlette 0.37 ne sait pas écrire « Partitioned » : en-tête écrit à la main."""
+    response.headers.append(
+        "set-cookie",
+        f"{COOKIE_NAME}={value}; Max-Age={max_age}; Path=/api/auth; "
+        f"Secure; HttpOnly; SameSite={COOKIE_SAMESITE.capitalize()}; Partitioned",
+    )
 # Délai pendant lequel un jeton tout juste renouvelé peut être présenté à
 # nouveau sans fermer la session (réponse perdue sur un réseau faible).
 REFRESH_GRACE_SECONDS = 120
@@ -177,15 +189,7 @@ async def _issue_session(user: dict, response: Response, web: bool) -> SessionOu
         }
     )
     if web:
-        response.set_cookie(
-            COOKIE_NAME,
-            raw,
-            max_age=REFRESH_DAYS * 86400,
-            httponly=True,
-            secure=True,
-            samesite=COOKIE_SAMESITE,
-            path="/api/auth",
-        )
+        _set_refresh_cookie(response, raw, REFRESH_DAYS * 86400)
     return SessionOut(
         access_token=_access_token(user, tenant["name"]),
         refresh_token=None if web else raw,
@@ -452,15 +456,7 @@ async def refresh_session(
     await db.refresh_tokens.insert_one(new_doc)
     tenant = await db.tenants.find_one({"id": user["tenant_id"]}, {"_id": 0})
     if web:
-        response.set_cookie(
-            COOKIE_NAME,
-            replacement,
-            max_age=REFRESH_DAYS * 86400,
-            httponly=True,
-            secure=True,
-            samesite=COOKIE_SAMESITE,
-            path="/api/auth",
-        )
+        _set_refresh_cookie(response, replacement, REFRESH_DAYS * 86400)
     return SessionOut(
         access_token=_access_token(user, tenant["name"]),
         refresh_token=None if web else replacement,
@@ -481,7 +477,7 @@ async def logout(
             {"token_hash": _refresh_hash(raw), "user_id": user.id},
             {"$set": {"revoked_at": now()}},
         )
-    response.delete_cookie(COOKIE_NAME, path="/api/auth", secure=True, httponly=True, samesite=COOKIE_SAMESITE)
+    _set_refresh_cookie(response, "", 0)
     return {"ok": True}
 
 
