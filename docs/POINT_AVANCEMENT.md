@@ -9,16 +9,11 @@
 | Stockage audio Scaleway (bucket `racontelle-care-audio`, Paris) | ✅ | PR #3 fusionnée, 5 variables `S3_*` dans Railway, plus de log « stockage objet indisponible » |
 | Envoi audio depuis le web | ✅ (à confirmer dans le bucket) | « le souvenir semble partir sur le serveur » |
 | Resend (`no-reply@racontellecare.com`) | ✅ | domaine vérifié |
+| Session web conservée au rechargement | ✅ | PR #5 + #6 (cookie `SameSite=None; Partitioned`), testé sur Android le 16/10 après le déploiement `8d500032` |
 
 ## En cours au moment du départ
 
-1. **Déconnexion au rechargement sur le web** — cause : cookies tiers bloqués par le navigateur
-   (`/api/auth/refresh` 401 à 14:28:06 juste après une connexion 200).
-   - PR #5 (`SameSite=None`) et PR #6 (`Partitioned`) **fusionnées** ; Railway redéploie.
-   - **À tester** : nouveau déploiement Active → Se déconnecter → se reconnecter → recharger.
-     Attendu dans Network Logs : `POST /api/auth/refresh` **200**.
-   - Si toujours 401 (ou iPhone/Safari) : solution durable = site et API sur `racontellecare.com`
-     (`app.` via PR #2 + domaine personnalisé `api.` sur Railway).
+1. Déconnexion au rechargement : **résolu** (voir tableau). Non testé sur iPhone/Safari.
 2. **APK 1.0.4** (PR #4 fusionnée : envoi audio Android via `uploadAsync`) — build EAS en cours.
    - Vérifier sur expo.dev que le build indique **1.0.4 (5)** ; sinon `git pull` puis relancer.
    - Installer **par-dessus** l'APK 1.0.3, sans désinstaller : le souvenir « en attente d'envoi »
