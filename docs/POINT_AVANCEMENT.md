@@ -1,61 +1,36 @@
-# Point d'avancement — 15-16 octobre 2026
+# Point d'avancement — 16 octobre 2026, 14 h 40
 
-## Plan du 16/10 (le plus court)
+## En place et vérifié
 
-1. Stockage audio sur Railway : ajouter `INTEGRATION_PROXY_URL` et `EMERGENT_LLM_KEY` au service API,
-   avec les valeurs déjà présentes dans l'environnement backend d'Emergent. Aucun code à fusionner.
-   Contrôle : le log `stockage objet indisponible au démarrage` disparaît.
-2. Vérification par Claude après redéploiement : enregistrement, réécoute, rechargement de la page web.
-3. Comptes d'avant le 7/10 : recréer l'espace établissement sur l'adresse web, ou transférer la base Emergent
-   vers Railway si les souvenirs de cette période doivent être conservés.
-4. Plus tard, sans urgence : PR #3 (stockage Scaleway) puis PR #2 (`app.racontellecare.com`).
+| Élément | État | Preuve |
+|---------|------|--------|
+| Adresse web testeurs `https://ehpad-recall.preview.emergentagent.com` → API Railway | ✅ | `frontend/.env` Emergent corrigé ; connexion `POST /api/auth/login` 200 dans Railway |
+| APK 1.0.3 → API Railway | ✅ | connexion 200 à 14:02 et 14:11 |
+| Stockage audio Scaleway (bucket `racontelle-care-audio`, Paris) | ✅ | PR #3 fusionnée, 5 variables `S3_*` dans Railway, plus de log « stockage objet indisponible » |
+| Envoi audio depuis le web | ✅ (à confirmer dans le bucket) | « le souvenir semble partir sur le serveur » |
+| Resend (`no-reply@racontellecare.com`) | ✅ | domaine vérifié |
 
-## Chronologie (historique Git)
+## En cours au moment du départ
 
-| Période | Web (adresse Emergent) | APK | Serveur et base | Stockage audio |
-|---------|------------------------|-----|-----------------|----------------|
-| 1er → 7/10 08:48 | serveur Emergent | serveur Emergent (`eas.json`) | Emergent, comptes et souvenirs créés à cette période | Emergent, fonctionnel |
-| depuis 7/10 08:48 (commit `db77980` « Backend Railway configuré ») | **Railway** | Emergent (ancien `eas.json`) | Railway : base **neuve**, vide au départ | **non configuré** sur Railway |
-| depuis 15/10 (PR #1) | Railway | Railway | Railway | non configuré |
+1. **Déconnexion au rechargement sur le web** — cause : cookies tiers bloqués par le navigateur
+   (`/api/auth/refresh` 401 à 14:28:06 juste après une connexion 200).
+   - PR #5 (`SameSite=None`) et PR #6 (`Partitioned`) **fusionnées** ; Railway redéploie.
+   - **À tester** : nouveau déploiement Active → Se déconnecter → se reconnecter → recharger.
+     Attendu dans Network Logs : `POST /api/auth/refresh` **200**.
+   - Si toujours 401 (ou iPhone/Safari) : solution durable = site et API sur `racontellecare.com`
+     (`app.` via PR #2 + domaine personnalisé `api.` sur Railway).
+2. **APK 1.0.4** (PR #4 fusionnée : envoi audio Android via `uploadAsync`) — build EAS en cours.
+   - Vérifier sur expo.dev que le build indique **1.0.4 (5)** ; sinon `git pull` puis relancer.
+   - Installer **par-dessus** l'APK 1.0.3, sans désinstaller : le souvenir « en attente d'envoi »
+     part au premier lancement. Attendu dans Railway : `POST /api/capsules/…/audio` 200.
 
-Conséquence : les comptes créés jusqu'au 7/10 (dont `laracontelle@gmail.com`) sont dans la base
-Emergent, absente de Railway. D'où « Identifiants incorrects » sur l'adresse web, et l'avertissement
-`stockage objet indisponible` dans les logs Railway.
+## Rappels programmés
 
-## Deux façons de retrouver l'état du 7/10
+- 4 janvier 2027 : fin de l'essai gratuit Scaleway le 14/01/2027 (moyen de paiement).
+- 1er octobre 2027 : clé API Scaleway `railway-racontelle` expire le 16/10/2027.
 
-1. **Revenir au serveur Emergent** (le plus rapide, retrouve comptes et souvenirs) : remettre
-   `EXPO_PUBLIC_BACKEND_URL=https://ehpad-recall.preview.emergentagent.com` dans l'environnement
-   frontend d'Emergent, et dans `frontend/eas.json` pour un nouvel APK. Dépend d'Emergent.
-2. **Rester sur Railway** (durable) : renseigner le stockage audio (PR #3 ou variables
-   `INTEGRATION_PROXY_URL` + `EMERGENT_LLM_KEY`) et transférer la base Emergent vers Railway.
+## Points d'attention
 
-## Fait
-
-- `frontend/eas.json` : l'APK appelle l'API Railway (fusionné dans `main`, PR #1).
-- Resend : domaine `racontellecare.com` vérifié (DNS Gandi : DKIM, `send`, `rsend`), clé posée dans Railway.
-- Mode d'emploi pour l'EHPAD rédigé (document Claude) ; à compléter : lien d'installation, contact.
-
-## Prêt, en attente de fusion
-
-| PR | Contenu | À faire après fusion |
-|----|---------|----------------------|
-| #3 `claude/s3-audio-storage` | audios dans un bucket S3 (Scaleway Paris) au lieu du stockage Emergent, absent de Railway | bucket + 5 variables `S3_*` (`docs/STOCKAGE_AUDIO.md`) |
-| #2 `claude/web-app-domain` | site `https://app.racontellecare.com` servi par Railway | service web Railway, CNAME `app` chez Gandi, `CORS_ORIGINS` et `PASSWORD_RESET_URL` (`docs/MISE_EN_LIGNE_WEB.md`) |
-
-Ordre : #3, puis #2. Une fois les deux en ligne, web et APK partagent le serveur Railway.
-
-## Problèmes connus
-
-- **Railway sans stockage audio** (log `stockage objet indisponible au démarrage`) : sur l'APK, les
-  audios restent seulement sur le téléphone ; transcription et export côté serveur échouent. Corrigé par la PR #3.
-- **Compte `laracontelle@gmail.com`** absent de la base Railway : créé avant le 7/10, il est dans la base Emergent.
-- **Emergent écrit directement dans `main`** : ne pas faire « Save to GitHub » depuis Emergent
-  après la fusion des PR #2/#3 sans resynchroniser, sinon conflit ou écrasement.
-- Mot de passe affiché en clair dans une capture et jeton Expo visible dans le terminal :
-  changer le mot de passe, supprimer le jeton sur expo.dev.
-
-## Ne pas faire avant la fin des tests EHPAD
-
-- Arrêter ou modifier le projet Emergent : l'adresse donnée à l'EHPAD en dépend.
-- Changer `PASSWORD_RESET_URL` tant que l'EHPAD utilise l'adresse Emergent.
+- Comptes créés avant le 7/10 : dans l'ancienne base Emergent, absents de Railway.
+- Emergent : ne pas faire « Save to GitHub » sans resynchroniser, `main` a reçu les PR #3 à #6.
+- PR #2 (`app.racontellecare.com`) : ouverte, non urgente.
