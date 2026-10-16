@@ -215,18 +215,51 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 const json = (method: string, body?: unknown): RequestInit => ({ method, body: body === undefined ? undefined : JSON.stringify(body) });
 
 async function uploadAudio<T>(path: string, uri: string): Promise<T> {
-  const name = Platform.OS === "web" ? "recording.webm" : "recording.m4a";
-  const type = Platform.OS === "web" ? "audio/webm" : "audio/m4a";
+  if (Platform.OS !== "web") return uploadNativeFile<T>(path, uri, "audio/m4a");
   const form = new FormData();
-  if (Platform.OS === "web") {
-    const blob = await (await fetch(uri)).blob();
-    form.append("file", blob.type ? blob : new Blob([blob], { type }), name);
-  } else {
-    form.append("file", { uri, name, type } as any);
-  }
+  const blob = await (await fetch(uri)).blob();
+  form.append("file", blob.type ? blob : new Blob([blob], { type: "audio/webm" }), "recording.webm");
   const response = await authorizedFetch(path, { method: "POST", body: form });
   if (!response.ok) throw new ApiError(response.status, await parseError(response));
   return response.json() as Promise<T>;
+}
+
+/**
+ * Envoi natif d'un fichier local en multipart. Le `fetch` d'Expo (SDK 57)
+ * refuse les parties FormData `{ uri, name, type }` de React Native : l'envoi
+ * échouait dans l'appareil sans atteindre le serveur. `uploadAsync` lit le
+ * fichier lui-même ; même renouvellement de session que `downloadToFile`.
+ */
+async function uploadNativeFile<T>(path: string, uri: string, mimeType: string): Promise<T> {
+  if (!baseUrl) throw new ApiError(503, "Serveur temporaire indisponible");
+  const attempt = async () => {
+    const session = await storedSession();
+    const headers: Record<string, string> = { ...platformHeaders() };
+    if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`;
+    return FileSystem.uploadAsync(`${baseUrl}/api${path}`, uri, {
+      httpMethod: "POST",
+      uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+      fieldName: "file",
+      mimeType,
+      headers,
+    });
+  };
+  let result = await attempt();
+  if (result.status === 401) {
+    const refreshed = await sharedRefresh();
+    if (refreshed === OFFLINE) throw new ApiError(503, OFFLINE_MESSAGE);
+    if (refreshed) result = await attempt();
+  }
+  if (result.status < 200 || result.status >= 300) {
+    if (result.status === 401) await expireSession();
+    let message = "Envoi impossible";
+    try {
+      const detail = JSON.parse(result.body).detail;
+      if (typeof detail === "string") message = detail;
+    } catch {}
+    throw new ApiError(result.status, message);
+  }
+  return JSON.parse(result.body) as T;
 }
 
 async function publicPost<T>(path: string, body: Record<string, string>): Promise<T> {

@@ -2,7 +2,7 @@
   "expo": {
     "name": "Racontelle Care",
     "slug": "racontelle-care",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "orientation": "portrait",
     "icon": "./assets/images/racontelle-care-icon-v4.png",
     "scheme": "racontelle-care",
@@ -19,7 +19,7 @@
         "backgroundColor": "#FFFFFF"
       },
       "package": "fr.racontelle.care",
-      "versionCode": 4,
+      "versionCode": 5,
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS",
