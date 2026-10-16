@@ -1,4 +1,22 @@
-# Point d'avancement — 16 octobre 2026, 14 h 40
+# Point d'avancement — 16 octobre 2026, 21 h 30
+
+## Prochaine séance : 17/10/2026 (dans cet ordre)
+
+1. **APK 1.0.4** — le téléphone a encore la 1.0.3 (3 souvenirs « en attente d'envoi » le 16/10 à 21 h 26).
+   - expo.dev → Builds : chercher un build **1.0.4 (5)** terminé. Sinon :
+     `cd $HOME\racontellecareapi\frontend` → `git pull` → `npx eas-cli build --platform android --profile preview`.
+   - Installer **par-dessus** la 1.0.3, sans désinstaller ni effacer les données.
+   - Vérifier : bandeau « Tout est sauvegardé », 3 lignes `POST /api/capsules/…/audio 200` dans Railway
+     (déploiement Active → Network Logs), fichiers dans `racontelle-care-media/racontelle-care/`.
+   - Si l'envoi échoue encore en 1.0.4 : relever le code HTTP de `/audio` dans Railway avant toute autre action.
+2. **Mot de passe oublié** : tester une vraie réception d'email (Resend) depuis l'adresse web testeurs.
+3. **Mode d'emploi EHPAD** (document Claude) : y mettre le lien d'installation du build 1.0.4 et le contact, puis l'envoyer.
+4. Si un testeur a un iPhone : vérifier que la session web tient au rechargement (Safari).
+5. Plus tard, sans urgence : PR #2 (`app.racontellecare.com`) + domaine `api.racontellecare.com` ;
+   supprimer le bucket vide `racontelle-care-audio` ; décider du sort des comptes d'avant le 7/10 (base Emergent).
+
+Rappel permanent : avant tout « Save to GitHub » depuis Emergent, lui faire récupérer `main` (PR #1 à #7 fusionnées).
+
 
 ## En place et vérifié
 
@@ -14,7 +32,7 @@
 ## En cours au moment du départ
 
 1. Déconnexion au rechargement : **résolu** (voir tableau). Non testé sur iPhone/Safari.
-2. **APK 1.0.4** (PR #4 fusionnée : envoi audio Android via `uploadAsync`) — build EAS en cours.
+2. **APK 1.0.4** (PR #4 fusionnée : envoi audio Android via `uploadAsync`) — **non installé** au 16/10 21 h 26 (téléphone en 1.0.3, 3 souvenirs en attente).
    - Vérifier sur expo.dev que le build indique **1.0.4 (5)** ; sinon `git pull` puis relancer.
    - Installer **par-dessus** l'APK 1.0.3, sans désinstaller : le souvenir « en attente d'envoi »
      part au premier lancement. Attendu dans Railway : `POST /api/capsules/…/audio` 200.
