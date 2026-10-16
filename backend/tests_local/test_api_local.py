@@ -1,5 +1,6 @@
 """Parcours complets de l'API sur le banc d'essai local (voir conftest.py)."""
 from datetime import datetime, timezone
+import time
 import importlib.util
 import io
 from pathlib import Path
@@ -21,6 +22,14 @@ for _name in dir(_beta):
         globals()[_name] = getattr(_beta, _name)
 
 new_tenant = _beta.new_tenant
+
+
+def wait_code(sent_codes, email, timeout=3.0):
+    """Le code part dans une tâche d'arrière-plan, après la réponse HTTP."""
+    deadline = time.monotonic() + timeout
+    while email not in sent_codes and time.monotonic() < deadline:
+        time.sleep(0.02)
+    return sent_codes[email]
 create_resident = _beta.create_resident
 M4A = b"\x00\x00\x00\x18ftypM4A " + b"\x00" * 64
 
@@ -42,7 +51,7 @@ def now_iso():
 def test_full_password_reset_flow(base_url, sent_codes):
     _, email = new_tenant()
     assert requests.post(f"{base_url}/api/auth/password/forgot", json={"email": email}, timeout=20).status_code == 200
-    code = sent_codes[email]
+    code = wait_code(sent_codes, email)
     assert len(code.replace("-", "")) == 8
     new_password = "Nouveau-Mot-De-Passe-2026!"
     reset = requests.post(f"{base_url}/api/auth/password/reset", json={"email": email, "code": code.lower(), "new_password": new_password}, timeout=20)
@@ -59,7 +68,7 @@ def test_full_password_reset_flow(base_url, sent_codes):
 def test_reset_code_is_locked_after_five_wrong_attempts(base_url, sent_codes):
     _, email = new_tenant()
     requests.post(f"{base_url}/api/auth/password/forgot", json={"email": email}, timeout=20)
-    good = sent_codes[email]
+    good = wait_code(sent_codes, email)
     for _ in range(5):
         requests.post(f"{base_url}/api/auth/password/reset", json={"email": email, "code": "ZZZZ-ZZZZ", "new_password": "Nouveau-Mot-2026!!"}, timeout=20)
     late = requests.post(f"{base_url}/api/auth/password/reset", json={"email": email, "code": good, "new_password": "Nouveau-Mot-2026!!"}, timeout=20)
@@ -70,7 +79,7 @@ def test_password_reset_revokes_open_sessions(base_url, sent_codes):
     email = f"sessions-{uuid.uuid4().hex[:8]}@racontelle.example.com"
     session = requests.post(f"{base_url}/api/auth/register", headers={"X-Client-Platform": "native"}, json={"email": email, "password": "Racontelle-Beta-2026!", "full_name": "Admin", "establishment_name": "EHPAD"}, timeout=20).json()
     requests.post(f"{base_url}/api/auth/password/forgot", json={"email": email}, timeout=20)
-    requests.post(f"{base_url}/api/auth/password/reset", json={"email": email, "code": sent_codes[email], "new_password": "Nouveau-Mot-2026!!"}, timeout=20)
+    requests.post(f"{base_url}/api/auth/password/reset", json={"email": email, "code": wait_code(sent_codes, email), "new_password": "Nouveau-Mot-2026!!"}, timeout=20)
     refresh = requests.post(f"{base_url}/api/auth/refresh", headers={"X-Client-Platform": "native"}, json={"refresh_token": session["refresh_token"]}, timeout=20)
     assert refresh.status_code == 401
 
@@ -278,3 +287,18 @@ def test_logged_out_token_is_refused(base_url):
     headers = {"Authorization": f"Bearer {session['access_token']}", "X-Client-Platform": "native"}
     requests.post(f"{base_url}/api/auth/logout", headers=headers, json={"refresh_token": session["refresh_token"]}, timeout=20)
     assert _refresh(base_url, session["refresh_token"]).status_code == 401
+
+
+def test_web_refresh_cookie_is_cross_site(base_url):
+    """La page web et l'API sont sur deux sites : le cookie doit être SameSite=None + Secure."""
+    _, email = new_tenant()
+    resp = requests.post(
+        f"{base_url}/api/auth/login",
+        headers={"X-Client-Platform": "web"},
+        json={"email": email, "password": "Racontelle-Beta-2026!"},
+        timeout=20,
+    )
+    assert resp.status_code == 200, resp.text
+    cookie = resp.headers.get("set-cookie", "").lower()
+    assert "racontelle_refresh=" in cookie
+    assert "samesite=none" in cookie and "secure" in cookie and "httponly" in cookie
