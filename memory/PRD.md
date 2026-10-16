@@ -86,8 +86,17 @@ Détail critère par critère : `docs/CONFORMITE_CAHIER_DES_CHARGES.md`.
 - **Refactor** : `app/index.tsx` réduit à l'orchestration ; écrans dans `src/screens`, fenêtres dans `src/components/modals.tsx`, données dans `src/hooks`.
 - **Charte** : bleu encre #2F3E52 couleur prioritaire de Racontelle Care.
 
+## État de production (16/10/2026)
+- **API** : Railway (`racontellecareapi-production.up.railway.app`), base MongoDB Railway. Les comptes créés avant le 7/10 sont restés dans l'ancienne base Emergent.
+- **Audios** : Scaleway Object Storage Paris, bucket `racontelle-care-media` (variables `S3_*`, `backend/storage.py`). Vérifié le 16/10 : fichier présent après un enregistrement web.
+- **Web testeurs** : aperçu Emergent `ehpad-recall.preview.emergentagent.com`, dont `frontend/.env` pointe vers l'API Railway. Session conservée au rechargement grâce au cookie `SameSite=None; Partitioned`.
+- **APK** : 1.0.4 (versionCode 5), envoi audio via `FileSystem.uploadAsync` (le `fetch` d'Expo SDK 57 refuse les fichiers `{ uri }`).
+- **Emails** : Resend, `no-reply@racontellecare.com`, domaine vérifié (DNS Gandi).
+- **Règle** : avant tout Save to GitHub depuis Emergent, récupérer `main` (PR #1 à #6 fusionnées sur GitHub). Ne jamais forcer le push sans comparer.
+- Détails et pièges : `CLAUDE.md`, `docs/POINT_AVANCEMENT.md`.
+
 ## Backlog priorisé
-- **P0** : Ajouter `RESEND_API_KEY`, `RESEND_FROM_EMAIL=no-reply@racontellecare.com` et `PASSWORD_RESET_URL` aux variables Railway puis tester une livraison réelle ; créer un compte Railway de recette dédié pour automatiser login, synchronisation et Azure en production ; importer des extraits musicaux autorisés.
+- **P0** : ~~Variables Resend~~ (faites le 15-16/10) — tester une livraison réelle du mot de passe oublié ; créer un compte Railway de recette dédié pour automatiser login, synchronisation et Azure en production ; importer des extraits musicaux autorisés.
 - **Azure Railway actif** : l’utilisateur confirme le fonctionnement des flux STT/TTS Azure France Central après redéploiement ; aucun fallback simulé n’est utilisé.
 - **P1** : Hébergement UE, sauvegardes automatiques, environnements recette/bêta, builds iOS/Android privés, suivi des crashs.
 - **P1** : Message « niveau sonore insuffisant » (mesure du volume pendant l'enregistrement).

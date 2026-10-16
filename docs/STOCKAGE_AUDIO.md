@@ -5,6 +5,8 @@ L'API est la seule à y accéder : les téléphones et le site n'ont jamais la c
 Le stockage S3 est utilisé dès que `S3_BUCKET` est renseigné ; sinon l'API retombe
 sur l'ancien stockage Emergent (inutilisable en dehors d'Emergent).
 
+**En production depuis le 16/10/2026 : bucket `racontelle-care-media` (Scaleway, Paris).**
+
 ## Fournisseur recommandé : Scaleway Object Storage (Paris)
 
 Données hébergées en France, facturation au volume (quelques centimes par Go et par mois).
