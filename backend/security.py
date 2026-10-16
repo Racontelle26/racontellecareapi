@@ -29,6 +29,11 @@ JWT_AUDIENCE = os.environ.get("JWT_AUDIENCE", "racontelle-care-app")
 ACCESS_MINUTES = int(os.environ.get("ACCESS_MINUTES", "15"))
 REFRESH_DAYS = int(os.environ.get("REFRESH_DAYS", "30"))
 COOKIE_NAME = "racontelle_refresh"
+# La page web (aperçu Emergent, puis app.racontellecare.com) et l'API Railway
+# sont sur des sites différents : un cookie « strict » n'y est jamais renvoyé
+# et la session web tombait à chaque rechargement ou après 15 minutes.
+# « none » (toujours avec Secure + HttpOnly) ; CORS reste limité à CORS_ORIGINS.
+COOKIE_SAMESITE = "none"
 # Délai pendant lequel un jeton tout juste renouvelé peut être présenté à
 # nouveau sans fermer la session (réponse perdue sur un réseau faible).
 REFRESH_GRACE_SECONDS = 120
@@ -178,7 +183,7 @@ async def _issue_session(user: dict, response: Response, web: bool) -> SessionOu
             max_age=REFRESH_DAYS * 86400,
             httponly=True,
             secure=True,
-            samesite="strict",
+            samesite=COOKIE_SAMESITE,
             path="/api/auth",
         )
     return SessionOut(
@@ -453,7 +458,7 @@ async def refresh_session(
             max_age=REFRESH_DAYS * 86400,
             httponly=True,
             secure=True,
-            samesite="strict",
+            samesite=COOKIE_SAMESITE,
             path="/api/auth",
         )
     return SessionOut(
@@ -476,7 +481,7 @@ async def logout(
             {"token_hash": _refresh_hash(raw), "user_id": user.id},
             {"$set": {"revoked_at": now()}},
         )
-    response.delete_cookie(COOKIE_NAME, path="/api/auth")
+    response.delete_cookie(COOKIE_NAME, path="/api/auth", secure=True, httponly=True, samesite=COOKIE_SAMESITE)
     return {"ok": True}
 
 
