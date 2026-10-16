@@ -6,7 +6,7 @@
 |---------|------|--------|
 | Adresse web testeurs `https://ehpad-recall.preview.emergentagent.com` → API Railway | ✅ | `frontend/.env` Emergent corrigé ; connexion `POST /api/auth/login` 200 dans Railway |
 | APK 1.0.3 → API Railway | ✅ | connexion 200 à 14:02 et 14:11 |
-| Stockage audio Scaleway (bucket `racontelle-care-audio`, Paris) | ✅ | PR #3 fusionnée, 5 variables `S3_*` dans Railway, plus de log « stockage objet indisponible » |
+| Stockage audio Scaleway (bucket `racontelle-care-media`, Paris ; `racontelle-care-audio` créé le 16/10 et inutilisé) | ✅ | PR #3 fusionnée, 5 variables `S3_*` dans Railway, plus de log « stockage objet indisponible » |
 | Envoi audio depuis le web | ✅ (à confirmer dans le bucket) | « le souvenir semble partir sur le serveur » |
 | Resend (`no-reply@racontellecare.com`) | ✅ | domaine vérifié |
 | Session web conservée au rechargement | ✅ | PR #5 + #6 (cookie `SameSite=None; Partitioned`), testé sur Android le 16/10 après le déploiement `8d500032` |
