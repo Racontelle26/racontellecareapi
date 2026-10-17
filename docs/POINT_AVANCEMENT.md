@@ -1,3 +1,14 @@
+# Point d'avancement — 17 octobre 2026, soir
+
+## Fait le 17/10
+- Constat : sur l'adresse web, souvenir de 4 min coupé à 26 s quand l'écran s'est verrouillé.
+- Care PR #9 (fusionnée, livrée à Emergent) : l'enregistrement continue écran verrouillé ; écran gardé
+  allumé (Wake Lock + vidéo muette) ; si le navigateur coupe le micro, le début est gardé et réécoutable
+  (testé dans Chromium). APK 1.0.5 : enregistrement en arrière-plan Android (notification).
+- Famille PR #1 (fusionnée) + intégration manuelle par l'agent Emergent dans sa copie (en avance sur GitHub).
+- Emergent ne peut pas faire `git pull` : méthode de livraison notée dans `CLAUDE.md` (PR #10, #11).
+- Plan du 18/10 : voir `CLAUDE.md`.
+
 # Point d'avancement — 16 octobre 2026, 21 h 30
 
 ## Prochaine séance : 17/10/2026 (dans cet ordre)
