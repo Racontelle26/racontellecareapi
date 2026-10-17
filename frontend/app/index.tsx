@@ -1,6 +1,7 @@
 import {
   AudioModule,
   RecordingPresets,
+  requestNotificationPermissionsAsync,
   setAudioModeAsync,
   useAudioPlayer,
   useAudioPlayerStatus,
@@ -10,7 +11,6 @@ import {
 import * as Clipboard from "expo-clipboard";
 import * as FileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
-import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import * as Sharing from "expo-sharing";
 import { useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -45,6 +45,7 @@ import { QuizAdminScreen } from "@/src/screens/quiz-admin-screen";
 import { QuizScreen } from "@/src/screens/quiz-screen";
 import { WorkshopScreen, type RecorderStatus, type WorkshopMode, type WorkshopStep } from "@/src/screens/workshop-screen";
 import { readProfessionalPin, writeProfessionalPin } from "@/src/secure-pin";
+import { keepScreenOn, releaseScreen } from "@/src/screen-awake";
 import { useTheme } from "@/src/theme";
 import type { AuthSession, AuthUser, Capsule, FeatureFlags, FeedbackCategory, Question, Resident } from "@/src/types";
 import { Icon } from "@/src/ui/primitives";
@@ -54,6 +55,13 @@ type Screen = "home" | "profile" | "workshop" | "library" | "pro" | "quiz" | "qu
 type Confirm = { title: string; message: string; confirmLabel: string; action: () => void };
 
 const KEEP_AWAKE_TAG = "racontelle-enregistrement";
+
+/** Piste micro de l'enregistreur web (expo-audio n'expose pas le flux) : null sur mobile. */
+function webAudioTrack(recorder: unknown): MediaStreamTrack | null {
+  if (Platform.OS !== "web") return null;
+  const stream = (recorder as { stream?: MediaStream | null }).stream;
+  return stream?.getAudioTracks?.()[0] ?? null;
+}
 const INACTIVITY_MESSAGE = "Session fermée après 5 minutes d’inactivité. Reconnectez-vous : vos souvenirs restent conservés sur l’appareil.";
 const PIN_MAX_ATTEMPTS = 5;
 const PIN_LOCK_SECONDS = 60;
@@ -300,33 +308,65 @@ export default function Index() {
 
   // Écran allumé pendant tout l'enregistrement : sans cela, la mise en veille
   // d'Android (30 s à 2 min) couperait un long récit (BT-09).
-  // Sur le web, le navigateur peut refuser (économie de batterie, navigateur
-  // ancien) : on prévient, car un écran verrouillé coupe le micro de la page.
+  // Écran allumé pendant tout l'enregistrement : indispensable sur le web, où
+  // un écran verrouillé coupe le micro du navigateur.
   useEffect(() => {
     if (recorderStatus !== "recording" && recorderStatus !== "paused") return;
-    void activateKeepAwakeAsync(KEEP_AWAKE_TAG).catch(() => {
-      if (Platform.OS === "web" && recorderStatus === "recording") {
-        setNotice("Le téléphone peut se mettre en veille pendant l’enregistrement : désactivez la mise en veille automatique de l’écran pendant l’atelier, sinon l’enregistrement s’arrêtera.");
+    void keepScreenOn(KEEP_AWAKE_TAG).then((ok) => {
+      if (!ok && Platform.OS === "web" && recorderStatus === "recording") {
+        setNotice("Ce navigateur ne peut pas garder l’écran allumé : désactivez la mise en veille automatique du téléphone pendant l’atelier, sinon le micro peut être coupé.");
       }
     });
-    return () => { void deactivateKeepAwake(KEEP_AWAKE_TAG).catch(() => null); };
+    return () => releaseScreen(KEEP_AWAKE_TAG);
   }, [recorderStatus]);
 
-  // Application mise en arrière-plan (appel, autre application) : le récit est
-  // mis en pause proprement, la durée reste juste et rien n'est perdu.
+  // Écran verrouillé ou application quittée : le récit CONTINUE d'être
+  // enregistré jusqu'à ce que l'animatrice l'arrête. Sur l'application,
+  // Android garde le micro grâce au service d'enregistrement en arrière-plan
+  // (notification « enregistrement en cours », config `enableBackgroundRecording`).
+  // Sur le web, cela dépend du navigateur : au retour sur la page, on vérifie
+  // que le micro n'a pas été coupé et on le dit clairement si c'est le cas.
   const recorderStatusRef = useRef<RecorderStatus>("idle");
+  const hiddenAtMs = useRef<number | null>(null);
+  const backgroundRecording = useRef(false);
+  const webMicMuted = useRef(false);
   useEffect(() => {
     recorderStatusRef.current = recorderStatus;
   }, [recorderStatus]);
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (status) => {
-      if (status === "active" || recorderStatusRef.current !== "recording") return;
-      elapsedBaseMs.current += Date.now() - (recordStartMs.current ?? Date.now());
-      recordStartMs.current = null;
-      if (Platform.OS === "web") {
-        // Écran verrouillé ou onglet quitté : le navigateur coupe le micro et
-        // une reprise n'enregistrerait que du vide. On arrête donc ici, on
-        // garde ce qui a été capté et on affiche sa vraie durée.
+      if (recorderStatusRef.current !== "recording") {
+        hiddenAtMs.current = null;
+        return;
+      }
+      if (status !== "active") {
+        if (Platform.OS !== "web" && !backgroundRecording.current) {
+          // Notifications refusées : Android suspend le micro, on le dit.
+          elapsedBaseMs.current += Date.now() - (recordStartMs.current ?? Date.now());
+          recordStartMs.current = null;
+          try {
+            recorder.pause();
+          } catch {
+            // L'enregistreur a déjà été suspendu par le système.
+          }
+          setRecorderStatus("paused");
+          setNotice("Enregistrement mis en pause : l’écran s’est verrouillé. Touchez le bouton pour reprendre. Autorisez les notifications de Racontelle Care pour que l’enregistrement continue écran verrouillé.");
+          return;
+        }
+        hiddenAtMs.current ??= Date.now();
+        return;
+      }
+      const hiddenAt = hiddenAtMs.current;
+      hiddenAtMs.current = null;
+      if (Platform.OS !== "web" || hiddenAt === null) return;
+      void keepScreenOn(KEEP_AWAKE_TAG);
+      const track = webAudioTrack(recorder);
+      if (!track || track.readyState === "ended") {
+        // Micro rendu par le navigateur pendant le verrouillage (piste arrêtée
+        // ou retirée du flux) : rien n'a été capté après. On garde le début,
+        // avec sa vraie durée.
+        elapsedBaseMs.current += hiddenAt - (recordStartMs.current ?? hiddenAt);
+        recordStartMs.current = null;
         finalDurationSec.current = Math.max(1, Math.round(elapsedBaseMs.current / 1000));
         setElapsedSec(finalDurationSec.current);
         recorderStatusRef.current = "done";
@@ -335,16 +375,13 @@ export default function Index() {
           () => setRecordedUri(recorder.uri ?? null),
           () => api.track("recording_failed"),
         );
-        setNotice("L’écran s’est éteint : l’enregistrement s’est arrêté. Sauvegardez ce début, puis lancez un nouvel enregistrement pour la suite. Pensez à désactiver la mise en veille de l’écran pendant l’atelier.");
+        setNotice("Le navigateur a coupé le micro pendant que l’écran était verrouillé : l’enregistrement s’est arrêté à ce moment. Sauvegardez ce début, puis enregistrez la suite. Pour les longs récits, préférez l’application installée.");
         return;
       }
-      try {
-        recorder.pause();
-      } catch {
-        // L'enregistreur a déjà été suspendu par le système.
+      if (webMicMuted.current || track?.muted) {
+        webMicMuted.current = false;
+        setNotice("Le navigateur a pu couper le micro pendant que l’écran était verrouillé : l’enregistrement continue, mais une partie du récit peut manquer. Vérifiez à la réécoute.");
       }
-      setRecorderStatus("paused");
-      setNotice("Enregistrement mis en pause : l’application a été quittée. Touchez le bouton pour reprendre.");
     });
     return () => subscription.remove();
   }, [recorder]);
@@ -414,13 +451,25 @@ export default function Index() {
         setNotice("Le micro n’est pas autorisé. Ouvrez les réglages du téléphone et autorisez le micro pour Racontelle Care.");
         return;
       }
-      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      // Android 13+ exige l'autorisation des notifications pour enregistrer
+      // écran verrouillé (notification « enregistrement en cours »).
+      let background = Platform.OS === "ios";
+      if (Platform.OS === "android") {
+        const notifications = await requestNotificationPermissionsAsync().catch(() => null);
+        background = !!notifications?.granted;
+        if (!background) setNotice("Autorisez les notifications de Racontelle Care : sans elles, l’enregistrement se met en pause quand l’écran se verrouille.");
+      }
+      backgroundRecording.current = background;
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true, allowsBackgroundRecording: background });
       await recorder.prepareToRecordAsync();
       elapsedBaseMs.current = 0;
       finalDurationSec.current = 0;
       recordStartMs.current = Date.now();
       setElapsedSec(0);
       recorder.record();
+      webMicMuted.current = false;
+      const track = webAudioTrack(recorder);
+      if (track) track.onmute = () => { webMicMuted.current = true; };
       setRecorderStatus("recording");
     } catch {
       api.track("recording_failed");
