@@ -300,9 +300,15 @@ export default function Index() {
 
   // Écran allumé pendant tout l'enregistrement : sans cela, la mise en veille
   // d'Android (30 s à 2 min) couperait un long récit (BT-09).
+  // Sur le web, le navigateur peut refuser (économie de batterie, navigateur
+  // ancien) : on prévient, car un écran verrouillé coupe le micro de la page.
   useEffect(() => {
     if (recorderStatus !== "recording" && recorderStatus !== "paused") return;
-    void activateKeepAwakeAsync(KEEP_AWAKE_TAG).catch(() => null);
+    void activateKeepAwakeAsync(KEEP_AWAKE_TAG).catch(() => {
+      if (Platform.OS === "web" && recorderStatus === "recording") {
+        setNotice("Le téléphone peut se mettre en veille pendant l’enregistrement : désactivez la mise en veille automatique de l’écran pendant l’atelier, sinon l’enregistrement s’arrêtera.");
+      }
+    });
     return () => { void deactivateKeepAwake(KEEP_AWAKE_TAG).catch(() => null); };
   }, [recorderStatus]);
 
@@ -317,6 +323,21 @@ export default function Index() {
       if (status === "active" || recorderStatusRef.current !== "recording") return;
       elapsedBaseMs.current += Date.now() - (recordStartMs.current ?? Date.now());
       recordStartMs.current = null;
+      if (Platform.OS === "web") {
+        // Écran verrouillé ou onglet quitté : le navigateur coupe le micro et
+        // une reprise n'enregistrerait que du vide. On arrête donc ici, on
+        // garde ce qui a été capté et on affiche sa vraie durée.
+        finalDurationSec.current = Math.max(1, Math.round(elapsedBaseMs.current / 1000));
+        setElapsedSec(finalDurationSec.current);
+        recorderStatusRef.current = "done";
+        setRecorderStatus("done");
+        void recorder.stop().then(
+          () => setRecordedUri(recorder.uri ?? null),
+          () => api.track("recording_failed"),
+        );
+        setNotice("L’écran s’est éteint : l’enregistrement s’est arrêté. Sauvegardez ce début, puis lancez un nouvel enregistrement pour la suite. Pensez à désactiver la mise en veille de l’écran pendant l’atelier.");
+        return;
+      }
       try {
         recorder.pause();
       } catch {
