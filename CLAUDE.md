@@ -80,7 +80,11 @@ dans le dépôt.
 ## Racontelle Famille
 
 Dépôt privé `Racontelle26/Racontelle-Famille`, site testeurs `https://family-stories-34.preview.emergentagent.com`
-(frontend et serveur Emergent). PR #1 (17/10) : enregistrement jusqu'au bout écran verrouillé.
+(frontend et serveur Emergent). **La copie Emergent est en avance sur GitHub** (record.tsx avec
+`Alert`, `Shuffle`, `CloudArrowUp`, `localFilePart`, avatars, absents de `main`). PR #1 (17/10,
+enregistrement écran verrouillé) a été écrite sur l'ancienne version ; l'agent Emergent l'a intégrée
+à la main le 17/10 dans sa version (tsc + lint OK). Avant tout travail de code sur Famille : faire
+pousser la copie Emergent sur une NOUVELLE branche GitHub, puis travailler depuis celle-ci.
 Avant tout APK Famille : corriger l'envoi mobile (`fetch` + FormData `{ uri }` refusé par Expo SDK 57,
 comme Care PR #4).
 
