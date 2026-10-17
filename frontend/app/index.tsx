@@ -56,6 +56,29 @@ type Confirm = { title: string; message: string; confirmLabel: string; action: (
 
 const KEEP_AWAKE_TAG = "racontelle-enregistrement";
 
+/**
+ * Web : quand le navigateur coupe le micro, il arrête lui-même l'enregistreur
+ * et livre l'audio à ce moment-là ; `recorder.stop()` attendrait alors un audio
+ * qui ne viendra plus. On garde donc chaque morceau livré pour pouvoir
+ * reconstituer le fichier dans ce cas.
+ */
+function watchWebRecorder(recorder: unknown, onData: (blob: Blob) => void) {
+  const media = (recorder as { mediaRecorder?: MediaRecorder | null }).mediaRecorder;
+  media?.addEventListener("dataavailable", (event) => {
+    if (event.data?.size) onData(event.data);
+  });
+}
+
+/** Arrête l'enregistreur web et renvoie l'adresse de l'audio, même si le navigateur l'a déjà arrêté. */
+async function finishWebRecording(recorder: { stop: () => Promise<void>; uri: string | null }, chunks: Blob[]): Promise<string | null> {
+  const media = (recorder as unknown as { mediaRecorder?: MediaRecorder | null }).mediaRecorder;
+  if (media && media.state !== "inactive") {
+    await recorder.stop();
+    return recorder.uri ?? null;
+  }
+  return chunks.length ? URL.createObjectURL(new Blob(chunks, { type: chunks[0].type })) : null;
+}
+
 /** Piste micro de l'enregistreur web (expo-audio n'expose pas le flux) : null sur mobile. */
 function webAudioTrack(recorder: unknown): MediaStreamTrack | null {
   if (Platform.OS !== "web") return null;
@@ -330,6 +353,7 @@ export default function Index() {
   const hiddenAtMs = useRef<number | null>(null);
   const backgroundRecording = useRef(false);
   const webMicMuted = useRef(false);
+  const webChunks = useRef<Blob[]>([]);
   useEffect(() => {
     recorderStatusRef.current = recorderStatus;
   }, [recorderStatus]);
@@ -371,8 +395,8 @@ export default function Index() {
         setElapsedSec(finalDurationSec.current);
         recorderStatusRef.current = "done";
         setRecorderStatus("done");
-        void recorder.stop().then(
-          () => setRecordedUri(recorder.uri ?? null),
+        void finishWebRecording(recorder, webChunks.current).then(
+          (uri) => (uri ? setRecordedUri(uri) : api.track("recording_failed")),
           () => api.track("recording_failed"),
         );
         setNotice("Le navigateur a coupé le micro pendant que l’écran était verrouillé : l’enregistrement s’est arrêté à ce moment. Sauvegardez ce début, puis enregistrez la suite. Pour les longs récits, préférez l’application installée.");
@@ -468,8 +492,10 @@ export default function Index() {
       setElapsedSec(0);
       recorder.record();
       webMicMuted.current = false;
+      webChunks.current = [];
       const track = webAudioTrack(recorder);
       if (track) track.onmute = () => { webMicMuted.current = true; };
+      if (Platform.OS === "web") watchWebRecorder(recorder, (blob) => webChunks.current.push(blob));
       setRecorderStatus("recording");
     } catch {
       api.track("recording_failed");
@@ -485,8 +511,11 @@ export default function Index() {
     finalDurationSec.current = Math.max(1, Math.round(elapsedBaseMs.current / 1000));
     setElapsedSec(finalDurationSec.current);
     try {
-      await recorder.stop();
-      setRecordedUri(recorder.uri ?? null);
+      if (Platform.OS === "web") setRecordedUri(await finishWebRecording(recorder, webChunks.current));
+      else {
+        await recorder.stop();
+        setRecordedUri(recorder.uri ?? null);
+      }
       setRecorderStatus("done");
     } catch {
       api.track("recording_failed");
