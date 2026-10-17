@@ -51,6 +51,14 @@ dans le dépôt.
   `SameSite=None; Secure; HttpOnly; Partitioned` (`backend/security.py`, `_set_refresh_cookie`),
   sinon déconnexion à chaque rechargement. Non testé sur Safari/iPhone. Solution durable :
   `app.racontellecare.com` (PR #2) + domaine `api.racontellecare.com` sur Railway.
+- **Écran verrouillé pendant un récit** (17/10 : fichier web de 26 s pour un compteur à 4 min) :
+  l'enregistrement doit CONTINUER jusqu'à l'arrêt par l'animatrice (exigence de l'utilisatrice).
+  APK ≥ 1.0.5 : `enableBackgroundRecording` (plugin expo-audio) + `allowsBackgroundRecording`, avec
+  l'autorisation des notifications (Android 13+, sinon pause + message). Web : écran gardé allumé
+  (Wake Lock + vidéo muette, `src/screen-awake.ts`) ; si le navigateur coupe malgré tout le micro,
+  on le détecte au retour et on garde le début avec sa vraie durée. Ne jamais arrêter de soi-même.
+  Le site testeurs est servi par Emergent : un changement du frontend n'y arrive qu'après
+  « git pull » de `main` + redémarrage du frontend côté Emergent.
 - Les journaux d'un déploiement Railway s'arrêtent quand il est remplacé : toujours ouvrir le
   déploiement **Active** le plus récent (Deployments → View logs → Network Logs).
 - Sur mobile, un souvenir reste « en attente d'envoi » tant que `POST /api/capsules/{id}/audio`

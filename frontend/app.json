@@ -2,7 +2,7 @@
   "expo": {
     "name": "Racontelle Care",
     "slug": "racontelle-care",
-    "version": "1.0.4",
+    "version": "1.0.5",
     "orientation": "portrait",
     "icon": "./assets/images/racontelle-care-icon-v4.png",
     "scheme": "racontelle-care",
@@ -19,7 +19,7 @@
         "backgroundColor": "#FFFFFF"
       },
       "package": "fr.racontelle.care",
-      "versionCode": 5,
+      "versionCode": 6,
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS",
@@ -56,7 +56,8 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "Racontelle Care utilise le micro pour enregistrer les souvenirs racontés pendant l’atelier."
+          "microphonePermission": "Racontelle Care utilise le micro pour enregistrer les souvenirs racontés pendant l’atelier.",
+          "enableBackgroundRecording": true
         }
       ],
       [
