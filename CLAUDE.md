@@ -20,7 +20,7 @@ sans condescendance : l'utilisatrice n'est pas développeuse et veut des étapes
 5. Plus tard, sans urgence : PR #2 (`app.racontellecare.com`) + domaine `api.racontellecare.com` ;
    supprimer le bucket vide `racontelle-care-audio` ; décider du sort des comptes d'avant le 7/10 (base Emergent).
 
-Rappel permanent : avant tout « Save to GitHub » depuis Emergent, lui faire récupérer `main` (PR #1 à #7 fusionnées).
+Rappel permanent : ne pas faire « Save to GitHub » depuis Emergent (sa copie n'a pas les PR fusionnées sur GitHub).
 
 ## Architecture en production (au 16/10/2026)
 
@@ -42,9 +42,14 @@ dans le dépôt.
 
 ## Pièges déjà rencontrés (ne pas les refaire)
 
-- **Emergent écrit directement dans `main`** et garde sa propre copie. Avant tout « Save to GitHub »
-  depuis Emergent, lui faire récupérer `main`. Ne jamais « forcer le push » depuis Emergent sans avoir
-  comparé sa branche à `main` : cela effacerait les PR fusionnées sur GitHub.
+- **Emergent écrit directement dans `main`** et garde sa propre copie. Il **ne peut pas faire de
+  `git pull`** dans un projet en cours (confirmé le 17/10), et importer le dépôt crée un nouveau projet
+  avec une **nouvelle adresse** (à éviter : les testeurs ont l'adresse actuelle). Pour livrer un
+  changement du frontend au site testeurs : demander à l'agent Emergent de remplacer les fichiers
+  modifiés par leur version brute `https://raw.githubusercontent.com/Racontelle26/racontellecareapi/main/<chemin>`
+  (dépôt public), puis de redémarrer Expo en vidant le cache, sans Save to GitHub. Dépôt privé
+  (Racontelle Famille) : lui joindre un correctif `git apply`. Ne jamais « forcer le push » depuis
+  Emergent : sa copie n'a pas les PR fusionnées sur GitHub.
 - **Expo SDK 57** remplace `fetch` par `expo/fetch`, qui refuse les parties FormData `{ uri, name, type }`.
   Envoi de fichiers sur mobile : `FileSystem.uploadAsync` (`frontend/src/api.ts`, `uploadNativeFile`).
 - **Site et API sur deux sites différents** : le cookie de session web doit être
@@ -71,6 +76,13 @@ dans le dépôt.
 - Frontend : `cd frontend && yarn install --frozen-lockfile && npx tsc --noEmit && npx expo lint`
 - APK : `cd frontend && git pull && npx eas-cli build --platform android --profile preview`
   (incrémenter `version` et `android.versionCode` dans `app.json` pour installer par-dessus).
+
+## Racontelle Famille
+
+Dépôt privé `Racontelle26/Racontelle-Famille`, site testeurs `https://family-stories-34.preview.emergentagent.com`
+(frontend et serveur Emergent). PR #1 (17/10) : enregistrement jusqu'au bout écran verrouillé.
+Avant tout APK Famille : corriger l'envoi mobile (`fetch` + FormData `{ uri }` refusé par Expo SDK 57,
+comme Care PR #4).
 
 ## Rappels programmés (scheduled tasks Claude)
 
