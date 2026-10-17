@@ -5,20 +5,28 @@ résidents. Propriétaire : Racontelle (GitHub `Racontelle26`). Répondre en fra
 sans condescendance : l'utilisatrice n'est pas développeuse et veut des étapes courtes et sûres.
 État détaillé et historique : `docs/POINT_AVANCEMENT.md`. Produit : `memory/PRD.md`.
 
-## À faire le 17/10/2026 (dans cet ordre)
+## À faire le 18/10/2026 (dans cet ordre)
 
-1. **APK 1.0.4** — le téléphone a encore la 1.0.3 (3 souvenirs « en attente d'envoi » le 16/10 à 21 h 26).
-   - expo.dev → Builds : chercher un build **1.0.4 (5)** terminé. Sinon :
-     `cd $HOME\racontellecareapi\frontend` → `git pull` → `npx eas-cli build --platform android --profile preview`.
-   - Installer **par-dessus** la 1.0.3, sans désinstaller ni effacer les données.
-   - Vérifier : bandeau « Tout est sauvegardé », 3 lignes `POST /api/capsules/…/audio 200` dans Railway
-     (déploiement Active → Network Logs), fichiers dans `racontelle-care-media/racontelle-care/`.
-   - Si l'envoi échoue encore en 1.0.4 : relever le code HTTP de `/audio` dans Railway avant toute autre action.
-2. **Mot de passe oublié** : tester une vraie réception d'email (Resend) depuis l'adresse web testeurs.
-3. **Mode d'emploi EHPAD** (document Claude) : y mettre le lien d'installation du build 1.0.4 et le contact, puis l'envoyer.
-4. Si un testeur a un iPhone : vérifier que la session web tient au rechargement (Safari).
-5. Plus tard, sans urgence : PR #2 (`app.racontellecare.com`) + domaine `api.racontellecare.com` ;
-   supprimer le bucket vide `racontelle-care-audio` ; décider du sort des comptes d'avant le 7/10 (base Emergent).
+Fait le 17/10 : enregistrement jusqu'au bout même écran verrouillé (Care PR #9 fusionnée et livrée à
+Emergent par fichiers bruts ; Famille PR #1 fusionnée mais intégrée à la main par l'agent Emergent,
+copie Emergent en avance sur GitHub). Mémoire : PR #10 et #11.
+
+1. **Tests réels écran verrouillé**, sur l'adresse Care ET l'adresse Famille, sur chaque téléphone :
+   (a) enregistrer 2 min sans toucher l'écran → l'écran doit rester allumé, réécoute complète ;
+   (b) verrouiller 30 s avec le bouton, déverrouiller, arrêter, réécouter. Si message « micro coupé » :
+   noter téléphone + navigateur, capture.
+2. **Racontelle Famille → GitHub** : dans Emergent Famille, Save to GitHub sur une NOUVELLE branche
+   `emergent-famille-17-10` (jamais `main`, jamais « Forcer le push »). Puis Claude : relire le diff de
+   l'agent (record.tsx), comparer à `main`, remettre `main` à jour proprement par PR.
+   Ne PAS faire de Save to GitHub pour Care (GitHub est plus complet qu'Emergent).
+3. **APK Care 1.0.5** (versionCode 6 : envoi audio corrigé + enregistrement écran verrouillé) :
+   `git pull` puis build EAS, installer PAR-DESSUS la 1.0.3 (3 souvenirs en attente depuis le 16/10),
+   accepter l'autorisation des notifications, vérifier `POST /api/capsules/…/audio 200` dans Railway.
+4. **Mot de passe oublié** : tester une vraie réception d'email (Resend) depuis l'adresse Care.
+5. **Mode d'emploi EHPAD** : lien d'installation APK 1.0.5, contact, et consigne « désactiver la mise
+   en veille de l'écran pendant l'atelier » (version web) ; puis l'envoyer.
+6. Plus tard : iPhone/Safari (session web, micro écran verrouillé) ; PR #2 + `api.racontellecare.com` ;
+   bucket vide `racontelle-care-audio` ; comptes d'avant le 7/10 ; envoi mobile de Famille avant tout APK.
 
 Rappel permanent : ne pas faire « Save to GitHub » depuis Emergent (sa copie n'a pas les PR fusionnées sur GitHub).
 
@@ -30,7 +38,7 @@ Rappel permanent : ne pas faire « Save to GitHub » depuis Emergent (sa copie n
 | Base MongoDB | Railway | base neuve depuis le 7/10 ; les comptes d'avant le 7/10 sont dans l'ancienne base Emergent |
 | Audios | Scaleway Object Storage, organisation « Racontelle », bucket **`racontelle-care-media`**, `fr-par` | variables `S3_*` ; clé API `railway-racontelle` (expire ~16/10/2027) ; `racontelle-care-audio` vide, inutilisé |
 | Site web testeurs | aperçu Emergent `https://ehpad-recall.preview.emergentagent.com` | servi par Emergent depuis sa propre copie du frontend ; `frontend/.env` Emergent : `EXPO_PUBLIC_BACKEND_URL` = API Railway |
-| APK Android | EAS (compte Expo `laracontelle`, projet `racontelle-care`), profil `preview` | `frontend/eas.json` → API Railway ; 1.0.4 (versionCode 5) = envoi audio corrigé |
+| APK Android | EAS (compte Expo `laracontelle`, projet `racontelle-care`), profil `preview` | `frontend/eas.json` → API Railway ; 1.0.5 (versionCode 6) = envoi audio corrigé + enregistrement écran verrouillé ; téléphone encore en 1.0.3 au 17/10 |
 | Emails | Resend, `no-reply@racontellecare.com` | domaine vérifié via DNS Gandi (DKIM `resend._domainkey`, CNAME `send`, `rsend`) |
 | Domaine | Gandi, `racontellecare.com` | ne pas toucher aux enregistrements messagerie Gandi existants |
 
