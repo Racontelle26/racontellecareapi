@@ -51,6 +51,11 @@ dans le dépôt.
   `SameSite=None; Secure; HttpOnly; Partitioned` (`backend/security.py`, `_set_refresh_cookie`),
   sinon déconnexion à chaque rechargement. Non testé sur Safari/iPhone. Solution durable :
   `app.racontellecare.com` (PR #2) + domaine `api.racontellecare.com` sur Railway.
+- **Web, écran verrouillé** : le navigateur coupe le micro (fichier de 26 s pour un compteur à 4 min le 17/10).
+  Depuis la PR #9, l'enregistrement web s'arrête proprement quand la page est cachée et garde ce qui
+  a été capté. Consigne atelier : désactiver la mise en veille automatique de l'écran.
+  Le site testeurs est servi par Emergent : un changement du frontend n'y arrive qu'après
+  « git pull » de `main` + redémarrage du frontend côté Emergent.
 - Les journaux d'un déploiement Railway s'arrêtent quand il est remplacé : toujours ouvrir le
   déploiement **Active** le plus récent (Deployments → View logs → Network Logs).
 - Sur mobile, un souvenir reste « en attente d'envoi » tant que `POST /api/capsules/{id}/audio`
